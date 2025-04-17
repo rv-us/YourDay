@@ -9,6 +9,7 @@ import SwiftUI
 import SwiftData
 
 struct Todoview: View {
+    @Environment(\.modelContext) private var context
     @StateObject var viewModel = TodoViewModel()
     @Query(sort: [SortDescriptor(\TodoItem.dueDate, order: .reverse)]) private var items: [TodoItem]
     
@@ -18,8 +19,15 @@ struct Todoview: View {
     var body: some View {
         NavigationView {
             VStack {
-                List(items) { item in
-                    TodoListItemView(item: item)
+                List {
+                    ForEach(items) { item in
+                        TodoListItemView(item: item)
+                    }
+                    .onDelete { indexSet in
+                        for index in indexSet {
+                            context.delete(items[index])
+                        }
+                    }
                 }
             }
             .navigationTitle("To Do List")
