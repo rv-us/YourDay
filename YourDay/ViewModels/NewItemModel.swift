@@ -14,6 +14,9 @@ class NewItemModel: ObservableObject {
     init() {}
     
     func add() {
+        guard canSave else {
+            return
+        }
         
     }
     

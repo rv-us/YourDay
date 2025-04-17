@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 @main
 struct YourDayApp: App {
@@ -13,5 +14,7 @@ struct YourDayApp: App {
         WindowGroup {
             Todoview()
         }
+        .modelContainer(for: TodoItem.self)
     }
 }
+

@@ -6,8 +6,11 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct NewItemview: View{
+    @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
     @StateObject var viewModel = NewItemModel()
     @Binding var newItemPresented: Bool
     var body: some View {
@@ -25,8 +28,13 @@ struct NewItemview: View{
                     .datePickerStyle(GraphicalDatePickerStyle())
                 Button(action: {
                     if viewModel.canSave {
-                        viewModel.add()
-                        newItemPresented = false
+                        let newItem = TodoItem(
+                            title: viewModel.title,
+                            detail: viewModel.description,
+                            dueDate: viewModel.donebye
+                        )
+                        context.insert(newItem)
+                        dismiss()
                     } else {
                         viewModel.showAlert = true
                     }
