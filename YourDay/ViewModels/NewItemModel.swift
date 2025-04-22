@@ -11,23 +11,25 @@ class NewItemModel: ObservableObject {
     @Published var description = ""
     @Published var donebye = Date()
     @Published var showAlert = false
-    init() {}
+    @Published var subtasks: [Subtask] = []
     
-    func add() {
-        guard canSave else {
-            return
+    var originalItem: TodoItem? = nil
+
+    init(item: TodoItem? = nil) {
+        if let item = item {
+            self.originalItem = item
+            self.title = item.title
+            self.description = item.detail
+            self.donebye = item.dueDate
+            self.subtasks = item.subtasks
         }
-        
     }
-    
+
+    func addSubtask() {
+        subtasks.append(Subtask(title: ""))
+    }
+
     var canSave: Bool {
-        guard !title.trimmingCharacters(in: .whitespaces).isEmpty else {
-            return false
-        }
-        
-        guard donebye >= Date().addingTimeInterval(-86400) else {
-            return false
-        }
-        return true
+        !title.trimmingCharacters(in: .whitespaces).isEmpty && donebye >= Date().addingTimeInterval(-86400)
     }
 }
