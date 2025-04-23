@@ -15,7 +15,10 @@ struct TodoListItemView: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 10) {
                 Button(action: {
-                    item.isDone.toggle()
+//                    item.isDone.toggle()
+                    withAnimation {
+                            item.isDone.toggle()
+                        }
                     print("Main item '\(item.title)' toggled to \(item.isDone)")
                 }) {
                     Image(systemName: item.isDone ? "checkmark.circle.fill" : "circle")
@@ -28,12 +31,25 @@ struct TodoListItemView: View {
                 .buttonStyle(PlainButtonStyle())
                 .contentShape(Rectangle())
 
-                Text(item.title)
-                    .font(.body)
-                    .lineLimit(1)
-                    .onTapGesture {
-                        showingEditView = true
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(item.title)
+                        .font(.body)
+                        .lineLimit(1)
+                        .strikethrough(item.isDone)
+                        .foregroundColor(item.isDone ? .gray : .primary)
+
+                    if !item.detail.isEmpty {
+                        Text(item.detail)
+                            .font(.caption)
+                            .lineLimit(2)
+                            .foregroundColor(item.isDone ? .gray.opacity(0.7) : .gray)
+                            .strikethrough(item.isDone)
                     }
+                }
+                .onTapGesture {
+                    showingEditView = true
+                }
+
 
                 Spacer()
             }
@@ -46,6 +62,8 @@ struct TodoListItemView: View {
                             title: subtask.title,
                             isDone: $subtask.isDone
                         )
+                        .strikethrough(subtask.isDone)
+                        .foregroundColor(subtask.isDone ? .gray : .primary)
                     }
                 }
                 .padding(.leading, 34)

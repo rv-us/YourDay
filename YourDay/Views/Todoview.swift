@@ -19,16 +19,43 @@ struct Todoview: View {
     var body: some View {
         NavigationView {
             VStack {
+//                List {
+//                    ForEach(items) { item in
+//                        TodoListItemView(item: item)
+//                    }
+//                    .onDelete { indexSet in
+//                        for index in indexSet {
+//                            context.delete(items[index])
+//                        }
+//                    }
+//                }
                 List {
-                    ForEach(items) { item in
-                        TodoListItemView(item: item)
+                    Section(header: Text("In Progress")) {
+                        ForEach(items.filter { !$0.isDone }) { item in
+                            TodoListItemView(item: item)
+                        }
+                        .onDelete { indexSet in
+                            for index in indexSet {
+                                let activeItems = items.filter { !$0.isDone }
+                                context.delete(activeItems[index])
+                            }
+                        }
                     }
-                    .onDelete { indexSet in
-                        for index in indexSet {
-                            context.delete(items[index])
+
+                    Section(header: Text("Completed")) {
+                        ForEach(items.filter { $0.isDone }) { item in
+                            TodoListItemView(item: item)
+                        }
+                        .onDelete { indexSet in
+                            for index in indexSet {
+                                let doneItems = items.filter { $0.isDone }
+                                context.delete(doneItems[index])
+                            }
                         }
                     }
                 }
+                .listStyle(InsetGroupedListStyle())
+
             }
             .navigationTitle("To Do List")
             .toolbar {
