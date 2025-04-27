@@ -12,9 +12,10 @@ import SwiftData
 struct YourDayApp: App {
     var body: some Scene {
         WindowGroup {
-            Todoview()
+//            Todoview()
+            ContentView()
         }
-        .modelContainer(for: TodoItem.self)
+        .modelContainer(for: [TodoItem.self, NoteItem.self])
     }
 }
 

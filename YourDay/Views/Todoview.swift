@@ -19,16 +19,6 @@ struct Todoview: View {
     var body: some View {
         NavigationView {
             VStack {
-//                List {
-//                    ForEach(items) { item in
-//                        TodoListItemView(item: item)
-//                    }
-//                    .onDelete { indexSet in
-//                        for index in indexSet {
-//                            context.delete(items[index])
-//                        }
-//                    }
-//                }
                 List {
                     Section(header: Text("In Progress")) {
                         ForEach(items.filter { !$0.isDone }) { item in
