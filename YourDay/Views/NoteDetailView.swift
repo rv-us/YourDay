@@ -10,6 +10,7 @@ import SwiftData
 
 struct NoteDetailView: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
     @State var note: NoteItem
     @State private var editedText: String = ""
 
@@ -31,6 +32,7 @@ struct NoteDetailView: View {
             Button("Save") {
                 note.content = editedText
                 try? context.save()
+                dismiss()
             }
         }
     }

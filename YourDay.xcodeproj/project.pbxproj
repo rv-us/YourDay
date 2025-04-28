@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		C9A89A1A2DBF16EE00D2C382 /* FirebaseVertexAI in Frameworks */ = {isa = PBXBuildFile; productRef = C9A89A192DBF16EE00D2C382 /* FirebaseVertexAI */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		C99DF2472DA61BEC003048F2 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -52,6 +56,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C9A89A1A2DBF16EE00D2C382 /* FirebaseVertexAI in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -112,6 +117,7 @@
 			);
 			name = YourDay;
 			packageProductDependencies = (
+				C9A89A192DBF16EE00D2C382 /* FirebaseVertexAI */,
 			);
 			productName = YourDay;
 			productReference = C99DF2352DA61BEB003048F2 /* YourDay.app */;
@@ -195,6 +201,9 @@
 			);
 			mainGroup = C99DF22C2DA61BEB003048F2;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				C9A89A182DBF16EE00D2C382 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = C99DF2362DA61BEB003048F2 /* Products */;
 			projectDirPath = "";
@@ -591,6 +600,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		C9A89A182DBF16EE00D2C382 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 11.12.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		C9A89A192DBF16EE00D2C382 /* FirebaseVertexAI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C9A89A182DBF16EE00D2C382 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseVertexAI;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = C99DF22D2DA61BEB003048F2 /* Project object */;
 }

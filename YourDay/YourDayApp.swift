@@ -7,15 +7,19 @@
 
 import SwiftUI
 import SwiftData
+import FirebaseCore
 
 @main
 struct YourDayApp: App {
+    
+    init() {
+        FirebaseApp.configure()
+    }
+    
     var body: some Scene {
         WindowGroup {
-//            Todoview()
             ContentView()
         }
         .modelContainer(for: [TodoItem.self, NoteItem.self])
     }
 }
-
