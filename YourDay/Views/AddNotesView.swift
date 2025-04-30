@@ -125,7 +125,7 @@ struct AddNotesView: View {
 
                 \(combinedText)
 
-                Ensure that the generated tasks are specific, measurable, achievable, relevant, and time-bound (SMART) where possible. If a due date isn't explicitly mentioned or strongly implied, mark it as "None". Be concise and avoid unnecessary conversational elements.
+                Ensure that the generated tasks are specific, measurable, achievable, relevant, and time-bound (SMART) where possible. If a due date isn't explicitly mentioned or strongly implied, mark it as "None". Be concise and avoid unnecessary conversational elements. Additionally, write the tasks in a format that is similar to my writing style.
                 """
 
                 let vertex = VertexAI.vertexAI()

@@ -59,6 +59,7 @@ struct Todoview: View {
                 NewItemview(newItemPresented: $viewModel.showingNewItemView)
             }
         }
+        
     }
 }
 
