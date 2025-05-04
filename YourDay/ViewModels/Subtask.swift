@@ -6,8 +6,18 @@
 //
 import Foundation
 
-struct Subtask: Identifiable, Codable, Equatable {
+struct Subtask: Codable, Identifiable, Hashable {
     var id = UUID()
     var title: String
-    var isDone: Bool = false
+    var isDone: Bool = false {
+        didSet {
+            if isDone {
+                completedAt = Date()
+            } else {
+                completedAt = nil
+            }
+        }
+    }
+    var completedAt: Date? = nil
 }
+

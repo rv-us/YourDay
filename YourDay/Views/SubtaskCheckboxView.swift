@@ -8,17 +8,17 @@
 import SwiftUI
 
 struct SubtaskCheckboxView: View {
-    var title: String
-    @Binding var isDone: Bool
+    @Binding var subtask: Subtask
 
     var body: some View {
         HStack(spacing: 10) {
             Button(action: {
-                isDone.toggle()
-                print("Subtask '\(title)' toggled to \(isDone)")
+                subtask.isDone.toggle()
+                subtask.completedAt = subtask.isDone ? Date() : nil
+                print("Subtask '\(subtask.title)' toggled to \(subtask.isDone), completedAt: \(String(describing: subtask.completedAt))")
             }) {
-                Image(systemName: isDone ? "checkmark.circle.fill" : "circle")
-                    .foregroundColor(isDone ? .blue : .gray)
+                Image(systemName: subtask.isDone ? "checkmark.circle.fill" : "circle")
+                    .foregroundColor(subtask.isDone ? .blue : .gray)
                     .frame(width: 24, height: 24)
                     .padding(4)
                     .background(Color(.systemGray5))
@@ -26,7 +26,7 @@ struct SubtaskCheckboxView: View {
             }
             .buttonStyle(PlainButtonStyle())
 
-            Text(title)
+            Text(subtask.title)
                 .font(.subheadline)
                 .lineLimit(1)
 
@@ -34,5 +34,3 @@ struct SubtaskCheckboxView: View {
         }
     }
 }
-
-

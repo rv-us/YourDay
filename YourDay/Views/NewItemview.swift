@@ -29,27 +29,44 @@ struct NewItemview: View {
             Form {
                 TextField("Task", text: $viewModel.title)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
-                TextField("Description", text: $viewModel.description)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                Text("Description")
+                    .font(.caption)
+                    .foregroundColor(.gray)
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.gray.opacity(0.5))
+                    TextEditor(text: $viewModel.description)
+                        .frame(minHeight: 80)
+                        .padding(4)
+                }
+
 
                 Section(header: Text("Subtasks")) {
                     ForEach($viewModel.subtasks) { $subtask in
-                        HStack {
-                            Image(systemName: subtask.isDone ? "checkmark.circle.fill" : "circle")
-                                .foregroundColor(subtask.isDone ? .green : .gray)
-                            TextField("Subtask", text: $subtask.title)
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.gray.opacity(0.5))
+                            TextEditor(text: $subtask.title)
+                                .frame(minHeight: 44)
+                                .padding(4)
                         }
                     }
+                    .onDelete { indexSet in
+                        viewModel.subtasks.remove(atOffsets: indexSet)
+                    }
+
                     Button(action: viewModel.addSubtask) {
                         Label("Add Subtask", systemImage: "plus")
                     }
                 }
 
+
                 DatePicker("Due Date", selection: $viewModel.donebye)
                     .datePickerStyle(GraphicalDatePickerStyle())
 
                 Button(action: {
-                    guard viewModel.canSave else {
+                    // Skip validation for due date safeguard
+                    if viewModel.title.trimmingCharacters(in: .whitespaces).isEmpty {
                         viewModel.showAlert = true
                         return
                     }
@@ -83,9 +100,8 @@ struct NewItemview: View {
                 .padding()
             }
             .alert(isPresented: $viewModel.showAlert) {
-                Alert(title: Text("Error"), message: Text("Please fill in task field and select a future due date"))
+                Alert(title: Text("Error"), message: Text("Please fill in task field"))
             }
         }
     }
 }
-

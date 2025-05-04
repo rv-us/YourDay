@@ -10,16 +10,17 @@ import SwiftUI
 struct TodoListItemView: View {
     @Bindable var item: TodoItem
     @State private var showingEditView = false
+    @Environment(\.modelContext) private var _modelContext
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 10) {
                 Button(action: {
-//                    item.isDone.toggle()
                     withAnimation {
-                            item.isDone.toggle()
-                        }
-                    print("Main item '\(item.title)' toggled to \(item.isDone)")
+                        item.isDone.toggle()
+                        item.completedAt = item.isDone ? Date() : nil
+                    }
+                    print("Main item '\(item.title)' toggled to \(item.isDone), completedAt: \(String(describing: item.completedAt))")
                 }) {
                     Image(systemName: item.isDone ? "checkmark.circle.fill" : "circle")
                         .foregroundColor(item.isDone ? .green : .gray)
@@ -50,7 +51,6 @@ struct TodoListItemView: View {
                     showingEditView = true
                 }
 
-
                 Spacer()
             }
             .padding(.horizontal, 4)
@@ -58,10 +58,7 @@ struct TodoListItemView: View {
             if !$item.subtasks.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     ForEach($item.subtasks) { $subtask in
-                        SubtaskCheckboxView(
-                            title: subtask.title,
-                            isDone: $subtask.isDone
-                        )
+                        SubtaskCheckboxView(subtask: $subtask)
                         .strikethrough(subtask.isDone)
                         .foregroundColor(subtask.isDone ? .gray : .primary)
                     }
@@ -75,7 +72,4 @@ struct TodoListItemView: View {
                 .environment(\.modelContext, _modelContext)
         }
     }
-
-    @Environment(\.modelContext) private var _modelContext
 }
-

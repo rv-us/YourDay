@@ -15,6 +15,7 @@ class TodoItem {
     var dueDate: Date
     var isDone: Bool
     var subtasks: [Subtask] = []
+    var completedAt: Date? = nil
 
     init(title: String, detail: String, dueDate: Date, isDone: Bool = false, subtasks: [Subtask] = []) {
         self.title = title
