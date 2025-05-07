@@ -1,10 +1,3 @@
-//
-//  ContentView.swift
-//  YourDay
-//
-//  Created by Ruthwika Gajjala on 4/27/25.
-//
-
 import SwiftUI
 import SwiftData
 
@@ -13,8 +6,6 @@ struct ContentView: View {
     @Query private var allTasks: [TodoItem]
 
     @State private var showLastDayView = false
-    @State private var lastDayData: (Double, [TaskPointResult]) = (0.0, [])
-
     @AppStorage("lastSummaryDate") private var lastSummaryDateString: String = ""
 
     var body: some View {
@@ -29,48 +20,43 @@ struct ContentView: View {
                     Label("Notes", systemImage: "square.and.pencil")
                 }
 
-            LastDayView(
-                totalPoints: lastDayData.0,
-                taskBreakdown: lastDayData.1,
-                isModal: false
-            )
-            .tabItem {
-                Label("Summary", systemImage: "star.fill")
-            }
+            LastDayView(isModal: false)
+                .tabItem {
+                    Label("Summary", systemImage: "star.fill")
+                }
         }
-        .onAppear {
-            checkIfShouldShowLastDayView()
+        .task {
+            checkIfShouldEvaluatePoints()
         }
         .sheet(isPresented: $showLastDayView) {
             NavigationView {
-                LastDayView(
-                    totalPoints: lastDayData.0,
-                    taskBreakdown: lastDayData.1,
-                    isModal: true
-                )
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Close") {
-                            showLastDayView = false
+                LastDayView(isModal: true)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Close") {
+                                showLastDayView = false
+                            }
                         }
                     }
-                }
             }
         }
     }
 
-    func checkIfShouldShowLastDayView() {
+    func checkIfShouldEvaluatePoints() {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
-        let todayString = formatter.string(from: Date())
+        let todayString = formatter.string(from: today)
 
-        // Only show if we haven’t shown it today
+        // Only evaluate if we haven't shown it today
         if todayString != lastSummaryDateString {
-            let (points, breakdown) = PointManager.evaluateDailyPoints(context: context, tasks: allTasks)
+            let (points, _) = PointManager.evaluateDailyPoints(context: context, tasks: allTasks)
+            print("🧮 Evaluated: \(points) points")
+
             if points > 0 {
-                self.lastDayData = (points, breakdown)
-                self.showLastDayView = true
-                self.lastSummaryDateString = todayString
+                showLastDayView = true
+                lastSummaryDateString = todayString
             }
         }
     }

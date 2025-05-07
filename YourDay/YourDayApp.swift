@@ -20,6 +20,6 @@ struct YourDayApp: App {
         WindowGroup {
             ContentView()
         }
-        .modelContainer(for: [TodoItem.self, NoteItem.self, PlayerStats.self])
+        .modelContainer(for: [TodoItem.self, NoteItem.self, PlayerStats.self,DailySummaryTask.self])
     }
 }

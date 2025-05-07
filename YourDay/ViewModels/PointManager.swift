@@ -38,6 +38,22 @@ class PointManager {
 
         let (earnedPoints, breakdown) = calculatePointsEarned(for: tasks, on: today)
 
+        // Save summary entries for each completed task
+        for result in breakdown {
+            let subtaskTitles = result.subtaskPoints.map { $0.title }
+            let subtaskPoints = result.subtaskPoints.map { $0.earned }
+
+            let summary = DailySummaryTask(
+                taskTitle: result.title,
+                date: result.date,
+                totalPoints: result.totalPoints,
+                subtaskTitles: subtaskTitles,
+                subtaskPoints: subtaskPoints
+            )
+
+            context.insert(summary)
+        }
+
         stats.totalPoints += earnedPoints
         stats.lastEvaluated = yesterday
         context.insert(stats)
