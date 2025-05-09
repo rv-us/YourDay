@@ -5,7 +5,7 @@ import SwiftData
 
 func formatDate(_ date: Date) -> String {
     let formatter = DateFormatter()
-    formatter.dateStyle = .medium
+    formatter.dateStyle = .medium // e.g., "May 8, 2025"
     return formatter.string(from: date)
 }
 
@@ -16,8 +16,8 @@ struct LastDayView: View {
     @Query(sort: [SortDescriptor(\DailySummaryTask.date, order: .reverse)])
     private var allSummaries: [DailySummaryTask]
 
-    @Query(sort: [SortDescriptor(\TodoItem.dueDate)])
-    private var allTodoItems: [TodoItem]
+    // Query all TodoItems to calculate total tasks for the pie chart denominator
+    @Query private var allTodoItems: [TodoItem] // Removed sort, count is what matters
     
     @State private var dateOffset: Int = 0
     @State private var animatedPoints: Double = 0
@@ -30,11 +30,8 @@ struct LastDayView: View {
         return Array(uniqueDates).sorted(by: >)
     }
 
-    // This is the key computed property that will drive the animation changes
     private var currentDisplayDate: Date? {
         guard !uniqueSortedDates.isEmpty, dateOffset < uniqueSortedDates.count, dateOffset >= 0 else {
-            // Default to yesterday if no summaries or offset is out of bounds.
-            // This ensures the view has a date to display in its title, even if data is empty.
             return Calendar.current.date(byAdding: .day, value: -1, to: Calendar.current.startOfDay(for: Date()))
         }
         return uniqueSortedDates[dateOffset]
@@ -47,17 +44,15 @@ struct LastDayView: View {
 
     private var breakdownForDisplayDate: [TaskPointResult] {
         summariesForDisplayDate.map { summary in
-            // Ensure this mapping includes the mainTaskCompletedOnTargetDay field if PointManager.TaskPointResult has it
-            // For now, assuming the TaskPointResult structure used here matches previous definitions
             let subtasks = zip(summary.subtaskTitles, summary.subtaskPoints)
                 .map { (title: $0.0, earned: $0.1) }
             return TaskPointResult(
                 title: summary.taskTitle,
                 date: summary.date,
-                basePoints: PointManager.maxPointsPerDay * PointManager.maxPerTaskPercentage, // Example
+                basePoints: summary.taskMaxPossiblePoints,
                 subtaskPoints: subtasks,
                 totalPoints: summary.totalPoints,
-                mainTaskCompletedOnTargetDay: summary.mainTaskCompleted // Mapped from DailySummaryTask
+                mainTaskCompletedOnTargetDay: summary.mainTaskCompleted
             )
         }
     }
@@ -68,12 +63,11 @@ struct LastDayView: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            if let displayDate = currentDisplayDate { // Ensure displayDate is not nil
+            if let displayDate = currentDisplayDate {
                 HStack {
                     Button {
                         if dateOffset < uniqueSortedDates.count - 1 {
                             dateOffset += 1
-                            // Animation will be handled by .onChange(of: currentDisplayDate)
                         }
                     } label: {
                         Image(systemName: "chevron.left.circle.fill")
@@ -92,7 +86,6 @@ struct LastDayView: View {
                     Button {
                         if dateOffset > 0 {
                             dateOffset -= 1
-                            // Animation will be handled by .onChange(of: currentDisplayDate)
                         }
                     } label: {
                         Image(systemName: "chevron.right.circle.fill")
@@ -111,15 +104,13 @@ struct LastDayView: View {
                 Text("+\(Int(animatedPoints)) Points!")
                     .font(.system(size: 40, weight: .heavy, design: .rounded))
                     .foregroundColor(.green)
-                    // The .id helps if other external factors might change this specific text view
-                    // but the main animation trigger is now .onChange(of: currentDisplayDate)
                     .id("animatedPointsText-\(dateOffset)")
 
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
                         ForEach(breakdownForDisplayDate) { taskResult in
-                            if taskResult.totalPoints > 0 {
+                            if taskResult.totalPoints > 0 || taskResult.mainTaskCompletedOnTargetDay {
                                 TaskSummaryRow(taskResult: taskResult)
                             }
                         }
@@ -130,10 +121,13 @@ struct LastDayView: View {
 
                 Spacer()
 
+                // Pass allTodoItems.count to the progress view if needed directly,
+                // or let it query itself if that's cleaner.
+                // For this change, TasksCompletionProgressView will use its own allTodoItems query.
                 TasksCompletionProgressView(
-                    displayDate: currentDisplayDate ?? Date(),
-                    allTodoItems: allTodoItems,
-                    summariesForDate: summariesForDisplayDate
+                    displayDate: currentDisplayDate ?? Date(), // Still needed for numerator
+                    allTodoItemsFromLastDayView: allTodoItems, // Pass all items for the denominator
+                    summariesForDate: summariesForDisplayDate // For numerator
                 )
                 .frame(width: 120, height: 120)
                 .padding(.bottom, 10)
@@ -169,10 +163,8 @@ struct LastDayView: View {
         }
         .padding(.vertical)
         .onAppear {
-            // Initial animation setup when the view first appears
             let initialPoints = totalPointsForDisplayDate
-            self.animatedPoints = 0 // Start from 0 for the animation
-            // Slight delay to ensure the view is fully laid out
+            self.animatedPoints = 0
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 withAnimation(.easeOut(duration: 1.0)) {
                     self.animatedPoints = initialPoints
@@ -181,18 +173,13 @@ struct LastDayView: View {
             }
         }
         .onChange(of: currentDisplayDate) { oldDate, newDate in
-            // This will trigger whenever currentDisplayDate changes,
-            // which happens when dateOffset is modified.
-            guard oldDate != newDate else { return } // Only proceed if the date actually changed
+            guard oldDate != newDate else { return }
 
             let newTotalPoints = totalPointsForDisplayDate
             
-            // Reset animatedPoints to 0 without animation
             self.animatedPoints = 0
             
-            // Schedule animation to the new value with a slight delay
-            // This delay helps SwiftUI register the reset to 0 before starting the new animation
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { // A very short delay
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                 withAnimation(.easeOut(duration: 1.0)) {
                     self.animatedPoints = newTotalPoints
                 }
@@ -204,28 +191,23 @@ struct LastDayView: View {
     private func updateContinueButtonVisibility(points: Double, isInitialAppearance: Bool = false) {
         if isModal {
             if points > 0 {
-                // If it's not the initial appearance, or if it is and we want the button animated
-                // we hide it first, then show it after the points animation.
-                if !isInitialAppearance || (isInitialAppearance && points > 0) { // Avoid hiding if initial and 0 points
+                if !isInitialAppearance || (isInitialAppearance && points > 0) {
                     self.showContinueButton = false
                 }
                 
-                DispatchQueue.main.asyncAfter(deadline: .now() + (isInitialAppearance ? 0.1 : 1.0) ) { // delay matches points animation
+                DispatchQueue.main.asyncAfter(deadline: .now() + (isInitialAppearance ? 0.1 : 1.0) ) {
                     withAnimation(.spring(response: 0.4, dampingFraction: 0.6)) {
                         self.showContinueButton = true
                     }
                 }
-            } else { // No points
-                self.showContinueButton = true // Show "Close" button immediately
+            } else {
+                self.showContinueButton = true
             }
         }
     }
 }
 
-// Make sure TaskSummaryRow and TasksCompletionProgressView are defined as in the previous step.
-// (Assuming TaskPointResult and other dependencies are correctly defined from before)
-
-struct TaskSummaryRow: View { // Copied from previous correct version
+struct TaskSummaryRow: View {
     let taskResult: TaskPointResult
     
     var body: some View {
@@ -237,9 +219,9 @@ struct TaskSummaryRow: View { // Copied from previous correct version
                     .font(.headline)
                     .fontWeight(.medium)
                 Spacer()
-                Text("+\(Int(taskResult.totalPoints))")
-                    .font(.headline)
-                    .fontWeight(.bold)
+                Text("+\(Int(taskResult.totalPoints)) / \(Int(taskResult.basePoints))")
+                    .font(.caption)
+                    .fontWeight(.semibold)
                     .foregroundColor(.blue)
             }
             
@@ -267,36 +249,25 @@ struct TaskSummaryRow: View { // Copied from previous correct version
     }
 }
 
-struct TasksCompletionProgressView: View { // Copied from previous correct version
-    let displayDate: Date
-    let allTodoItems: [TodoItem]
-    let summariesForDate: [DailySummaryTask]
+struct TasksCompletionProgressView: View {
+    let displayDate: Date // Still needed to filter summaries for the numerator
+    let allTodoItemsFromLastDayView: [TodoItem] // All tasks for the denominator
+    let summariesForDate: [DailySummaryTask] // Summaries for the specific displayDate (for numerator)
 
-    private var activeTasksForDay: Int {
-        let calendar = Calendar.current
-        let startOfDisplayDate = calendar.startOfDay(for: displayDate)
-
-        return allTodoItems.filter { item in
-            let dueByDisplayDate = calendar.startOfDay(for: item.dueDate) <= startOfDisplayDate
-            
-            let notCompletedBeforeDisplayDate: Bool
-            if let completedAt = item.completedAt {
-                notCompletedBeforeDisplayDate = calendar.startOfDay(for: completedAt) >= startOfDisplayDate
-            } else {
-                notCompletedBeforeDisplayDate = true
-            }
-            
-            return dueByDisplayDate && notCompletedBeforeDisplayDate
-        }.count
-    }
-
-    private var trulyCompletedActiveTasks: Int {
+    // Numerator: Number of main tasks completed on the displayDate
+    private var completedTasksOnDisplayDate: Int {
         summariesForDate.filter { $0.mainTaskCompleted }.count
     }
         
+    // Denominator: Total number of tasks in the entire list
+    private var totalTasksInList: Int {
+        allTodoItemsFromLastDayView.count
+    }
+        
     var progress: Double {
-        guard activeTasksForDay > 0 else { return 0 }
-        return Double(trulyCompletedActiveTasks) / Double(activeTasksForDay)
+        guard totalTasksInList > 0 else { return 0 }
+        // Calculate progress: (completed on displayDate) / (total tasks in list)
+        return Double(completedTasksOnDisplayDate) / Double(totalTasksInList)
     }
     
     var body: some View {
@@ -314,18 +285,22 @@ struct TasksCompletionProgressView: View { // Copied from previous correct versi
                 Text("\(Int(progress * 100))%")
                     .font(.title3)
                     .fontWeight(.bold)
-                Text(activeTasksForDay > 0 ? "Tasks Done" : "No Tasks Due")
+                // Updated text to reflect the new meaning
+                Text(totalTasksInList > 0 ? "Of All Tasks" : "No Tasks")
                     .font(.caption)
                     .foregroundColor(.gray)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                Text(totalTasksInList > 0 ? "Done Today" : "In List")
+                    .font(.caption)
+                    .foregroundColor(.gray)
+
             }
+            .multilineTextAlignment(.center) // Center the text if it wraps
         }
     }
 }
 
 
-// Helper Calendar extension (if not globally available)
+// Helper Calendar extension
 extension Calendar {
     func isDate(_ date1: Date, equalToOrBefore date2: Date) -> Bool {
         return compare(date1, to: date2, toGranularity: .day) != .orderedDescending

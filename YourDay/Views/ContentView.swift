@@ -10,6 +10,10 @@ struct ContentView: View {
 
     var body: some View {
         TabView {
+            GardenView()
+                .tabItem {
+                    Label("Garden", systemImage: "leaf.fill")
+                }
             Todoview()
                 .tabItem {
                     Label("Tasks", systemImage: "checkmark.circle")
