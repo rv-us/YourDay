@@ -91,11 +91,11 @@ struct PlacedPlant: Codable, Identifiable, Hashable {
         
         var calculatedValue: Double
         switch rarity {
-        case .common: calculatedValue = baseValue > 0 ? baseValue * 1.2 : 50.0
-        case .uncommon: calculatedValue = baseValue > 0 ? baseValue * 1.3 : 150.0
-        case .rare: calculatedValue = baseValue > 0 ? baseValue * 1.4 : 250.0
-        case .epic: calculatedValue = baseValue > 0 ? baseValue * 1.5 : 500.0
-        case .legendary: calculatedValue = baseValue > 0 ? baseValue * 1.6 : 1000.0
+        case .common: calculatedValue =  50.0
+        case .uncommon: calculatedValue = 75.0
+        case .rare: calculatedValue =  125.0
+        case .epic: calculatedValue =  250.0
+        case .legendary: calculatedValue =  500.0
         }
         
         if let currentSeason = getCurrentSeason(), self.theme == currentSeason {
@@ -129,7 +129,7 @@ class PlayerStats {
     var fertilizerCount: Int
 
     init(
-        totalPoints: Double = 10000,
+        totalPoints: Double = 100,
         lastEvaluated: Date? = nil,
         playerLevel: Int = 1, // Default player level as provided
         currentXP: Double = 0,
@@ -137,7 +137,7 @@ class PlayerStats {
         unplacedPlantsInventory: [String: Int] = [:],
         placedPlants: [PlacedPlant] = [],
         numberOfOwnedPlots: Int = 2, // Player starts with 2 plots
-        fertilizerCount: Int = 5
+        fertilizerCount: Int = 3
     ) {
         self.id = UUID()
         self.totalPoints = totalPoints
