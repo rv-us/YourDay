@@ -11,6 +11,7 @@ import SwiftData
 // Enum for Plant Rarity
 enum Rarity: String, Codable, CaseIterable, Hashable {
     case common = "Common"
+    case uncommon = "Uncommon"
     case rare = "Rare"
     case epic = "Epic"
     case legendary = "Legendary"
@@ -22,50 +23,32 @@ enum PlantTheme: String, Codable, CaseIterable, Hashable {
     case summer = "Summer"
     case fall = "Fall"
     case winter = "Winter"
-    // Removed Mystical and Elemental as they were not in the user-provided current version of the immersive
 }
 
 // Helper struct for storing grid coordinates.
-// Conforms to Codable to be storable by SwiftData within PlacedPlant.
 struct GridPosition: Codable, Hashable {
     var x: Int
     var y: Int
 }
 
 // Helper struct for representing a plant placed in the garden.
-// Conforms to Codable to be storable by SwiftData as part of an array in PlayerStats.
 struct PlacedPlant: Codable, Identifiable, Hashable {
-    var id = UUID() // Identifiable for potential list rendering
-    var name: String // Name/type of the plant, e.g., "Sunflower"
-    var position: GridPosition // Where it's placed on the grid
-    var plantedDate: Date // When the plant was placed
-    
-    // New growth mechanic properties
-    var daysLeftTillFullyGrown: Int // Days remaining until the plant is mature
-    var lastWateredOnDay: Date? // Tracks the start of the day when the plant was last watered
-
-    // New descriptive properties
+    var id = UUID()
+    var name: String
+    var position: GridPosition
+    var plantedDate: Date
+    var daysLeftTillFullyGrown: Int
+    var lastWateredOnDay: Date?
     var rarity: Rarity
     var theme: PlantTheme
-    // This baseValue is used for calculating sell price.
     var baseValue: Double
 
-    // Computed property to check if the plant is fully grown
     var isFullyGrown: Bool {
         return daysLeftTillFullyGrown <= 0
     }
 
-    // Initializer updated for the new growth mechanic and descriptive properties
-    init(name: String,
-         position: GridPosition,
-         initialDaysToGrow: Int,
-         rarity: Rarity,
-         theme: PlantTheme,
-         baseValue: Double,
-         plantedDate: Date = Date(),
-         lastWateredOnDay: Date? = nil
-    ) {
-        self.id = UUID()
+    init(name: String, position: GridPosition, initialDaysToGrow: Int, rarity: Rarity, theme: PlantTheme, baseValue: Double, plantedDate: Date = Date(), lastWateredOnDay: Date? = nil) {
+        self.id = UUID() // Ensure ID is always initialized
         self.name = name
         self.position = position
         self.plantedDate = plantedDate
@@ -75,16 +58,13 @@ struct PlacedPlant: Codable, Identifiable, Hashable {
         self.theme = theme
         self.baseValue = baseValue
     }
-    
-    // Example method to water the plant
+
     mutating func waterPlant() {
         let today = Calendar.current.startOfDay(for: Date())
-        
         if !isFullyGrown && (lastWateredOnDay == nil || !Calendar.current.isDate(lastWateredOnDay!, inSameDayAs: today)) {
-            if daysLeftTillFullyGrown > 0 {
-                daysLeftTillFullyGrown -= 1
-            }
+            if daysLeftTillFullyGrown > 0 { daysLeftTillFullyGrown -= 1 }
             lastWateredOnDay = today
+            // Log includes more details now
             print("\(name) (\(rarity.rawValue), \(theme.rawValue)) at \(position.x),\(position.y) watered. Days left: \(daysLeftTillFullyGrown)")
         } else if isFullyGrown {
             print("\(name) at \(position.x),\(position.y) is already fully grown.")
@@ -92,121 +72,177 @@ struct PlacedPlant: Codable, Identifiable, Hashable {
             print("\(name) at \(position.x),\(position.y) was already watered today.")
         }
     }
-    
-    // Helper function to determine the current season
+
     private func getCurrentSeason(from date: Date = Date()) -> PlantTheme? {
         let month = Calendar.current.component(.month, from: date)
         switch month {
-        case 3, 4, 5: // March, April, May
-            return .spring
-        case 6, 7, 8: // June, July, August
-            return .summer
-        case 9, 10, 11: // September, October, November
-            return .fall
-        case 12, 1, 2: // December, January, February
-            return .winter
-        default:
-            return nil // Should not happen
+        case 3...5: return .spring
+        case 6...8: return .summer
+        case 9...11: return .fall
+        case 12, 1, 2: return .winter
+        default: return nil
         }
     }
-    
-    // Method to get current value, now based on rarity and season if fully grown.
-    func getCurrentValue() -> Double {
-        guard isFullyGrown else {
-            return 0 // Value is 0 if not fully grown
-        }
 
+    func getCurrentValue() -> Double {
+        guard isFullyGrown else { return 0 }
         var calculatedValue: Double
         switch rarity {
-        case .common:
-            calculatedValue = 50.0
-        case .rare:
-            calculatedValue = 250.0
-        case .epic:
-            calculatedValue = 500.0
-        case .legendary:
-            calculatedValue = 1000.0
+        case .common: calculatedValue = 50.0
+        case .uncommon: calculatedValue = 150.0 // Value for uncommon
+        case .rare: calculatedValue = 250.0
+        case .epic: calculatedValue = 500.0
+        case .legendary: calculatedValue = 1000.0
         }
-        
-        // Apply seasonal bonus
-        if let currentSeason = getCurrentSeason() {
-            if self.theme == currentSeason {
-                calculatedValue *= 2
-                print("Seasonal bonus applied for \(name)! Current value: \(calculatedValue)")
-            }
+        if let currentSeason = getCurrentSeason(), self.theme == currentSeason {
+            calculatedValue *= 2
+            // Log seasonal bonus
+            // print("Seasonal bonus applied for \(name)! Current value: \(calculatedValue)")
         }
-        
         return calculatedValue
     }
 }
 
 @Model
 class PlayerStats {
-    // Existing properties
     var id: UUID = UUID()
-    var totalPoints: Double
+    var totalPoints: Double // Acts as currency
     var lastEvaluated: Date?
 
     // Gamification Properties
     var playerLevel: Int
-    var gardenValue: Double // This will be a calculated sum of all placed, grown plants' values
-    
-    var unplacedPlantsInventory: [String: Int] // Key: Plant Name (which implies its type, rarity, theme)
+    var currentXP: Double // XP accumulated towards the next level
+    var gardenValue: Double
+    var unplacedPlantsInventory: [String: Int]
     var placedPlants: [PlacedPlant]
-    
+    var numberOfOwnedPlots: Int // Number of plots the player currently owns
+
     init(
         totalPoints: Double = 0,
         lastEvaluated: Date? = nil,
         playerLevel: Int = 1,
-        gardenValue: Double = 100.0, // Initial base value of the plot itself perhaps
+        currentXP: Double = 0, // Initialize currentXP
+        gardenValue: Double = 100.0,
         unplacedPlantsInventory: [String: Int] = [:],
-        placedPlants: [PlacedPlant] = []
+        placedPlants: [PlacedPlant] = [],
+        numberOfOwnedPlots: Int = 2 // Start with 2 plots by default
     ) {
         self.id = UUID()
         self.totalPoints = totalPoints
         self.lastEvaluated = lastEvaluated
         self.playerLevel = playerLevel
+        self.currentXP = currentXP
         self.gardenValue = gardenValue
         self.unplacedPlantsInventory = unplacedPlantsInventory
         self.placedPlants = placedPlants
+        self.numberOfOwnedPlots = numberOfOwnedPlots
+    }
+
+    // --- Leveling System ---
+    /// Calculates the XP needed to complete the `currentLevel` and advance to `currentLevel + 1`.
+    static func xpRequiredForNextLevel(currentLevel: Int) -> Double {
+        if currentLevel <= 0 { return 100.0 } // Default for safety if an invalid level is passed
+
+        switch currentLevel {
+        case 1:
+            return 100.0 // XP to complete Level 1 (to reach Level 2)
+        case 2:
+            return 150.0 // XP to complete Level 2 (to reach Level 3)
+        case 3:
+            return 200.0 // XP to complete Level 3 (to reach Level 4)
+        case 4:
+            return 250.0 // XP to complete Level 4 (to reach Level 5)
+        default: // For currentLevel 5 and above
+            let baseXpForLevel5: Double = 500.0
+            let scalingFactor: Double = 2 
+            if currentLevel == 5 {
+                return baseXpForLevel5
+            } else {
+                // Calculate for levels 6 and above
+                return round(baseXpForLevel5 * pow(scalingFactor, Double(currentLevel - 5)))
+            }
+        }
     }
     
-    // Method to recalculate total garden value
+    /// Returns the total XP accumulated to reach the start of the given level.
+    /// (Not strictly needed for current logic but can be useful for display)
+    static func totalXpToReachLevel(_ level: Int) -> Double {
+        guard level > 1 else { return 0 }
+        var totalXP: Double = 0
+        for i in 1..<level { // Sum XP required for all previous levels
+            totalXP += xpRequiredForNextLevel(currentLevel: i)
+        }
+        return totalXP
+    }
+
+    @discardableResult
+    func addXP(_ points: Double) -> (didLevelUp: Bool, newLevel: Int, newXP: Double) {
+        guard points > 0 else { return (false, self.playerLevel, self.currentXP) }
+        var newXP = self.currentXP + points
+        var currentLevelRequirement = PlayerStats.xpRequiredForNextLevel(currentLevel: self.playerLevel)
+        var didLevelUpThisCycle = false
+        while newXP >= currentLevelRequirement {
+            self.playerLevel += 1
+            newXP -= currentLevelRequirement
+            didLevelUpThisCycle = true
+            print("🎉 LEVEL UP! Reached Level \(self.playerLevel). Excess XP: \(newXP)")
+            currentLevelRequirement = PlayerStats.xpRequiredForNextLevel(currentLevel: self.playerLevel)
+        }
+        self.currentXP = newXP
+        return (didLevelUpThisCycle, self.playerLevel, self.currentXP)
+    }
+
+    // --- Garden Plot System ---
+    var maxPlotsForCurrentLevel: Int {
+        // Level 1 starts with 2 plots. Each level up adds 3 potential plot purchases.
+        return 2 + (self.playerLevel - 1) * 3
+    }
+
+    func costToBuyNextPlot() -> Double {
+        // Cost scales with the player's current level
+        return 20.0 * Double(self.playerLevel)
+    }
+
+    @discardableResult
+    func buyNextPlot() -> Bool {
+        let cost = costToBuyNextPlot()
+        if numberOfOwnedPlots < maxPlotsForCurrentLevel && totalPoints >= cost {
+            totalPoints -= cost
+            numberOfOwnedPlots += 1
+            print("Plot purchased! Owned plots: \(numberOfOwnedPlots). Points left: \(totalPoints)")
+            return true
+        } else {
+            if numberOfOwnedPlots >= maxPlotsForCurrentLevel {
+                print("Cannot buy plot: Already at max plots for current level (\(maxPlotsForCurrentLevel)).")
+            }
+            if totalPoints < cost {
+                print("Cannot buy plot: Insufficient points. Need \(cost), have \(totalPoints).")
+            }
+            return false
+        }
+    }
+
+    // --- Other Methods ---
     func updateGardenValue() {
-        var calculatedTotalGardenValue = 100.0 // Start with the base value of the garden plot itself
+        var calculatedTotalGardenValue = 100.0 // Base value of the garden plot itself
         for plant in placedPlants {
             calculatedTotalGardenValue += plant.getCurrentValue()
         }
         self.gardenValue = calculatedTotalGardenValue
-        print("Garden value updated to: \(self.gardenValue)")
+        // print("Garden value updated to: \(self.gardenValue)") // Optional log
     }
 
-    // New method to sell/delete a plant
-    // Returns true if successful, false if plant not found
     func sellPlant(plantId: UUID) -> Bool {
-        // Find the index of the plant to be sold
         if let plantIndex = placedPlants.firstIndex(where: { $0.id == plantId }) {
             let plantToSell = placedPlants[plantIndex]
-            
-            // Calculate sell price: 1.5 times the plant's baseValue
-            // The problem states "base value", so we use plantToSell.baseValue directly,
-            // not the potentially seasonally-adjusted getCurrentValue().
-            let sellPrice = plantToSell.baseValue * 1.5
-            
-            // Add sell price to player's total points
+            let sellPrice = plantToSell.baseValue * 1.5 // Sell price based on plant's baseValue
             self.totalPoints += sellPrice
-            
-            // Remove the plant from the placedPlants array
             placedPlants.remove(at: plantIndex)
-            
-            // Update the garden value
-            updateGardenValue()
-            
-            print("Sold plant '\(plantToSell.name)' for \(sellPrice) points. Player total points: \(self.totalPoints)")
+            updateGardenValue() // Recalculate garden value after selling
+            // print("Sold plant '\(plantToSell.name)' for \(sellPrice) points. Player total points: \(self.totalPoints)") // Optional log
             return true
-        } else {
-            print("Could not sell plant: Plant with ID \(plantId) not found.")
-            return false
         }
+        // print("Could not sell plant: Plant with ID \(plantId) not found.") // Optional log
+        return false
     }
 }

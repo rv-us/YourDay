@@ -11,17 +11,15 @@ import SwiftData
 struct TaskPointResult: Identifiable {
     let id = UUID()
     let title: String
-    let date: Date // Represents the day for which points were awarded (i.e., "yesterday")
-    let basePoints: Double // Max potential points for this task (now based on gardenValue)
+    let date: Date
+    let basePoints: Double
     let subtaskPoints: [(title: String, earned: Double)]
-    let totalPoints: Double // Total points earned for this task on the evaluation day
-    let mainTaskCompletedOnTargetDay: Bool // Was the main task itself completed on the target day?
+    let totalPoints: Double
+    let mainTaskCompletedOnTargetDay: Bool
 }
 
 class PointManager {
-    // This still defines the *proportion* a task can be of the daily potential,
-    // but the daily potential is now tied to gardenValue.
-    static let maxPerTaskPercentage: Double = 0.20 // Max 5 tasks contribute to the dynamic daily max
+    static let maxPerTaskPercentage: Double = 0.20
 
     static func evaluateDailyPoints(context: ModelContext, tasks: [TodoItem], on date: Date = Date()) -> (total: Double, breakdown: [TaskPointResult]) {
         let calendar = Calendar.current
@@ -29,7 +27,13 @@ class PointManager {
         let yesterday = calendar.date(byAdding: .day, value: -1, to: today)!
 
         let descriptor = FetchDescriptor<PlayerStats>()
+        // Ensure PlayerStats exists, or create a new one.
         let stats = (try? context.fetch(descriptor).first) ?? PlayerStats()
+        // If stats was just created, insert it so it's managed.
+        if stats.modelContext == nil {
+            context.insert(stats)
+        }
+
 
         if let lastEval = stats.lastEvaluated,
            calendar.isDate(lastEval, inSameDayAs: yesterday) {
@@ -43,6 +47,25 @@ class PointManager {
             playerGardenValue: stats.gardenValue
         )
 
+        let completedMainTasksForYesterday = breakdown.filter { $0.mainTaskCompletedOnTargetDay }.count
+        let totalTasksWhenEvaluated = tasks.count
+
+        // Store player's state *before* adding today's XP
+        let levelBeforeXP = stats.playerLevel
+        let xpBeforeXP = stats.currentXP
+        let xpEarnedToday = earnedPoints // Points earned today are XP
+
+        if earnedPoints > 0 {
+            stats.totalPoints += earnedPoints // Add to currency
+            stats.addXP(earnedPoints)        // Add to experience and handle level ups
+        }
+        
+        // Player's state *after* adding today's XP
+        let levelAfterXP = stats.playerLevel
+        let xpAfterXP = stats.currentXP
+        let xpToNextLevelAfterXP = PlayerStats.xpRequiredForNextLevel(currentLevel: stats.playerLevel)
+
+
         for result in breakdown where result.totalPoints > 0 {
             let subtaskTitles = result.subtaskPoints.map { $0.title }
             let subtaskPointsValues = result.subtaskPoints.map { $0.earned }
@@ -54,17 +77,23 @@ class PointManager {
                 subtaskTitles: subtaskTitles,
                 subtaskPoints: subtaskPointsValues,
                 mainTaskCompleted: result.mainTaskCompletedOnTargetDay,
-                taskMaxPossiblePoints: result.basePoints // Save the calculated basePoints
+                taskMaxPossiblePoints: result.basePoints,
+                dayCompletionSnapshot_CompletedCount: completedMainTasksForYesterday,
+                dayCompletionSnapshot_TotalTasksCount: totalTasksWhenEvaluated,
+                // Add new XP and level info
+                levelBeforeXP: levelBeforeXP,
+                xpBeforeXP: xpBeforeXP,
+                levelAfterXP: levelAfterXP,
+                xpAfterXP: xpAfterXP,
+                xpEarnedOnDate: xpEarnedToday,
+                xpToNextLevelAfterXP: xpToNextLevelAfterXP
             )
             context.insert(summary)
         }
-
-        if earnedPoints > 0 {
-            stats.totalPoints += earnedPoints
-        }
-        stats.lastEvaluated = yesterday
         
-        context.insert(stats)
+        stats.lastEvaluated = yesterday
+        // No need to call context.insert(stats) again if it was already inserted or fetched.
+        // SwiftData tracks changes to managed objects.
 
         return (earnedPoints, breakdown)
     }
@@ -86,46 +115,36 @@ class PointManager {
         for task in tasks {
             var subtaskBreakdown: [(title: String, earned: Double)] = []
             var earnedForTask: Double = 0.0
-            // var hasAnyActivityOnTargetDay = false // This variable is not used, can be removed if not needed for other logic
-
+            
             let isMainTaskCompletedOnTargetDay = task.completedAt.map { calendar.isDate($0, inSameDayAs: targetCompletionDay) } ?? false
 
             if task.subtasks.isEmpty {
                 if isMainTaskCompletedOnTargetDay {
                     earnedForTask = maxPointsPerSingleTask
-                    // hasAnyActivityOnTargetDay = true
                 }
             } else {
                 let perSubtaskPoints = task.subtasks.isEmpty ? 0 : maxPointsPerSingleTask / Double(task.subtasks.count)
-                var anySubtaskCompletedOnTargetDay = false
-
                 for sub in task.subtasks {
                     if let subCompletedAt = sub.completedAt,
                        calendar.isDate(subCompletedAt, inSameDayAs: targetCompletionDay) {
                         subtaskBreakdown.append((sub.title, perSubtaskPoints))
                         earnedForTask += perSubtaskPoints
-                        anySubtaskCompletedOnTargetDay = true
                     } else {
                         subtaskBreakdown.append((sub.title, 0))
                     }
                 }
-                // if anySubtaskCompletedOnTargetDay {
-                //    hasAnyActivityOnTargetDay = true
-                // }
             }
 
-            if earnedForTask > 0 {
+            if earnedForTask > 0 || isMainTaskCompletedOnTargetDay {
                 totalEarnedOverall += earnedForTask
                 results.append(TaskPointResult(
                     title: task.title,
                     date: targetCompletionDay,
-                    basePoints: maxPointsPerSingleTask, // This is the value we want to persist
+                    basePoints: maxPointsPerSingleTask,
                     subtaskPoints: subtaskBreakdown,
                     totalPoints: earnedForTask,
                     mainTaskCompletedOnTargetDay: isMainTaskCompletedOnTargetDay
                 ))
-            } else if isMainTaskCompletedOnTargetDay {
-                // Logic for 0-point completed tasks (currently not added to results)
             }
         }
         return (total: round(totalEarnedOverall), breakdown: results)
