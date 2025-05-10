@@ -2,153 +2,132 @@
 //  PlantLibrary.swift
 //  YourDay
 //
-//  Created by Rachit Verma on 5/9/25.
-//
+//  Created by Your Name on 5/9/25.
 //
 
+import SwiftUI
 import Foundation
+
+// Note: Ensure Rarity and PlantTheme enums are accessible here from PlayerStats.swift.
 
 /// Defines the static properties of a type of plant available in the game.
 struct PlantBlueprint: Identifiable, Hashable {
-    let id: String // Unique identifier for this plant species, e.g., "sunflower_common_summer"
-    let name: String // Display name, e.g., "Sunflower"
-    let description: String // A short description for the plant
+    let id: String
+    let name: String
+    let description: String
     let rarity: Rarity
     let theme: PlantTheme
     let initialDaysToGrow: Int
-    let baseValue: Double // The value of the plant when fully grown (before seasonal/other multipliers)
-    let assetName: String // Placeholder for image asset name, e.g., "sunflower_grown.png"
-    let iconName: String // Placeholder for a smaller icon asset name, e.g., "sunflower_icon.png"
+    let baseValue: Double
+    let assetName: String
+    let iconName: String
 
-    // Example: How many points this plant might cost in a shop or its "seed" value
-    let purchaseCost: Double? // Optional, if plants can be bought
+    var grownVisual: PlantVisualDisplayView {
+        PlantVisualDisplayView(assetName: self.assetName, rarity: self.rarity, displayName: self.name, isIcon: false)
+    }
+    var iconVisual: PlantVisualDisplayView {
+        PlantVisualDisplayView(assetName: self.iconName, rarity: self.rarity, displayName: self.name, isIcon: true)
+    }
+}
 
-    // You could add more static properties here, like:
-    // - Special abilities when grown
-    // - Specific nutrient needs, etc.
+/// A reusable view to display a plant's visual (actual image or placeholder).
+struct PlantVisualDisplayView: View {
+    let assetName: String
+    let rarity: Rarity
+    let displayName: String
+    let isIcon: Bool
+
+    private func placeholderColor() -> Color {
+        switch rarity {
+        case .common: return .gray.opacity(0.5)
+        case .uncommon: return .green.opacity(0.5)
+        case .rare: return .blue.opacity(0.5)
+        case .epic: return .purple.opacity(0.5)
+        case .legendary: return .orange.opacity(0.5)
+        }
+    }
+
+    var body: some View {
+        // Attempt to load the image. If it's in Assets.xcassets, Image(assetName) should work.
+        // Using UIImage(named:) is a more robust check if the asset actually exists.
+        if UIImage(named: assetName) != nil {
+            Image(assetName)
+                .resizable()
+                .scaledToFit()
+        } else {
+            RoundedRectangle(cornerRadius: isIcon ? 6 : 10)
+                .fill(placeholderColor())
+                .overlay(
+                    VStack {
+                        Text(isIcon ? String(displayName.prefix(1)) : displayName)
+                            .font(isIcon ? .caption2 : .caption)
+                            .fontWeight(isIcon ? .bold : .medium)
+                            .foregroundColor(.white.opacity(0.8))
+                            .lineLimit(isIcon ? 1 : 2)
+                            .minimumScaleFactor(0.7)
+                        if !isIcon {
+                            Text(rarity.rawValue)
+                                .font(.system(size: 8))
+                                .padding(.horizontal, 3)
+                                .background(Color.black.opacity(0.2))
+                                .cornerRadius(3)
+                                .foregroundColor(.white.opacity(0.7))
+                        }
+                    }.padding(isIcon ? 2 : 4)
+                )
+        }
+    }
 }
 
 /// A library to hold all defined plant blueprints in the game.
 struct PlantLibrary {
     static let allPlantBlueprints: [PlantBlueprint] = [
-        // --- Common Plants ---
-        PlantBlueprint(
-            id: "sunflower_c_su", name: "Sunflower",
-            description: "A cheerful and common flower that loves the sun.",
-            rarity: .common, theme: .summer,
-            initialDaysToGrow: 1, baseValue: 50, // Common: 1 day, 50 value
-            assetName: "placeholder_sunflower_grown.png", iconName: "icon_sunflower.png",
-            purchaseCost: 20
-        ),
-        PlantBlueprint(
-            id: "tulip_c_sp", name: "Tulip",
-            description: "A classic spring bulb, vibrant and colorful.",
-            rarity: .common, theme: .spring,
-            initialDaysToGrow: 1, baseValue: 50,
-            assetName: "placeholder_tulip_grown.png", iconName: "icon_tulip.png",
-            purchaseCost: 20
-        ),
-        PlantBlueprint(
-            id: "marigold_c_fa", name: "Marigold",
-            description: "A hardy flower known for its bright orange and yellow blooms in autumn.",
-            rarity: .common, theme: .fall,
-            initialDaysToGrow: 1, baseValue: 50,
-            assetName: "placeholder_marigold_grown.png", iconName: "icon_marigold.png",
-            purchaseCost: 25
-        ),
-        PlantBlueprint(
-            id: "pansy_c_wi", name: "Pansy",
-            description: "A resilient flower that can add color even in cooler winter months.",
-            rarity: .common, theme: .winter,
-            initialDaysToGrow: 1, baseValue: 50,
-            assetName: "placeholder_pansy_grown.png", iconName: "icon_pansy.png",
-            purchaseCost: 25
-        ),
+        // Common Plants
+        PlantBlueprint(id: "sunflower_c_su", name: "Sunflower", description: "A cheerful flower.", rarity: .common, theme: .summer, initialDaysToGrow: 2, baseValue: 50, assetName: "sunflower_grown", iconName: "sunflower_icon"),
+        PlantBlueprint(id: "tulip_c_sp", name: "Tulip", description: "A classic spring bulb.", rarity: .common, theme: .spring, initialDaysToGrow: 2, baseValue: 50, assetName: "tulip_grown", iconName: "tulip_icon"),
+        PlantBlueprint(id: "marigold_c_fa", name: "Marigold", description: "Hardy autumn bloom.", rarity: .common, theme: .fall, initialDaysToGrow: 2, baseValue: 50, assetName: "marigold_grown", iconName: "marigold_icon"),
+        PlantBlueprint(id: "pansy_c_wi", name: "Pansy", description: "Resilient winter color.", rarity: .common, theme: .winter, initialDaysToGrow: 2, baseValue: 50, assetName: "pansy_grown", iconName: "pansy_icon"),
+        PlantBlueprint(id: "fern_c_sp", name: "Spring Fern", description: "A lush, green fern unfurling in spring.", rarity: .common, theme: .spring, initialDaysToGrow: 2, baseValue: 40, assetName: "fern_grown", iconName: "fern_icon"),
+        PlantBlueprint(id: "cactus_c_su", name: "Desert Bloom", description: "A hardy cactus that flowers in summer.", rarity: .common, theme: .summer, initialDaysToGrow: 2, baseValue: 60, assetName: "cactus_grown", iconName: "cactus_icon"),
+        PlantBlueprint(id: "pumpkin_c_fa", name: "Mini Pumpkin", description: "A small, decorative pumpkin, perfect for fall.", rarity: .common, theme: .fall, initialDaysToGrow: 2, baseValue: 55, assetName: "pumpkin_grown", iconName: "pumpkin_icon"),
+        PlantBlueprint(id: "holly_c_wi", name: "Winter Holly", description: "Festive holly with bright red berries.", rarity: .common, theme: .winter, initialDaysToGrow: 2, baseValue: 65, assetName: "holly_grown", iconName: "holly_icon"),
 
-        // --- Uncommon Plants ---
-        PlantBlueprint(
-            id: "lavender_uc_su", name: "Lavender",
-            description: "Known for its soothing scent and beautiful purple spikes.",
-            rarity: .uncommon, theme: .summer,
-            initialDaysToGrow: 2, baseValue: 150, // Example for Uncommon
-            assetName: "placeholder_lavender_grown.png", iconName: "icon_lavender.png",
-            purchaseCost: 70
-        ),
-        PlantBlueprint(
-            id: "daffodil_uc_sp", name: "Daffodil",
-            description: "A joyful herald of spring with its trumpet-shaped corona.",
-            rarity: .uncommon, theme: .spring,
-            initialDaysToGrow: 2, baseValue: 150,
-            assetName: "placeholder_daffodil_grown.png", iconName: "icon_daffodil.png",
-            purchaseCost: 70
-        ),
 
-        // --- Rare Plants ---
-        PlantBlueprint(
-            id: "rose_r_sp", name: "Mystic Rose",
-            description: "A beautiful rose with an enchanting aura. Blooms best in spring.",
-            rarity: .rare, theme: .spring,
-            initialDaysToGrow: 2, baseValue: 250, // Rare: 2 days, 250 value
-            assetName: "placeholder_rose_grown.png", iconName: "icon_rose.png",
-            purchaseCost: 120
-        ),
-        PlantBlueprint(
-            id: "orchid_r_su", name: "Sun Orchid",
-            description: "An exotic orchid that thrives in summer's warmth.",
-            rarity: .rare, theme: .summer,
-            initialDaysToGrow: 2, baseValue: 250,
-            assetName: "placeholder_orchid_grown.png", iconName: "icon_orchid.png",
-            purchaseCost: 130
-        ),
+        // Uncommon Plants
+        PlantBlueprint(id: "lavender_uc_su", name: "Lavender", description: "Soothing scent.", rarity: .uncommon, theme: .summer, initialDaysToGrow: 2, baseValue: 150, assetName: "lavender_grown", iconName: "lavender_icon"),
+        PlantBlueprint(id: "daffodil_uc_sp", name: "Daffodil", description: "Joyful herald of spring.", rarity: .uncommon, theme: .spring, initialDaysToGrow: 2, baseValue: 150, assetName: "daffodil_grown", iconName: "daffodil_icon"),
+        PlantBlueprint(id: "aster_uc_fa", name: "Autumn Aster", description: "Late blooming, star-shaped flowers.", rarity: .uncommon, theme: .fall, initialDaysToGrow: 2, baseValue: 160, assetName: "aster_grown", iconName: "aster_icon"),
+        PlantBlueprint(id: "snowdrop_uc_wi", name: "Snowdrop", description: "One of the first signs of life in late winter.", rarity: .uncommon, theme: .winter, initialDaysToGrow: 2, baseValue: 170, assetName: "snowdrop_grown", iconName: "snowdrop_icon"),
 
-        // --- Epic Plants ---
-        PlantBlueprint(
-            id: "moonflower_e_fa", name: "Moonflower",
-            description: "A magical flower that blooms only under the autumn moonlight.",
-            rarity: .epic, theme: .fall,
-            initialDaysToGrow: 3, baseValue: 500, // Epic: 3 days, 500 value
-            assetName: "placeholder_moonflower_grown.png", iconName: "icon_moonflower.png",
-            purchaseCost: 250
-        ),
-        PlantBlueprint(
-            id: "crystalbloom_e_wi", name: "Crystal Bloom",
-            description: "A rare plant whose petals shimmer like ice crystals in winter.",
-            rarity: .epic, theme: .winter,
-            initialDaysToGrow: 3, baseValue: 500,
-            assetName: "placeholder_crystalbloom_grown.png", iconName: "icon_crystalbloom.png",
-            purchaseCost: 270
-        ),
+        // Rare Plants
+        PlantBlueprint(id: "rose_r_sp", name: "Mystic Rose", description: "Enchanting spring rose.", rarity: .rare, theme: .spring, initialDaysToGrow: 2, baseValue: 250, assetName: "rose_grown", iconName: "rose_icon"),
+        PlantBlueprint(id: "orchid_r_su", name: "Sun Orchid", description: "Exotic summer orchid.", rarity: .rare, theme: .summer, initialDaysToGrow: 2, baseValue: 250, assetName: "orchid_grown", iconName: "orchid_icon"),
+        PlantBlueprint(id: "nightshade_r_fa", name: "Shadow Bloom", description: "A mysterious flower that prefers the autumn twilight.", rarity: .rare, theme: .fall, initialDaysToGrow: 3, baseValue: 260, assetName: "nightshade_grown", iconName: "nightshade_icon"),
+        PlantBlueprint(id: "iceflower_r_wi", name: "Ice Flower", description: "A delicate flower that seems to be made of frost.", rarity: .rare, theme: .winter, initialDaysToGrow: 3, baseValue: 270, assetName: "iceflower_grown", iconName: "iceflower_icon"),
+
+        // Epic Plants
+        PlantBlueprint(id: "moonflower_e_fa", name: "Moonflower", description: "Blooms under autumn moonlight.", rarity: .epic, theme: .fall, initialDaysToGrow: 3, baseValue: 500, assetName: "moonflower_grown", iconName: "moonflower_icon"),
+        PlantBlueprint(id: "crystalbloom_e_wi", name: "Crystal Bloom", description: "Shimmers like ice in winter.", rarity: .epic, theme: .winter, initialDaysToGrow: 3, baseValue: 500, assetName: "crystalbloom_grown", iconName: "crystalbloom_icon"),
+        PlantBlueprint(id: "dreamlily_e_sp", name: "Dream Lily", description: "A vibrant lily that inspires vivid dreams, blooming in spring.", rarity: .epic, theme: .spring, initialDaysToGrow: 4, baseValue: 520, assetName: "dreamlily_grown", iconName: "dreamlily_icon"),
+        PlantBlueprint(id: "solarflare_e_su", name: "Solar Flare", description: "Radiates warmth and light, a true summer spectacle.", rarity: .epic, theme: .summer, initialDaysToGrow: 4, baseValue: 530, assetName: "solarflare_grown", iconName: "solarflare_icon"),
         
-        // --- Legendary Plants ---
-        PlantBlueprint(
-            id: "starpetal_l_sp", name: "Starpetal",
-            description: "A legendary flower said to capture the light of stars. A spring marvel.",
-            rarity: .legendary, theme: .spring,
-            initialDaysToGrow: 5, baseValue: 1000, // Legendary: 5 days, 1000 value
-            assetName: "placeholder_starpetal_grown.png", iconName: "icon_starpetal.png",
-            purchaseCost: 500
-        ),
-        PlantBlueprint(
-            id: "phoenixbloom_l_su", name: "Phoenix Bloom",
-            description: "Reborn from ashes, this legendary summer plant symbolizes eternal life.",
-            rarity: .legendary, theme: .summer,
-            initialDaysToGrow: 5, baseValue: 1000,
-            assetName: "placeholder_phoenixbloom_grown.png", iconName: "icon_phoenixbloom.png",
-            purchaseCost: 550
-        )
-        // Add more plant definitions here as you design them
+        // Legendary Plants
+        PlantBlueprint(id: "starpetal_l_sp", name: "Starpetal", description: "Captures starlight. A spring marvel.", rarity: .legendary, theme: .spring, initialDaysToGrow: 5, baseValue: 1000, assetName: "starpetal_grown", iconName: "starpetal_icon"),
+        PlantBlueprint(id: "phoenixbloom_l_su", name: "Phoenix Bloom", description: "Legendary summer plant of rebirth.", rarity: .legendary, theme: .summer, initialDaysToGrow: 5, baseValue: 1000, assetName: "phoenixbloom_grown", iconName: "phoenixbloom_icon"),
+        PlantBlueprint(id: "ancientshade_l_fa", name: "Ancient Shade", description: "A plant of immense age and wisdom, thriving in autumn's embrace.", rarity: .legendary, theme: .fall, initialDaysToGrow: 6, baseValue: 1100, assetName: "ancientshade_grown", iconName: "ancientshade_icon"),
+        PlantBlueprint(id: "aurorafrost_l_wi", name: "Aurora Frost", description: "Reflects the colors of the aurora in its icy petals, a winter legend.", rarity: .legendary, theme: .winter, initialDaysToGrow: 6, baseValue: 1200, assetName: "aurorafrost_grown", iconName: "aurorafrost_icon")
     ]
 
-    /// Helper function to get a plant blueprint by its unique ID.
     static func blueprint(withId id: String) -> PlantBlueprint? {
         return allPlantBlueprints.first(where: { $0.id == id })
     }
 
-    /// Helper function to get all plant blueprints of a specific rarity.
     static func blueprints(withRarity rarity: Rarity) -> [PlantBlueprint] {
         return allPlantBlueprints.filter { $0.rarity == rarity }
     }
-    
-    
-}
 
+    /// Helper function to get all plant blueprints of a specific theme and rarity.
+    static func blueprints(theme: PlantTheme, rarity: Rarity) -> [PlantBlueprint] {
+        return allPlantBlueprints.filter { $0.theme == theme && $0.rarity == rarity }
+    }
+}
