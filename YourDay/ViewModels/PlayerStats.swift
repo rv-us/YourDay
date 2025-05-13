@@ -21,7 +21,7 @@ enum Rarity: String, Codable, CaseIterable, Hashable {
 enum PlantTheme: String, Codable, CaseIterable, Hashable {
     case spring = "Spring"
     case summer = "Summer"
-    case fall = "Fall"
+    case fall = "Fall"	
     case winter = "Winter"
 }
 
@@ -91,11 +91,11 @@ struct PlacedPlant: Codable, Identifiable, Hashable {
         
         var calculatedValue: Double
         switch rarity {
-        case .common: calculatedValue =  50.0
-        case .uncommon: calculatedValue = 75.0
-        case .rare: calculatedValue =  125.0
-        case .epic: calculatedValue =  250.0
-        case .legendary: calculatedValue =  500.0
+        case .common: calculatedValue =  25.0
+        case .uncommon: calculatedValue = 50.0
+        case .rare: calculatedValue =  75.0
+        case .epic: calculatedValue =  150.0
+        case .legendary: calculatedValue =  300.0
         }
         
         if let currentSeason = getCurrentSeason(), self.theme == currentSeason {
@@ -156,9 +156,9 @@ class PlayerStats {
         if currentLevel <= 0 { return 100.0 }
         switch currentLevel {
         case 1: return 100.0
-        case 2: return 150.0
-        case 3: return 200.0
-        case 4: return 250.0
+        case 2: return 300.0
+        case 3: return 400.0
+        case 4: return 500.0
         default:
             let baseXpForLevel5: Double = 300.0
             let scalingFactor: Double = 2
