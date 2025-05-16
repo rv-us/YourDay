@@ -98,31 +98,25 @@ struct NotificationSettingsView: View {
                         }
 
                         Section(header: Text("Additional Task Reminders")) {
-                            Button(action: {
-                                withAnimation {
-                                    showExtraPicker.toggle()
-                                }
-                            }) {
+                            VStack(alignment: .leading) {
                                 HStack {
                                     Text("Reminders per day")
                                     Spacer()
                                     Text("\(extraNotificationCount)")
                                         .foregroundColor(.gray)
                                 }
-                            }
 
-                            if showExtraPicker {
-                                Picker("Times per day", selection: $extraNotificationCount) {
-                                    ForEach(0...5, id: \.self) { count in
-                                        Text("\(count)")
+                                Slider(value: Binding(
+                                    get: { Double(extraNotificationCount) },
+                                    set: { newValue in
+                                        extraNotificationCount = Int(newValue)
+                                        UserDefaults.standard.set(extraNotificationCount, forKey: extraNotificationsKey)
                                     }
-                                }
-                                .pickerStyle(.segmented)
-                                .onChange(of: extraNotificationCount) { newValue in
-                                    UserDefaults.standard.set(newValue, forKey: extraNotificationsKey)
-                                }
+                                ), in: 0...10, step: 1)
                             }
+                            .padding(.vertical, 4)
                         }
+
 
                         Section {
                             Button(action: {
