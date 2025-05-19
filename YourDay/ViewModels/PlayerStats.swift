@@ -131,7 +131,7 @@ struct PlacedPlant: Codable, Identifiable, Hashable {
     }
     
     func getCurrentDynamicValue() -> Double {
-        guard isFullyGrown else { return baseValue } // Return base value if not grown, or 0 if preferred
+        guard isFullyGrown else { return 0.0 }  // Return base value if not grown, or 0 if preferred
         
         var calculatedValue: Double
         // Using baseValue as the foundation for rarity scaling if plant is grown

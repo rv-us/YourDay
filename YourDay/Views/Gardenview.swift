@@ -34,15 +34,15 @@ struct GeneralNotificationFeedback: Identifiable {
 }
 
 // MARK: - Tutorial Step Definition
+// MARK: - Tutorial Step Definition
 enum TutorialStep: Int, Identifiable {
     case welcome = 0
     case explainShop
-    // postShopWelcome is an internal state after returning from shop, not directly shown as a step.
     case explainPlanting
-    case explainFertilizer
-    case explainSell
+    case explainWatering // New position
+    case explainFertilizer // New position
+    case explainSell // New position
     case explainPlotsValue
-    case explainWatering
     case finished
 
     var id: Int { self.rawValue }
@@ -93,15 +93,20 @@ enum TutorialStep: Int, Identifiable {
         }
     }
     
+    // ----- THIS IS THE UPDATED PART -----
     var nextButtonText: String {
         switch self {
         case .explainShop: return "Go to Shop"
         case .finished: return "Start Gardening!"
-        default: return "Next Tip"
+        // For steps requiring an action, the button confirms understanding.
+        // Advancement happens after the action is performed in GardenView.
+        case .explainPlanting, .explainFertilizer, .explainSell, .explainWatering:
+            return "Okay, Got It!"
+        default: return "Next Tip" // For .welcome, .explainPlotsValue
         }
     }
+    // ----- END OF UPDATED PART -----
 }
-
 
 struct GardenView: View {
     @Environment(\.modelContext) private var context
@@ -269,10 +274,12 @@ struct GardenView: View {
                 }
 
                 // Tutorial Overlay
+                // In GardenView.swift, inside the body's ZStack where TutorialOverlayView is created:
+
                 if isTutorialActive && !playerStatsList.isEmpty {
                     TutorialOverlayView(
                         currentStep: $currentTutorialStep,
-                        isActive: $isTutorialActive,
+                        isActive: $isTutorialActive, // This will be set to false by the closure below
                         hasPlantsInInventory: !playerStats.unplacedPlantsInventory.isEmpty,
                         hasCompletedTutorialPreviously: $hasCompletedGardenTutorial,
                         onNavigateToShop: {
@@ -281,8 +288,14 @@ struct GardenView: View {
                             showingShopView = true
                         },
                         onReturnToGarden: {
+                            // This might still be useful if you have a "Back to Garden" button in a future step
                             isTutorialActive = false
+                        },
+                        // ----- ADD THIS NEW CLOSURE -----
+                        onAcknowledgeActionStep: {
+                            self.isTutorialActive = false // Hide the tutorial overlay
                         }
+                        // ----- END OF ADDED CLOSURE -----
                     )
                     .zIndex(10)
                 }
@@ -510,6 +523,7 @@ struct GardenView: View {
         }
     }
     
+    
     func waterAllPlants() {
         guard !isTutorialActive || currentTutorialStep == .explainWatering else {
             if isTutorialActive { showStandardAlert(title: "Tutorial Active", message: "Follow the current tutorial step.") }
@@ -517,10 +531,12 @@ struct GardenView: View {
         }
         guard let mutablePlayerStats = playerStatsList.first else { return }
         var wateredCount = 0; var potentiallyGrownPlant = false
+        let today = Calendar.current.startOfDay(for: Date())
+
         for i in mutablePlayerStats.placedPlants.indices {
             guard i < mutablePlayerStats.placedPlants.count else { continue }
             var plantToWater = mutablePlayerStats.placedPlants[i]
-            if !plantToWater.isFullyGrown && (plantToWater.lastWateredOnDay == nil || !Calendar.current.isDate(plantToWater.lastWateredOnDay!, inSameDayAs: Calendar.current.startOfDay(for: Date()))) {
+            if !plantToWater.isFullyGrown && (plantToWater.lastWateredOnDay == nil || !Calendar.current.isDate(plantToWater.lastWateredOnDay!, inSameDayAs: today)) {
                 plantToWater.waterPlant(); mutablePlayerStats.placedPlants[i] = plantToWater; wateredCount += 1
                 if plantToWater.isFullyGrown { potentiallyGrownPlant = true; triggerPlantFeedback(plantID: plantToWater.id, text: "Grown!", color: .cyan) }
             }
@@ -528,19 +544,57 @@ struct GardenView: View {
         if wateredCount > 0 { withAnimation { showWateringEffect = true } } else { showStandardAlert(title: "All Set!", message: "Your plants are either fully grown or already watered for today.") }
         if wateredCount > 0 || potentiallyGrownPlant { mutablePlayerStats.updateGardenValue() }
 
-        if isTutorialActive && currentTutorialStep == .explainWatering {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { currentTutorialStep = .finished; isTutorialActive = true }
+        if !self.hasCompletedGardenTutorial && self.currentTutorialStep == .explainWatering && wateredCount > 0 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                self.currentTutorialStep = .explainFertilizer // Next: Fertilizing
+                if self.currentTutorialStep != .finished {
+                    withAnimation { // Added animation
+                        self.isTutorialActive = true
+                    }
+                } else {
+                    self.hasCompletedGardenTutorial = true
+                    self.isTutorialActive = false
+                }
+            }
         }
     }
     
     func waterSinglePlant(at plantIndexInStatsArray: Int) {
-        guard !isTutorialActive else { return } // Individual watering not part of tutorial steps
+        guard !isTutorialActive || currentTutorialStep == .explainWatering else {
+             if isTutorialActive && currentTutorialStep != .explainWatering {
+                showStandardAlert(title: "Tutorial Active", message: "Please use the 'Water All Plants' button as shown in the tutorial.")
+             }
+            return
+        }
         guard let mutablePlayerStats = playerStatsList.first, plantIndexInStatsArray < mutablePlayerStats.placedPlants.count else { return }
+        
         var plantToWater = mutablePlayerStats.placedPlants[plantIndexInStatsArray]
-        if !plantToWater.isFullyGrown && (plantToWater.lastWateredOnDay == nil || !Calendar.current.isDate(plantToWater.lastWateredOnDay!, inSameDayAs: Calendar.current.startOfDay(for: Date()))) {
-            let wasGrownBeforeWatering = plantToWater.isFullyGrown; plantToWater.waterPlant(); mutablePlayerStats.placedPlants[plantIndexInStatsArray] = plantToWater
+        let today = Calendar.current.startOfDay(for: Date())
+
+        if !plantToWater.isFullyGrown && (plantToWater.lastWateredOnDay == nil || !Calendar.current.isDate(plantToWater.lastWateredOnDay!, inSameDayAs: today)) {
+            let wasGrownBeforeWatering = plantToWater.isFullyGrown
+            plantToWater.waterPlant()
+            mutablePlayerStats.placedPlants[plantIndexInStatsArray] = plantToWater
             withAnimation { showWateringEffect = true }
             if !wasGrownBeforeWatering && plantToWater.isFullyGrown { mutablePlayerStats.updateGardenValue(); triggerPlantFeedback(plantID: plantToWater.id, text: "Grown!", color: .cyan) }
+            
+            if !self.hasCompletedGardenTutorial && self.currentTutorialStep == .explainWatering {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    self.currentTutorialStep = .explainFertilizer // Next: Fertilizing
+                    if self.currentTutorialStep != .finished {
+                        withAnimation { // Added animation
+                            self.isTutorialActive = true
+                        }
+                    } else {
+                        self.hasCompletedGardenTutorial = true
+                        self.isTutorialActive = false
+                    }
+                }
+            }
+        } else if plantToWater.isFullyGrown {
+            showStandardAlert(title: "Fully Grown", message: "\(plantToWater.name) is already fully grown.")
+        } else {
+            showStandardAlert(title: "Already Watered", message: "\(plantToWater.name) has been watered today.")
         }
     }
 
@@ -551,19 +605,25 @@ struct GardenView: View {
         }
         guard let mutablePlayerStats = playerStatsList.first else { return }
         let plantName = mutablePlayerStats.placedPlants.first(where: { $0.id == plantId })?.name ?? "Plant"
+        
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
             guard let currentStats = self.playerStatsList.first else { return }
             if currentStats.sellPlant(plantId: plantId) {
+                currentStats.updateGardenValue() // Recalculate garden value after selling
                 if self.isSellModeActive && !currentStats.placedPlants.contains(where: { $0.isFullyGrown }) {
                     self.isSellModeActive = false; self.showStandardAlert(title: "All Grown Plants Sold", message: "Sell mode deactivated.")
                 }
-                // If in tutorial for selling, and a plant was sold, advance.
-                if self.isTutorialActive && self.currentTutorialStep == .explainSell {
-                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { // Short delay
-                        if let nextStep = TutorialStep(rawValue: self.currentTutorialStep.rawValue + 1) {
-                            self.currentTutorialStep = nextStep
-                        } else { self.currentTutorialStep = .finished }
-                        self.isTutorialActive = true // Keep overlay for next step or finished message
+                if !self.hasCompletedGardenTutorial && self.currentTutorialStep == .explainSell {
+                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                        self.currentTutorialStep = .explainPlotsValue
+                        if self.currentTutorialStep != .finished {
+                            withAnimation {
+                                self.isTutorialActive = true
+                            }
+                        } else {
+                            self.hasCompletedGardenTutorial = true
+                            self.isTutorialActive = false
+                        }
                      }
                 }
             } else { self.showStandardAlert(title: "Cannot Sell", message: "\(plantName) could not be sold (it might no longer be eligible).") }
@@ -585,12 +645,17 @@ struct GardenView: View {
             if mutablePlayerStats.unplacedPlantsInventory[blueprintID] ?? 0 <= 0 { mutablePlayerStats.unplacedPlantsInventory.removeValue(forKey: blueprintID) }
             mutablePlayerStats.updateGardenValue(); triggerGeneralNotification(text: "\(blueprint.name) Planted!", icon: "plus.circle.fill", color: .green)
             
-            if isTutorialActive && currentTutorialStep == .explainPlanting {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                     if let nextStep = TutorialStep(rawValue: self.currentTutorialStep.rawValue + 1) { // Should go to explainFertilizer
-                         self.currentTutorialStep = nextStep
-                     } else { self.currentTutorialStep = .finished }
-                     self.isTutorialActive = true // Keep tutorial active
+            if !self.hasCompletedGardenTutorial && self.currentTutorialStep == .explainPlanting {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    self.currentTutorialStep = .explainWatering // Next: Watering
+                    if self.currentTutorialStep != .finished {
+                        withAnimation { // Added animation
+                            self.isTutorialActive = true
+                        }
+                    } else {
+                        self.hasCompletedGardenTutorial = true
+                        self.isTutorialActive = false
+                    }
                 }
             }
         } else { showStandardAlert(title: "Out of Stock", message: "You don't have any \(blueprint.name) left.") }
@@ -601,64 +666,83 @@ struct GardenView: View {
     }
 
     func toggleFertilizerMode() {
+        // Prevent action if tutorial is active on an unrelated step
         if isTutorialActive && currentTutorialStep != .explainFertilizer {
             showStandardAlert(title: "Tutorial", message: "Please follow the current tutorial step for fertilizing.")
             return
         }
-        if isFertilizerModeActive { isFertilizerModeActive = false } else {
+        if isFertilizerModeActive {
+            isFertilizerModeActive = false
+        } else {
             if playerStats.fertilizerCount > 0 {
-                isFertilizerModeActive = true; isSellModeActive = false
-                if !hasShownFertilizerModeAlert { showStandardAlert(title: "Fertilizer Mode Active", message: "Tap on a plant that is not fully grown to use fertilizer. Tap the button again to cancel."); hasShownFertilizerModeAlert = true }
-                if isTutorialActive && currentTutorialStep == .explainFertilizer {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.currentTutorialStep = .explainSell; self.isTutorialActive = true }
+                isFertilizerModeActive = true; isSellModeActive = false // Ensure sell mode is off
+                // Show instructions for fertilizer mode once per session
+                if !hasShownFertilizerModeAlert {
+                    showStandardAlert(title: "Fertilizer Mode Active", message: "Tap on a plant that is not fully grown to use fertilizer. Tap the button again to cancel.");
+                    hasShownFertilizerModeAlert = true
                 }
+                // ----- TUTORIAL ADVANCEMENT REMOVED FROM HERE -----
             } else { showStandardAlert(title: "No Fertilizer", message: "You don't have any fertilizer to use.") }
         }
     }
     
     func toggleSellMode() {
+        // Prevent action if tutorial is active on an unrelated step
         if isTutorialActive && currentTutorialStep != .explainSell {
             showStandardAlert(title: "Tutorial", message: "Please follow the current tutorial step for selling.")
             return
         }
-        if isSellModeActive { isSellModeActive = false } else {
+        if isSellModeActive {
+            isSellModeActive = false
+        } else {
             if hasGrownPlantsToSell {
-                isSellModeActive = true; isFertilizerModeActive = false
-                if !hasShownSellModeAlert { showStandardAlert(title: "Sell Mode Active", message: "Tap on a fully grown plant to sell it. Tap the button again to cancel."); hasShownSellModeAlert = true }
-                 if isTutorialActive && currentTutorialStep == .explainSell {
-                    // Advancing the tutorial here might be too soon if the user hasn't actually sold a plant yet.
-                    // The advance should happen after a successful sale in sellSinglePlant when tutorial is in explainSell step.
-                    // For now, let's assume activating the mode is enough to proceed with tutorial text.
-                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.currentTutorialStep = .explainPlotsValue; self.isTutorialActive = true }
-                 }
+                isSellModeActive = true; isFertilizerModeActive = false // Ensure fertilizer mode is off
+                // Show instructions for sell mode once per session
+                if !hasShownSellModeAlert {
+                    showStandardAlert(title: "Sell Mode Active", message: "Tap on a fully grown plant to sell it. Tap the button again to cancel.");
+                    hasShownSellModeAlert = true
+                }
+                 // ----- TUTORIAL ADVANCEMENT REMOVED FROM HERE -----
             } else { showStandardAlert(title: "No Grown Plants", message: "You don't have any fully grown plants to sell.") }
         }
     }
-
+    
     func attemptToFertilize(plant: PlacedPlant) {
         guard let mutablePlayerStats = playerStatsList.first else { return }
         if !isFertilizerModeActive { return }
         
-        // If in tutorial for fertilizer and this plant is a valid target
-        let wasTutorialFertilizerStep = isTutorialActive && currentTutorialStep == .explainFertilizer && !plant.isFullyGrown
+        let wasTutorialFertilizerStep = !self.hasCompletedGardenTutorial && self.currentTutorialStep == .explainFertilizer && !plant.isFullyGrown
 
         triggerPlantFeedback(plantID: plant.id, text: "Grown!", color: .purple)
+        
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             let result = mutablePlayerStats.useFertilizer(onPlantID: plant.id)
             if !result.success {
                 self.plantFeedbackItems.removeValue(forKey: plant.id)
                 self.showStandardAlert(title: "Fertilizer Failed", message: result.message)
             } else {
-                if mutablePlayerStats.fertilizerCount == 0 && self.isFertilizerModeActive { // Check if mode is still active before alerting
-                    self.isFertilizerModeActive = false
-                    self.showStandardAlert(title: "Out of Fertilizer", message: "You've used your last fertilizer. Fertilizer mode deactivated.")
+                // Deactivate fertilizer mode if it was active due to tutorial,
+                // or if player runs out of fertilizer.
+                if self.isFertilizerModeActive && (wasTutorialFertilizerStep || mutablePlayerStats.fertilizerCount == 0) {
+                     self.isFertilizerModeActive = false
+                     if mutablePlayerStats.fertilizerCount == 0 && !wasTutorialFertilizerStep { // Only show if not part of tutorial finishing step
+                        self.showStandardAlert(title: "Out of Fertilizer", message: "You've used your last fertilizer. Fertilizer mode deactivated.")
+                     }
                 }
-                if wasTutorialFertilizerStep { // Advance tutorial if it was the fertilizer step
+
+                if wasTutorialFertilizerStep {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                        if let nextStep = TutorialStep(rawValue: self.currentTutorialStep.rawValue + 1) {
-                           self.currentTutorialStep = nextStep
-                        } else { self.currentTutorialStep = .finished }
-                        self.isTutorialActive = true // Keep overlay for next step or finished message
+                        self.currentTutorialStep = .explainSell // Next: Selling
+                        if self.currentTutorialStep != .finished {
+                            withAnimation { // Added animation
+                                self.isTutorialActive = true
+                            }
+                        } else {
+                            self.hasCompletedGardenTutorial = true
+                            self.isTutorialActive = false
+                        }
+                        // Explicitly turn off fertilizer mode after advancing from fertilizer tutorial step
+                        self.isFertilizerModeActive = false
                     }
                 }
             }

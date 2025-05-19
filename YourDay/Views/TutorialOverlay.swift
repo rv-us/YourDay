@@ -8,118 +8,160 @@
 import SwiftUI
 
 struct TutorialOverlayView: View {
-    @Binding var currentStep: TutorialStep // Ensure TutorialStep is defined (likely in GardenView.swift)
+    @Binding var currentStep: TutorialStep // Defined in GardenView.swift
     @Binding var isActive: Bool // To dismiss the overlay
     
-    let hasPlantsInInventory: Bool
-    @Binding var hasCompletedTutorialPreviously: Bool // To track if tutorial was finished before
+    let hasPlantsInInventory: Bool // To conditionally guide user
+    @Binding var hasCompletedTutorialPreviously: Bool // Tracks if tutorial was finished
 
-    var onNavigateToShop: () -> Void
-    var onReturnToGarden: () -> Void // Placeholder, not directly used in this version's logic but good for future
+    var onNavigateToShop: () -> Void // Closure to trigger navigation to shop
+    var onReturnToGarden: () -> Void // Placeholder
+    var onAcknowledgeActionStep: (() -> Void)? = nil // NEW: Closure to hide overlay on action steps
 
     var body: some View {
         ZStack {
-            // Semi-transparent background covering the whole screen
+            // Semi-transparent background
             Color.black.opacity(0.75)
                 .edgesIgnoringSafeArea(.all)
-                .onTapGesture {
-                    // Optional: Allow dismissing by tapping outside if not on a crucial step
-                    // if currentStep != .welcome && currentStep != .explainShop {
-                    //     isActive = false
-                    // }
-                }
 
             // Main content box for the tutorial step
             VStack(spacing: 20) {
-                // Title of the current tutorial step
+                // Title
                 Text(currentStep.title)
                     .font(.largeTitle)
                     .fontWeight(.bold)
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)
 
-                // Message and optional icon for the current tutorial step
+                // Message and optional icon
                 VStack(spacing: 10) {
                     Text(currentStep.message)
-                        .font(.title3) // Using title3 for a slightly larger message font
+                        .font(.title3)
                         .foregroundColor(.white.opacity(0.9))
                         .multilineTextAlignment(.center)
-                        .padding(.horizontal) // Padding for message text within its VStack
+                        .padding(.horizontal)
 
                     if let iconName = currentStep.iconForMessage {
                         Image(systemName: iconName)
-                            .font(.largeTitle) // Icon size
-                            .foregroundColor(.yellow) // Icon color
-                            .padding(.top, 5) // Space above the icon
+                            .font(.largeTitle)
+                            .foregroundColor(.yellow)
+                            .padding(.top, 5)
                     }
                 }
                 
-                // "Next" or "Action" button
+                // Main action button
                 Button(action: handleNextButton) {
                     Text(currentStep.nextButtonText)
                         .font(.headline)
                         .fontWeight(.semibold)
-                        .foregroundColor(.black) // Text color for the button
-                        .padding(.horizontal, 30) // Horizontal padding inside the button
-                        .padding(.vertical, 15)   // Vertical padding inside the button
-                        .background(Color.yellow)   // Button background color
-                        .cornerRadius(10)           // Rounded corners for the button
+                        .foregroundColor(.black)
+                        .padding(.horizontal, 30)
+                        .padding(.vertical, 15)
+                        .background(Color.yellow)
+                        .cornerRadius(10)
                 }
-                .padding(.top) // Space above the main action button
+                .padding(.top)
                 
-                // "Skip Tutorial" button, shown for most steps
+                // "Skip Tutorial" button
                 if currentStep != .welcome && currentStep != .explainShop && currentStep != .finished {
                      Button("Skip Tutorial") {
                         finishTutorial()
                     }
-                    .font(.caption) // Smaller font for the skip button
-                    .foregroundColor(.gray) // Less prominent color for skip
-                    .padding(.top, 10) // Space above the skip button
+                    .font(.caption)
+                    .foregroundColor(.gray)
+                    .padding(.top, 10)
                 }
             }
-            // ----- START OF MODIFIED LINES -----
-            .padding(20) // Reduced inner padding around the content VStack
-            .frame(maxWidth: UIScreen.main.bounds.width * 0.9) // Set max width to 90% of screen width
-            .background(.thinMaterial) // Background for the tutorial box (iOS blur effect)
-            .cornerRadius(20)          // Rounded corners for the tutorial box
-            .shadow(radius: 10)        // Drop shadow for a bit of depth
-            .padding(.horizontal, 20)  // Reduced horizontal padding outside the box (from screen edges)
-            .padding(.vertical, 30)    // Vertical padding outside the box (from screen edges)
-            // ----- END OF MODIFIED LINES -----
+            // Styling for the tutorial box
+            .padding(20)
+            .frame(maxWidth: UIScreen.main.bounds.width * 0.9)
+            .background(.thinMaterial)
+            .cornerRadius(20)
+            .shadow(radius: 10)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 30)
         }
-        .animation(.easeInOut, value: currentStep) // Animate transitions between steps
+        .animation(.easeInOut, value: currentStep)
     }
 
-    // Handles the action for the main button (e.g., "Next Tip", "Go to Shop")
+    // Handles the action for the main button
     private func handleNextButton() {
-        if currentStep == .explainShop {
-            // Special action for the "Go to Shop" step
+        switch currentStep {
+        case .explainShop:
             onNavigateToShop()
-            // GardenView will manage isActive and wasShopVisitedForTutorial
-        } else if currentStep == .finished {
-            // Action for the final step's button ("Start Gardening!")
+            
+        case .finished:
             finishTutorial()
-        } else {
-            // Default action: advance to the next tutorial step
+            
+        // ----- MODIFIED CASE -----
+        case .explainPlanting, .explainFertilizer, .explainSell, .explainWatering:
+            print("User acknowledged tutorial step: \(currentStep). Hiding overlay for action.")
+            onAcknowledgeActionStep?() // Call closure to hide overlay
+            // GardenView will handle making the overlay inactive.
+            // Tutorial advancement happens in GardenView after the action.
+        // ----- END OF MODIFIED CASE -----
+            
+        default: // For .welcome, .explainPlotsValue, etc.
             advanceStep()
         }
     }
 
-    // Advances to the next tutorial step in sequence
+    // Advances to the next tutorial step (for non-action steps)
     private func advanceStep() {
-        // TutorialStep enum needs to be defined, typically with raw Int values
-        // to allow advancing by incrementing the rawValue.
-        if let nextRawValue = TutorialStep(rawValue: currentStep.rawValue + 1) {
-            currentStep = nextRawValue
+        let nextRawValue = currentStep.rawValue + 1
+        if let nextStep = TutorialStep(rawValue: nextRawValue) {
+            currentStep = nextStep
         } else {
-            // If there's no next step (i.e., we're past the last defined step), finish the tutorial.
             finishTutorial()
         }
     }
     
-    // Marks the tutorial as completed and dismisses the overlay
+    // Finishes the tutorial
     private func finishTutorial() {
-        hasCompletedTutorialPreviously = true // Update the @AppStorage variable via binding
-        isActive = false // Dismiss the tutorial overlay
+        hasCompletedTutorialPreviously = true
+        isActive = false // This binding change will be picked up by GardenView
     }
 }
+
+// Preview Provider (Optional)
+/*
+ #if DEBUG
+ struct TutorialOverlayView_Previews: PreviewProvider {
+    enum PreviewTutorialStep: Int, Identifiable, CaseIterable {
+        case welcome = 0, explainShop, explainPlanting, explainFertilizer, explainSell, explainPlotsValue, explainWatering, finished
+        var id: Int { rawValue }
+        var title: String { "\(self)".capitalized.replacingOccurrences(of: "Explain", with: "Explain ") }
+        var message: String { "Preview message for \(title.lowercased())." }
+        var iconForMessage: String? { nil } // Add specific icons if needed for preview
+        var nextButtonText: String {
+            switch self {
+            case .explainShop: return "Go to Shop"
+            case .finished: return "Start Gardening!"
+            case .explainPlanting, .explainFertilizer, .explainSell, .explainWatering: return "Okay, Got It!"
+            default: return "Next Tip"
+            }
+        }
+    }
+
+    @State static varisPreviewIsActive = true
+    @State static varisPreviewCurrentStep: TutorialStep = .welcome // Use your actual TutorialStep
+    @State static varisPreviewHasCompleted = false
+
+    static var previews: some View {
+        TutorialOverlayView(
+            currentStep: $isPreviewCurrentStep,
+            isActive: $isPreviewIsActive,
+            hasPlantsInInventory: true,
+            hasCompletedTutorialPreviously: $isPreviewHasCompleted,
+            onNavigateToShop: { print("Preview: Navigating to shop.") },
+            onReturnToGarden: { print("Preview: Returning to garden.") },
+            onAcknowledgeActionStep: {
+                print("Preview: Action step acknowledged. Hiding overlay.")
+                // In a real scenario, GardenView would set isPreviewIsActive to false.
+                // For preview, you might simulate it or just print.
+            }
+        )
+    }
+ }
+ #endif
+ */

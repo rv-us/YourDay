@@ -14,8 +14,13 @@ struct Todoview: View {
     @Query(sort: [SortDescriptor(\TodoItem.dueDate, order: .reverse)]) private var items: [TodoItem]
     
     init() {
-        
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+            if let error = error {
+                print("Notification permission error: \(error)")
+            }
+        }
     }
+
     var body: some View {
         NavigationView {
             VStack {
@@ -48,18 +53,35 @@ struct Todoview: View {
 
             }
             .navigationTitle("To Do List")
+//            .toolbar {
+//                Button {
+//                    viewModel.showingNewItemView = true
+//                } label: {
+//                    Image(systemName: "plus")
+//                }
+//            }
             .toolbar {
-                Button {
-                    viewModel.showingNewItemView = true
-                } label: {
-                    Image(systemName: "plus")
+                HStack {
+                    Button {
+                        viewModel.showingNewItemView = true
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    
+                    Button {
+                        viewModel.showingSettings = true
+                    } label: {
+                        Image(systemName: "gear")
+                    }
                 }
             }
-            .sheet(isPresented: $viewModel.showingNewItemView){
+            .sheet(isPresented: $viewModel.showingSettings) {
+                NotificationSettingsView(viewModel: viewModel)
+            }
+            .sheet(isPresented: $viewModel.showingNewItemView) {
                 NewItemview(newItemPresented: $viewModel.showingNewItemView)
             }
         }
         
     }
 }
-
