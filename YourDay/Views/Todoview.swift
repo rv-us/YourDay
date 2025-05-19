@@ -11,6 +11,7 @@ import SwiftData
 struct Todoview: View {
     @Environment(\.modelContext) private var context
     @StateObject var viewModel = TodoViewModel()
+    @StateObject var loginViewModel = LoginViewModel()
     @Query(sort: [SortDescriptor(\TodoItem.dueDate, order: .reverse)]) private var items: [TodoItem]
     
     init() {
@@ -53,13 +54,6 @@ struct Todoview: View {
 
             }
             .navigationTitle("To Do List")
-//            .toolbar {
-//                Button {
-//                    viewModel.showingNewItemView = true
-//                } label: {
-//                    Image(systemName: "plus")
-//                }
-//            }
             .toolbar {
                 HStack {
                     Button {
@@ -76,7 +70,7 @@ struct Todoview: View {
                 }
             }
             .sheet(isPresented: $viewModel.showingSettings) {
-                NotificationSettingsView(viewModel: viewModel)
+                NotificationSettingsView(todoViewModel: viewModel, loginViewModel: loginViewModel)
             }
             .sheet(isPresented: $viewModel.showingNewItemView) {
                 NewItemview(newItemPresented: $viewModel.showingNewItemView)
