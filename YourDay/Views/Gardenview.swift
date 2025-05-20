@@ -112,13 +112,14 @@ struct GardenView: View {
     @Environment(\.modelContext) private var context
     
     @Query(filter: #Predicate<PlayerStats> { _ in true } ) private var playerStatsList: [PlayerStats]
-    
+    @EnvironmentObject var loginViewModel: LoginViewModel
     @State private var showingStandardAlert = false
     @State private var standardAlertTitle = ""
     @State private var standardAlertMessage = ""
     
     @State private var showingShopView = false
     @State private var showingInventoryView = false
+    @State private var showingLeaderboardView = false
     
     @State private var plantingSheetItem: IdentifiableGridPositionWrapper? = nil
 
@@ -250,7 +251,9 @@ struct GardenView: View {
                 .sheet(item: $selectedPlantForInfo) { plant in
                     PlantInfoView(plant: plant)
                 }
-                
+                .sheet(isPresented: $showingLeaderboardView) {
+                                    LeaderboardView()
+                                }
                 if showWateringEffect {
                     Color.blue.opacity(0.3).edgesIgnoringSafeArea(.all)
                         .transition(.opacity.animation(.easeInOut(duration: 0.2)))
@@ -450,6 +453,14 @@ struct GardenView: View {
         }
         
         ToolbarItemGroup(placement: .navigationBarTrailing) {
+                       Button {
+                           print("Leaderboard button tapped")
+                           showingLeaderboardView = true
+                       } label: {
+                           Image(systemName: "list.star") // Example icon for leaderboard
+                               .font(.title3) // Match inventory button size
+                       }
+                       .disabled(isSellModeActive || isFertilizerModeActive || isTutorialActive)
             Button {
                 if isSellModeActive || isFertilizerModeActive || isTutorialActive { return }
                 showingInventoryView = true
@@ -482,7 +493,7 @@ struct GardenView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
             var newItem = PlantActionFeedback(text: text, color: color)
             plantFeedbackItems[plantID] = newItem
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 if plantFeedbackItems[plantID]?.id == newItem.id {
                     plantFeedbackItems.removeValue(forKey: plantID)
                 }
