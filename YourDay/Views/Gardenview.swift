@@ -110,9 +110,8 @@ enum TutorialStep: Int, Identifiable {
 
 struct GardenView: View {
     @Environment(\.modelContext) private var context
-    
-    @Query(filter: #Predicate<PlayerStats> { _ in true } ) private var playerStatsList: [PlayerStats]
     @EnvironmentObject var loginViewModel: LoginViewModel
+    @Query(filter: #Predicate<PlayerStats> { _ in true } ) private var playerStatsList: [PlayerStats]
     @State private var showingStandardAlert = false
     @State private var standardAlertTitle = ""
     @State private var standardAlertMessage = ""
@@ -553,7 +552,10 @@ struct GardenView: View {
             }
         }
         if wateredCount > 0 { withAnimation { showWateringEffect = true } } else { showStandardAlert(title: "All Set!", message: "Your plants are either fully grown or already watered for today.") }
-        if wateredCount > 0 || potentiallyGrownPlant { mutablePlayerStats.updateGardenValue() }
+        if wateredCount > 0 || potentiallyGrownPlant {
+            mutablePlayerStats.updateGardenValue()
+            loginViewModel.syncLocalPlayerStatsToFirestore(playerStatsModel: mutablePlayerStats)
+        }
 
         if !self.hasCompletedGardenTutorial && self.currentTutorialStep == .explainWatering && wateredCount > 0 {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -587,7 +589,9 @@ struct GardenView: View {
             plantToWater.waterPlant()
             mutablePlayerStats.placedPlants[plantIndexInStatsArray] = plantToWater
             withAnimation { showWateringEffect = true }
-            if !wasGrownBeforeWatering && plantToWater.isFullyGrown { mutablePlayerStats.updateGardenValue(); triggerPlantFeedback(plantID: plantToWater.id, text: "Grown!", color: .cyan) }
+            if !wasGrownBeforeWatering && plantToWater.isFullyGrown { mutablePlayerStats.updateGardenValue(); triggerPlantFeedback(plantID: plantToWater.id, text: "Grown!", color: .cyan)
+                loginViewModel.syncLocalPlayerStatsToFirestore(playerStatsModel: mutablePlayerStats)
+            }
             
             if !self.hasCompletedGardenTutorial && self.currentTutorialStep == .explainWatering {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -621,6 +625,7 @@ struct GardenView: View {
             guard let currentStats = self.playerStatsList.first else { return }
             if currentStats.sellPlant(plantId: plantId) {
                 currentStats.updateGardenValue() // Recalculate garden value after selling
+                self.loginViewModel.syncLocalPlayerStatsToFirestore(playerStatsModel: currentStats)
                 if self.isSellModeActive && !currentStats.placedPlants.contains(where: { $0.isFullyGrown }) {
                     self.isSellModeActive = false; self.showStandardAlert(title: "All Grown Plants Sold", message: "Sell mode deactivated.")
                 }
@@ -655,7 +660,7 @@ struct GardenView: View {
             mutablePlayerStats.unplacedPlantsInventory[blueprintID]? -= 1
             if mutablePlayerStats.unplacedPlantsInventory[blueprintID] ?? 0 <= 0 { mutablePlayerStats.unplacedPlantsInventory.removeValue(forKey: blueprintID) }
             mutablePlayerStats.updateGardenValue(); triggerGeneralNotification(text: "\(blueprint.name) Planted!", icon: "plus.circle.fill", color: .green)
-            
+            loginViewModel.syncLocalPlayerStatsToFirestore(playerStatsModel: mutablePlayerStats)
             if !self.hasCompletedGardenTutorial && self.currentTutorialStep == .explainPlanting {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                     self.currentTutorialStep = .explainWatering // Next: Watering
@@ -734,6 +739,7 @@ struct GardenView: View {
             } else {
                 // Deactivate fertilizer mode if it was active due to tutorial,
                 // or if player runs out of fertilizer.
+                self.loginViewModel.syncLocalPlayerStatsToFirestore(playerStatsModel: mutablePlayerStats)
                 if self.isFertilizerModeActive && (wasTutorialFertilizerStep || mutablePlayerStats.fertilizerCount == 0) {
                      self.isFertilizerModeActive = false
                      if mutablePlayerStats.fertilizerCount == 0 && !wasTutorialFertilizerStep { // Only show if not part of tutorial finishing step

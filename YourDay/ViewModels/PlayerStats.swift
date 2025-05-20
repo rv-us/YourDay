@@ -171,14 +171,14 @@ class PlayerStats {
     var fertilizerCount: Int
 
     init(
-        totalPoints: Double = 1000,
+        totalPoints: Double = 100,
         lastEvaluated: Date? = nil,
         playerLevel: Int = 1,
         currentXP: Double = 0,
         unplacedPlantsInventory: [String: Int] = [:],
         placedPlants: [PlacedPlant] = [],
         numberOfOwnedPlots: Int = 2,
-        fertilizerCount: Int = 3
+        fertilizerCount: Int = 1
     ) {
         self.id = UUID()
         self.totalPoints = totalPoints

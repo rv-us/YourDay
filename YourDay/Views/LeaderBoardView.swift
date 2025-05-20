@@ -8,27 +8,22 @@ import SwiftUI
 import FirebaseAuth // To get current user ID for initial ViewModel state
 
 struct LeaderboardView: View {
-    // Initialize LeaderboardViewModel with the current user's ID.
-    // This helps the ViewModel identify the current user in the fetched leaderboard data.
+
     @StateObject private var viewModel: LeaderboardViewModel
     
-    // Access to LoginViewModel to get current user info if needed, or to pass to subviews.
-    // Assuming LoginViewModel is provided as an EnvironmentObject from a higher-level view (e.g., ContentView or App struct).
+
     @EnvironmentObject var loginViewModel: LoginViewModel
 
-    // State for the ScrollViewReader proxy
     @State private var scrollViewProxy: ScrollViewProxy? = nil
 
     init() {
-        // Initialize the ViewModel with the current user's ID when the view is created.
-        // This ensures that when fetchLeaderboardData is called by init, it has the userID.
         _viewModel = StateObject(wrappedValue: LeaderboardViewModel(currentUserID: Auth.auth().currentUser?.uid))
     }
 
     var body: some View {
         NavigationView {
             VStack {
-                if viewModel.isLoading && viewModel.leaderboardEntries.isEmpty { // Show loading only if list is empty
+                if viewModel.isLoading && viewModel.leaderboardEntries.isEmpty {
                     ProgressView("Loading Leaderboard...")
                         .scaleEffect(1.5)
                         .padding()
@@ -51,13 +46,12 @@ struct LeaderboardView: View {
                         .padding()
                     Spacer()
                 } else {
-                    // Button to scroll to current user
+        
                     if viewModel.currentUserRank != nil && viewModel.currentUserID != nil {
                         Button(action: {
                             scrollToCurrentUser()
                         }) {
                             HStack {
-                                Image(systemName: "scope")
                                 Text("Find My Rank")
                             }
                             .padding(.vertical, 8)
@@ -77,23 +71,19 @@ struct LeaderboardView: View {
                                         entry: entry,
                                         isCurrentUser: entry.id == viewModel.currentUserID
                                     )
-                                    .id(entry.rank) // Use rank for scrolling ID
+                                    .id(entry.rank)
                                 }
                             }
                         }
                         .listStyle(PlainListStyle())
                         .onAppear {
-                            self.scrollViewProxy = proxy // Store the proxy
-                            // ViewModel's init already calls fetchLeaderboardData.
-                            // If currentUserID might change while view is visible (e.g. user logs out and in without view recreating)
-                            // then we might need to update viewModel.currentUserID and refresh.
-                            // For now, assuming currentUserID is stable for the lifetime of this view instance.
+                            self.scrollViewProxy = proxy
                             if viewModel.currentUserID != Auth.auth().currentUser?.uid {
                                 viewModel.currentUserID = Auth.auth().currentUser?.uid
-                                viewModel.refreshLeaderboard() // Refresh if userID changed
+                                viewModel.refreshLeaderboard()
                             }
                         }
-                        .refreshable { // Pull-to-refresh
+                        .refreshable {
                             print("LeaderboardView: Refresh triggered.")
                             viewModel.refreshLeaderboard()
                         }

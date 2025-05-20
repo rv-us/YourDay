@@ -28,14 +28,14 @@ struct PlayerStatsCodable: Codable, Identifiable {
     // Default initializer for new users (matches PlayerStats @Model default)
     init(
         id: UUID = UUID(),
-        totalPoints: Double = 1000,
+        totalPoints: Double = 100,
         lastEvaluated: Date? = nil,
         playerLevel: Int = 1,
         currentXP: Double = 0,
         unplacedPlantsInventory: [String: Int] = [:],
         placedPlants: [PlacedPlant] = [], // Ensure PlacedPlant has its getCurrentDynamicValue()
         numberOfOwnedPlots: Int = 2,
-        fertilizerCount: Int = 3
+        fertilizerCount: Int = 1
     ) {
         self.id = id
         self.totalPoints = totalPoints
