@@ -45,12 +45,17 @@ class TodoViewModel: ObservableObject {
         center.add(UNNotificationRequest(identifier: "nightReminder", content: nightContent, trigger: nightTrigger))
 
         // Extra Reminders
-        if extraReminders > 0 {
+        let maxReminders = UserDefaults.standard.integer(forKey: extraNotificationsKey)
+        var alreadySent = UserDefaults.standard.integer(forKey: "totalExtraRemindersSentToday")
+
+        if maxReminders > 0 {
             let startMinutes = morningHour * 60 + morningMinute
             let endMinutes = nightHour * 60 + nightMinute
-            let interval = (endMinutes - startMinutes) / (extraReminders + 1)
+            let interval = (endMinutes - startMinutes) / (maxReminders + 1)
 
             for i in 1...extraReminders {
+                if alreadySent >= maxReminders { break }
+
                 let scheduledMinutes = startMinutes + i * interval
                 let hour = scheduledMinutes / 60
                 let minute = scheduledMinutes % 60
@@ -58,6 +63,7 @@ class TodoViewModel: ObservableObject {
                 let extraContent = UNMutableNotificationContent()
                 extraContent.title = "Task Check-In"
                 extraContent.body = "Take a moment to update your to-dos."
+                extraContent.sound = .default
 
                 let extraTrigger = UNCalendarNotificationTrigger(
                     dateMatching: DateComponents(hour: hour, minute: minute),
@@ -66,6 +72,9 @@ class TodoViewModel: ObservableObject {
 
                 let id = "extraReminder\(i)"
                 center.add(UNNotificationRequest(identifier: id, content: extraContent, trigger: extraTrigger))
+
+                alreadySent += 1
+                UserDefaults.standard.set(alreadySent, forKey: "totalExtraRemindersSentToday")
             }
         }
     }

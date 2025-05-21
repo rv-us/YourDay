@@ -7,17 +7,20 @@
 import SwiftUI
 import SwiftData
 import UserNotifications
+import CoreLocation
 
 // Assuming these keys are defined globally or accessible
 let morningReminderKey = "morningReminderTime"
 let nightReminderKey = "nightReminderTime"
 let notificationsEnabledKey = "notificationsEnabled"
 let extraNotificationsKey = "extraNotificationCount"
+let locationRemindersEnabledKey = "locationRemindersEnabled"
 
 struct NotificationSettingsView: View {
     @Environment(\.modelContext) private var modelContext // Added to query PlayerStats
     @ObservedObject var todoViewModel: TodoViewModel
     @ObservedObject var loginViewModel: LoginViewModel
+    @AppStorage(locationRemindersEnabledKey) private var locationRemindersEnabled = true
     var onSignOutRequested: () -> Void
 
     // Query for local PlayerStats to pass to updateUserDisplayName
@@ -116,6 +119,10 @@ struct NotificationSettingsView: View {
                                 if !newValue {
                                     UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
                                 }
+                            }
+                        Toggle("Enable Location-Based Reminders", isOn: $locationRemindersEnabled)
+                            .onChange(of: locationRemindersEnabled) { _, newValue in
+                                UserDefaults.standard.set(newValue, forKey: locationRemindersEnabledKey)
                             }
                     }
 
@@ -266,6 +273,7 @@ struct NotificationSettingsView: View {
         UserDefaults.standard.set(nightTime, forKey: nightReminderKey)
         UserDefaults.standard.set(notificationsEnabled, forKey: notificationsEnabledKey)
         UserDefaults.standard.set(extraNotificationCount, forKey: extraNotificationsKey)
+        UserDefaults.standard.set(locationRemindersEnabled, forKey: locationRemindersEnabledKey)
         print("NotificationSettingsView: Notification settings saved to UserDefaults.")
 
         if notificationsEnabled {
@@ -313,5 +321,6 @@ struct NotificationSettingsView: View {
         morningTime = UserDefaults.standard.object(forKey: morningReminderKey) as? Date ?? Calendar.current.date(from: DateComponents(hour: 9, minute: 0)) ?? Date()
         nightTime = UserDefaults.standard.object(forKey: nightReminderKey) as? Date ?? Calendar.current.date(from: DateComponents(hour: 21, minute: 0)) ?? Date()
         extraNotificationCount = UserDefaults.standard.object(forKey: extraNotificationsKey) as? Int ?? 0
+        locationRemindersEnabled = UserDefaults.standard.object(forKey: locationRemindersEnabledKey) as? Bool ?? true
     }
 }
