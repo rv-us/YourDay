@@ -20,7 +20,10 @@ class TodoViewModel: ObservableObject {
         extraReminders: Int
     ) {
         let center = UNUserNotificationCenter.current()
-        center.removeAllPendingNotificationRequests()
+
+        // Remove only scheduled reminders, not LLM-generated UUID ones
+        let idsToRemove = ["morningReminder", "nightReminder"] + (1...10).map { "extraReminder\($0)" }
+        center.removePendingNotificationRequests(withIdentifiers: idsToRemove)
 
         // Morning Reminder
         let morningContent = UNMutableNotificationContent()
@@ -45,17 +48,18 @@ class TodoViewModel: ObservableObject {
         center.add(UNNotificationRequest(identifier: "nightReminder", content: nightContent, trigger: nightTrigger))
 
         // Extra Reminders
-        let maxReminders = UserDefaults.standard.integer(forKey: extraNotificationsKey)
-        var alreadySent = UserDefaults.standard.integer(forKey: "totalExtraRemindersSentToday")
-
-        if maxReminders > 0 {
+        if extraReminders > 0 {
             let startMinutes = morningHour * 60 + morningMinute
             let endMinutes = nightHour * 60 + nightMinute
-            let interval = (endMinutes - startMinutes) / (maxReminders + 1)
+
+            guard endMinutes > startMinutes else {
+                print("Invalid time range for extra reminders.")
+                return
+            }
+
+            let interval = (endMinutes - startMinutes) / (extraReminders + 1)
 
             for i in 1...extraReminders {
-                if alreadySent >= maxReminders { break }
-
                 let scheduledMinutes = startMinutes + i * interval
                 let hour = scheduledMinutes / 60
                 let minute = scheduledMinutes % 60
@@ -72,9 +76,6 @@ class TodoViewModel: ObservableObject {
 
                 let id = "extraReminder\(i)"
                 center.add(UNNotificationRequest(identifier: id, content: extraContent, trigger: extraTrigger))
-
-                alreadySent += 1
-                UserDefaults.standard.set(alreadySent, forKey: "totalExtraRemindersSentToday")
             }
         }
     }

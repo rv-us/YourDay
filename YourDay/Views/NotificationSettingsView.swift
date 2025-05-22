@@ -9,25 +9,25 @@ import SwiftData
 import UserNotifications
 import CoreLocation
 
-// Assuming these keys are defined globally or accessible
+// Global keys
 let morningReminderKey = "morningReminderTime"
 let nightReminderKey = "nightReminderTime"
 let notificationsEnabledKey = "notificationsEnabled"
 let extraNotificationsKey = "extraNotificationCount"
 let locationRemindersEnabledKey = "locationRemindersEnabled"
 
+// Identifiers to remove only scheduled reminders
+let scheduledReminderIDs: [String] = ["morningReminder", "nightReminder"] + (1...10).map { "extraReminder\($0)" }
+
 struct NotificationSettingsView: View {
-    @Environment(\.modelContext) private var modelContext // Added to query PlayerStats
+    @Environment(\.modelContext) private var modelContext
     @ObservedObject var todoViewModel: TodoViewModel
     @ObservedObject var loginViewModel: LoginViewModel
     @AppStorage(locationRemindersEnabledKey) private var locationRemindersEnabled = true
     var onSignOutRequested: () -> Void
 
-    // Query for local PlayerStats to pass to updateUserDisplayName
     @Query(sort: \PlayerStats.playerLevel) private var playerStatsList: [PlayerStats]
-    private var currentPlayerStats: PlayerStats? {
-        playerStatsList.first
-    }
+    private var currentPlayerStats: PlayerStats? { playerStatsList.first }
 
     @Environment(\.dismiss) var dismiss
 
@@ -39,7 +39,7 @@ struct NotificationSettingsView: View {
     @State private var showNotificationSaveConfirmation = false
     @State private var isNotificationSaveButtonDisabled = false
     @State private var extraNotificationCount = 0
-    
+
     @State private var editableDisplayName: String = ""
     @State private var showNameChangeStatusMessage = false
     @State private var nameChangeMessageText = ""
@@ -52,16 +52,16 @@ struct NotificationSettingsView: View {
                 if showNotificationSaveConfirmation {
                     Text("Reminders scheduled successfully!")
                         .foregroundColor(.green)
-                        .frame(maxWidth: .infinity, alignment: .center)
+                        .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
                         .background(Color(.systemGray6))
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
-                
+
                 if showNameChangeStatusMessage {
                     Text(nameChangeMessageText)
                         .foregroundColor(nameChangeWasSuccessful ? .green : .red)
-                        .frame(maxWidth: .infinity, alignment: .center)
+                        .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
                         .background(Color(.systemGray6))
                         .transition(.move(edge: .top).combined(with: .opacity))
@@ -70,39 +70,35 @@ struct NotificationSettingsView: View {
                 Form {
                     Section(header: Text("Account Information")) {
                         HStack {
-                            Text("Email:")
-                                .fontWeight(.semibold)
+                            Text("Email:").fontWeight(.semibold)
                             Spacer()
-                            Text(loginViewModel.userEmail ?? "Not available")
-                                .foregroundColor(.secondary)
+                            Text(loginViewModel.userEmail ?? "Not available").foregroundColor(.secondary)
                         }
 
                         VStack(alignment: .leading) {
-                            Text("Display Name:")
-                                .fontWeight(.semibold)
+                            Text("Display Name:").fontWeight(.semibold)
                             TextField("Enter display name", text: $editableDisplayName)
                                 .textFieldStyle(.roundedBorder)
                                 .disabled(!loginViewModel.isNetworkAvailable || isSavingName)
                                 .textContentType(.name)
                                 .autocapitalization(.words)
-                            
+
                             if loginViewModel.isNetworkAvailable {
-                                 Button(action: saveNewDisplayName) {
-                                     HStack {
-                                         Spacer()
-                                         if isSavingName {
-                                             ProgressView()
-                                         } else {
-                                             Text("Save Name")
-                                         }
-                                         Spacer()
-                                     }
-                                 }
-                                 .padding(.top, 5)
-                                 .disabled(editableDisplayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
-                                           editableDisplayName == (loginViewModel.userDisplayName ?? "") ||
-                                           isSavingName ||
-                                           !loginViewModel.isNetworkAvailable)
+                                Button(action: saveNewDisplayName) {
+                                    HStack {
+                                        Spacer()
+                                        if isSavingName {
+                                            ProgressView()
+                                        } else {
+                                            Text("Save Name")
+                                        }
+                                        Spacer()
+                                    }
+                                }
+                                .padding(.top, 5)
+                                .disabled(editableDisplayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                                          editableDisplayName == (loginViewModel.userDisplayName ?? "") ||
+                                          isSavingName)
                             } else {
                                 Text("Connect to internet to change display name.")
                                     .font(.caption)
@@ -111,15 +107,17 @@ struct NotificationSettingsView: View {
                         }
                         .padding(.vertical, 5)
                     }
-                    
+
                     Section(header: Text("General Notification Settings")) {
-                        Toggle("Enable All Notifications", isOn: $notificationsEnabled)
+                        Toggle("Enable Scheduled Notifications", isOn: $notificationsEnabled)
                             .onChange(of: notificationsEnabled) { _, newValue in
                                 UserDefaults.standard.set(newValue, forKey: notificationsEnabledKey)
                                 if !newValue {
-                                    UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
+                                    UNUserNotificationCenter.current()
+                                        .removePendingNotificationRequests(withIdentifiers: scheduledReminderIDs)
                                 }
                             }
+
                         Toggle("Enable Location-Based Reminders", isOn: $locationRemindersEnabled)
                             .onChange(of: locationRemindersEnabled) { _, newValue in
                                 UserDefaults.standard.set(newValue, forKey: locationRemindersEnabledKey)
@@ -132,8 +130,7 @@ struct NotificationSettingsView: View {
                                 HStack {
                                     Text("Scheduled at")
                                     Spacer()
-                                    Text(morningTime.formatted(date: .omitted, time: .shortened))
-                                        .foregroundColor(.secondary)
+                                    Text(morningTime.formatted(date: .omitted, time: .shortened)).foregroundColor(.secondary)
                                 }
                             }
                             .buttonStyle(.plain)
@@ -150,8 +147,7 @@ struct NotificationSettingsView: View {
                                 HStack {
                                     Text("Scheduled at")
                                     Spacer()
-                                    Text(nightTime.formatted(date: .omitted, time: .shortened))
-                                        .foregroundColor(.secondary)
+                                    Text(nightTime.formatted(date: .omitted, time: .shortened)).foregroundColor(.secondary)
                                 }
                             }
                             .buttonStyle(.plain)
@@ -168,16 +164,12 @@ struct NotificationSettingsView: View {
                                 HStack {
                                     Text("Reminders per day")
                                     Spacer()
-                                    Text("\(extraNotificationCount)")
-                                        .foregroundColor(.secondary)
+                                    Text("\(extraNotificationCount)").foregroundColor(.secondary)
                                 }
-                                Slider(
-                                    value: Binding(
-                                        get: { Double(extraNotificationCount) },
-                                        set: { newValue in extraNotificationCount = Int(newValue) }
-                                    ),
-                                    in: 0...10, step: 1
-                                )
+                                Slider(value: Binding(
+                                    get: { Double(extraNotificationCount) },
+                                    set: { extraNotificationCount = Int($0) }),
+                                       in: 0...10, step: 1)
                             }
                             .padding(.vertical, 4)
                         }
@@ -195,16 +187,15 @@ struct NotificationSettingsView: View {
                             .disabled(isNotificationSaveButtonDisabled || !notificationsEnabled)
                         }
                     }
-                    
+
                     Section {
                         Button(role: .destructive, action: {
-                            print("NotificationSettingsView: Sign Out button tapped. Calling onSignOutRequested.")
+                            print("NotificationSettingsView: Sign Out button tapped.")
                             onSignOutRequested()
                         }) {
                             HStack {
                                 Spacer()
-                                Text("Sign Out")
-                                    .fontWeight(.medium)
+                                Text("Sign Out").fontWeight(.medium)
                                 Spacer()
                             }
                         }
@@ -213,13 +204,12 @@ struct NotificationSettingsView: View {
                 .navigationTitle("Settings & Account")
             }
             .onAppear {
-                print("NotificationSettingsView: .onAppear. Loading notification settings and initializing editable name.")
                 loadNotificationSettings()
                 editableDisplayName = loginViewModel.userDisplayName ?? ""
             }
-            .onChange(of: loginViewModel.userDisplayName) { _, newNameInViewModel in
-                if editableDisplayName != (newNameInViewModel ?? "") {
-                    editableDisplayName = newNameInViewModel ?? ""
+            .onChange(of: loginViewModel.userDisplayName) { _, newName in
+                if editableDisplayName != (newName ?? "") {
+                    editableDisplayName = newName ?? ""
                 }
             }
         }
@@ -227,54 +217,45 @@ struct NotificationSettingsView: View {
     }
 
     private func saveNewDisplayName() {
-        let nameToSave = editableDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !nameToSave.isEmpty else {
+        let trimmed = editableDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
             nameChangeMessageText = "Display name cannot be empty."
             nameChangeWasSuccessful = false
-            withAnimation { showNameChangeStatusMessage = true }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                withAnimation { showNameChangeStatusMessage = false }
-            }
+            showTempStatusMessage()
             return
         }
-        
-        guard nameToSave != (loginViewModel.userDisplayName ?? "") else {
+
+        guard trimmed != (loginViewModel.userDisplayName ?? "") else {
             nameChangeMessageText = "Name is already set to this."
             nameChangeWasSuccessful = true
-            withAnimation { showNameChangeStatusMessage = true }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                withAnimation { showNameChangeStatusMessage = false }
-            }
+            showTempStatusMessage()
             return
         }
 
         isSavingName = true
-        // Pass currentPlayerStats to the ViewModel function
-        loginViewModel.updateUserDisplayName(newName: nameToSave, currentPlayerStats: currentPlayerStats) { success, errorString in
+        loginViewModel.updateUserDisplayName(newName: trimmed, currentPlayerStats: currentPlayerStats) { success, message in
             isSavingName = false
-            if success {
-                nameChangeMessageText = errorString ?? "Display name updated successfully!"
-                nameChangeWasSuccessful = true
-            } else {
-                nameChangeMessageText = errorString ?? "Failed to update display name."
-                nameChangeWasSuccessful = false
-            }
-            withAnimation { showNameChangeStatusMessage = true }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                withAnimation { showNameChangeStatusMessage = false }
-            }
+            nameChangeMessageText = message ?? (success ? "Display name updated successfully!" : "Failed to update display name.")
+            nameChangeWasSuccessful = success
+            showTempStatusMessage()
+        }
+    }
+
+    private func showTempStatusMessage() {
+        withAnimation { showNameChangeStatusMessage = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            withAnimation { showNameChangeStatusMessage = false }
         }
     }
 
     private func saveAndScheduleNotifications() {
         isNotificationSaveButtonDisabled = true
-        
+
         UserDefaults.standard.set(morningTime, forKey: morningReminderKey)
         UserDefaults.standard.set(nightTime, forKey: nightReminderKey)
         UserDefaults.standard.set(notificationsEnabled, forKey: notificationsEnabledKey)
         UserDefaults.standard.set(extraNotificationCount, forKey: extraNotificationsKey)
         UserDefaults.standard.set(locationRemindersEnabled, forKey: locationRemindersEnabledKey)
-        print("NotificationSettingsView: Notification settings saved to UserDefaults.")
 
         if notificationsEnabled {
             let calendar = Calendar.current
@@ -291,35 +272,24 @@ struct NotificationSettingsView: View {
                 extraReminders: extraNotificationCount
             )
 
-            withAnimation {
-                showNotificationSaveConfirmation = true
-            }
-
+            withAnimation { showNotificationSaveConfirmation = true }
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-                withAnimation {
-                    showNotificationSaveConfirmation = false
-                }
+                withAnimation { showNotificationSaveConfirmation = false }
             }
         } else {
-            UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
-            print("NotificationSettingsView: Notifications disabled. All pending notifications cleared.")
+            UNUserNotificationCenter.current()
+                .removePendingNotificationRequests(withIdentifiers: scheduledReminderIDs)
         }
-        
+
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             isNotificationSaveButtonDisabled = false
         }
     }
 
     private func loadNotificationSettings() {
-        if UserDefaults.standard.object(forKey: notificationsEnabledKey) != nil {
-            notificationsEnabled = UserDefaults.standard.bool(forKey: notificationsEnabledKey)
-        } else {
-            notificationsEnabled = true
-            UserDefaults.standard.set(notificationsEnabled, forKey: notificationsEnabledKey)
-        }
-
-        morningTime = UserDefaults.standard.object(forKey: morningReminderKey) as? Date ?? Calendar.current.date(from: DateComponents(hour: 9, minute: 0)) ?? Date()
-        nightTime = UserDefaults.standard.object(forKey: nightReminderKey) as? Date ?? Calendar.current.date(from: DateComponents(hour: 21, minute: 0)) ?? Date()
+        notificationsEnabled = UserDefaults.standard.object(forKey: notificationsEnabledKey) as? Bool ?? true
+        morningTime = UserDefaults.standard.object(forKey: morningReminderKey) as? Date ?? Calendar.current.date(from: DateComponents(hour: 9)) ?? Date()
+        nightTime = UserDefaults.standard.object(forKey: nightReminderKey) as? Date ?? Calendar.current.date(from: DateComponents(hour: 21)) ?? Date()
         extraNotificationCount = UserDefaults.standard.object(forKey: extraNotificationsKey) as? Int ?? 0
         locationRemindersEnabled = UserDefaults.standard.object(forKey: locationRemindersEnabledKey) as? Bool ?? true
     }
