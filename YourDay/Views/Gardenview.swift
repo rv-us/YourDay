@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import Lottie
 
 // Wrapper to make GridPosition identifiable for the .sheet(item:...) modifier
 struct IdentifiableGridPositionWrapper: Identifiable {
@@ -122,7 +123,7 @@ struct GardenView: View {
     
     @State private var plantingSheetItem: IdentifiableGridPositionWrapper? = nil
 
-    @State private var showWateringEffect = false
+    @State private var playWateringAnimation = false
 
     // MARK: - Mode States
     @State private var isFertilizerModeActive = false
@@ -253,15 +254,13 @@ struct GardenView: View {
                 .sheet(isPresented: $showingLeaderboardView) {
                                     LeaderboardView()
                                 }
-                if showWateringEffect {
-                    Color.blue.opacity(0.3).edgesIgnoringSafeArea(.all)
-                        .transition(.opacity.animation(.easeInOut(duration: 0.2)))
-                        .onAppear {
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                withAnimation { showWateringEffect = false }
-                            }
-                        }
-                }
+                if playWateringAnimation {
+                                    LottieView(name: "watering", play: $playWateringAnimation)
+                                        .edgesIgnoringSafeArea(.all)
+                                        .background(Color.black.opacity(0.3))
+                                        .transition(.opacity.animation(.easeInOut(duration: 0.3)))
+                                        .zIndex(20)
+                                }
 
                 if let notification = generalNotification {
                     GeneralNotificationView(notification: notification)
@@ -442,44 +441,58 @@ struct GardenView: View {
     }
 
     @ToolbarContentBuilder
-    private var gardenToolbarContent: some ToolbarContent {
-        ToolbarItem(placement: .navigationBarLeading) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Level: \(playerStats.playerLevel)").font(.headline).foregroundColor(.blue)
-                Text("Value: \(Int(playerStats.gardenValue))").font(.caption).foregroundColor(.secondary)
+        private var gardenToolbarContent: some ToolbarContent {
+            ToolbarItem(placement: .navigationBarLeading) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Level: \(playerStats.playerLevel)").font(.headline).foregroundColor(.blue)
+                    Text("Value: \(Int(playerStats.gardenValue))").font(.caption).foregroundColor(.secondary)
+                }
+                .allowsHitTesting(!isTutorialActive || currentTutorialStep == .explainPlotsValue)
             }
-            .allowsHitTesting(!isTutorialActive || currentTutorialStep == .explainPlotsValue)
-        }
-        
-        ToolbarItemGroup(placement: .navigationBarTrailing) {
-                       Button {
-                           print("Leaderboard button tapped")
-                           showingLeaderboardView = true
-                       } label: {
-                           Image(systemName: "list.star") // Example icon for leaderboard
-                               .font(.title3) // Match inventory button size
-                       }
-                       .disabled(isSellModeActive || isFertilizerModeActive || isTutorialActive)
-            Button {
-                if isSellModeActive || isFertilizerModeActive || isTutorialActive { return }
-                showingInventoryView = true
-            } label: { Image(systemName: "briefcase.fill").font(.title3) }
-            .disabled(isSellModeActive || isFertilizerModeActive || isTutorialActive)
-
-            Button {
-                if isSellModeActive || isFertilizerModeActive || (isTutorialActive && currentTutorialStep != .explainShop) { return }
-                if !(isTutorialActive && currentTutorialStep == .explainShop) { showingShopView = true }
-            } label: { Image(systemName: "cart.fill").font(.title2) }
-            .padding(.trailing, 5)
-            .disabled(isSellModeActive || isFertilizerModeActive || (isTutorialActive && currentTutorialStep != .explainShop) )
             
-            Spacer()
-            HStack(spacing: 4) {
-                Image(systemName: "dollarsign.circle.fill").foregroundColor(.orange)
-                Text("\(Int(playerStats.totalPoints))").font(.headline).foregroundColor(.orange)
+            ToolbarItemGroup(placement: .navigationBarTrailing) {
+                Button {
+                    print("Leaderboard button tapped")
+                    showingLeaderboardView = true
+                } label: {
+                    Image("Points_icon") // <-- UPDATED for Leaderboard
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 22, height: 22) // Adjust size as needed
+                }
+                .disabled(isSellModeActive || isFertilizerModeActive || isTutorialActive)
+
+                Button {
+                    if isSellModeActive || isFertilizerModeActive || isTutorialActive { return }
+                    showingInventoryView = true
+                } label: {
+                    Image("Inventory_icon") // <-- UPDATED for Inventory
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 22, height: 22) // Adjust size as needed
+                }
+                .disabled(isSellModeActive || isFertilizerModeActive || isTutorialActive)
+
+                Button {
+                    if isSellModeActive || isFertilizerModeActive || (isTutorialActive && currentTutorialStep != .explainShop) { return }
+                    // Action logic remains the same
+                    if !(isTutorialActive && currentTutorialStep == .explainShop) { showingShopView = true }
+                } label: {
+                    Image("Shop_icon") // <-- UPDATED for Shop
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 24, height: 24) // Adjust size as needed
+                }
+                .padding(.trailing, 5)
+                .disabled(isSellModeActive || isFertilizerModeActive || (isTutorialActive && currentTutorialStep != .explainShop) )
+                
+                Spacer()
+                HStack(spacing: 4) {
+                    Image(systemName: "dollarsign.circle.fill").foregroundColor(.orange)
+                    Text("\(Int(playerStats.totalPoints))").font(.headline).foregroundColor(.orange)
+                }
             }
         }
-    }
     
     // MARK: - Methods
     
@@ -535,42 +548,50 @@ struct GardenView: View {
     
     
     func waterAllPlants() {
-        guard !isTutorialActive || currentTutorialStep == .explainWatering else {
-            if isTutorialActive { showStandardAlert(title: "Tutorial Active", message: "Follow the current tutorial step.") }
-            return
-        }
-        guard let mutablePlayerStats = playerStatsList.first else { return }
-        var wateredCount = 0; var potentiallyGrownPlant = false
-        let today = Calendar.current.startOfDay(for: Date())
-
-        for i in mutablePlayerStats.placedPlants.indices {
-            guard i < mutablePlayerStats.placedPlants.count else { continue }
-            var plantToWater = mutablePlayerStats.placedPlants[i]
-            if !plantToWater.isFullyGrown && (plantToWater.lastWateredOnDay == nil || !Calendar.current.isDate(plantToWater.lastWateredOnDay!, inSameDayAs: today)) {
-                plantToWater.waterPlant(); mutablePlayerStats.placedPlants[i] = plantToWater; wateredCount += 1
-                if plantToWater.isFullyGrown { potentiallyGrownPlant = true; triggerPlantFeedback(plantID: plantToWater.id, text: "Grown!", color: .cyan) }
+            guard !isTutorialActive || currentTutorialStep == .explainWatering else {
+                if isTutorialActive { showStandardAlert(title: "Tutorial Active", message: "Follow the current tutorial step.") }
+                return
             }
-        }
-        if wateredCount > 0 { withAnimation { showWateringEffect = true } } else { showStandardAlert(title: "All Set!", message: "Your plants are either fully grown or already watered for today.") }
-        if wateredCount > 0 || potentiallyGrownPlant {
-            mutablePlayerStats.updateGardenValue()
-            loginViewModel.syncLocalPlayerStatsToFirestore(playerStatsModel: mutablePlayerStats)
-        }
+            guard let mutablePlayerStats = playerStatsList.first else { return }
+            var wateredCount = 0; var potentiallyGrownPlant = false
+            let today = Calendar.current.startOfDay(for: Date())
 
-        if !self.hasCompletedGardenTutorial && self.currentTutorialStep == .explainWatering && wateredCount > 0 {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                self.currentTutorialStep = .explainFertilizer // Next: Fertilizing
-                if self.currentTutorialStep != .finished {
-                    withAnimation { // Added animation
-                        self.isTutorialActive = true
+            for i in mutablePlayerStats.placedPlants.indices {
+                guard i < mutablePlayerStats.placedPlants.count else { continue }
+                var plantToWater = mutablePlayerStats.placedPlants[i]
+                if !plantToWater.isFullyGrown && (plantToWater.lastWateredOnDay == nil || !Calendar.current.isDate(plantToWater.lastWateredOnDay!, inSameDayAs: today)) {
+                    plantToWater.waterPlant(); mutablePlayerStats.placedPlants[i] = plantToWater; wateredCount += 1
+                    if plantToWater.isFullyGrown { potentiallyGrownPlant = true; triggerPlantFeedback(plantID: plantToWater.id, text: "Grown!", color: .cyan) }
+                }
+            }
+            
+            if wateredCount > 0 {
+                // REMOVE: withAnimation { showWateringEffect = true }
+                // ADD: Trigger the Lottie animation
+                self.playWateringAnimation = true // << MODIFY THIS
+            } else {
+                showStandardAlert(title: "All Set!", message: "Your plants are either fully grown or already watered for today.")
+            }
+            
+            if wateredCount > 0 || potentiallyGrownPlant {
+                mutablePlayerStats.updateGardenValue()
+                loginViewModel.syncLocalPlayerStatsToFirestore(playerStatsModel: mutablePlayerStats)
+            }
+
+            if !self.hasCompletedGardenTutorial && self.currentTutorialStep == .explainWatering && wateredCount > 0 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { // Keep or adjust delay as needed
+                    self.currentTutorialStep = .explainFertilizer // Next: Fertilizing
+                    if self.currentTutorialStep != .finished {
+                        withAnimation {
+                            self.isTutorialActive = true
+                        }
+                    } else {
+                        self.hasCompletedGardenTutorial = true
+                        self.isTutorialActive = false
                     }
-                } else {
-                    self.hasCompletedGardenTutorial = true
-                    self.isTutorialActive = false
                 }
             }
         }
-    }
     
     func waterSinglePlant(at plantIndexInStatsArray: Int) {
         guard !isTutorialActive || currentTutorialStep == .explainWatering else {
@@ -588,7 +609,6 @@ struct GardenView: View {
             let wasGrownBeforeWatering = plantToWater.isFullyGrown
             plantToWater.waterPlant()
             mutablePlayerStats.placedPlants[plantIndexInStatsArray] = plantToWater
-            withAnimation { showWateringEffect = true }
             if !wasGrownBeforeWatering && plantToWater.isFullyGrown { mutablePlayerStats.updateGardenValue(); triggerPlantFeedback(plantID: plantToWater.id, text: "Grown!", color: .cyan)
                 loginViewModel.syncLocalPlayerStatsToFirestore(playerStatsModel: mutablePlayerStats)
             }
@@ -860,11 +880,22 @@ struct PlantPlotView: View {
     }
     
     @ViewBuilder private func currentPlantVisual() -> some View {
-        // Assuming Rarity has .backgroundColor for the PlantVisualDisplayView background
-        if plant.isFullyGrown { PlantVisualDisplayView(assetName: plant.assetName, rarity: plant.rarity, displayName: plant.name, isIcon: false) }
-        else if plant.daysLeftTillFullyGrown <= plant.initialDaysToGrow / 2 && plant.initialDaysToGrow > 1 { Image(systemName: "leaf.fill").resizable().scaledToFit().foregroundColor(.green).padding(15) }
-        else { Image(systemName: "circle.dotted").resizable().scaledToFit().foregroundColor(Color.brown.opacity(0.7)).padding(25) }
-    }
+            if plant.isFullyGrown {
+                PlantVisualDisplayView(assetName: plant.assetName, rarity: plant.rarity, displayName: plant.name, isIcon: false)
+            }
+            else if plant.initialDaysToGrow > 1 && plant.daysLeftTillFullyGrown <= plant.initialDaysToGrow / 2 {
+                Image("seedling")
+                    .resizable()
+                    .scaledToFit()
+                    .padding(15)
+            }
+            else {
+                Image("seed")
+                    .resizable()
+                    .scaledToFit()
+                    .padding(25)
+            }
+        }
     
     private func plotBackgroundColor() -> Color {
         if plant.isFullyGrown { return .yellow.opacity(0.25) }
