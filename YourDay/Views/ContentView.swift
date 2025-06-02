@@ -7,7 +7,10 @@ struct ContentView: View {
 
     @Query(sort: \PlayerStats.playerLevel) private var localPlayerStatsList: [PlayerStats]
     private var currentPlayerStats: PlayerStats? {
-        localPlayerStatsList.first
+        if localPlayerStatsList.isEmpty {
+            return nil
+        }
+        return localPlayerStatsList.first
     }
 
     @StateObject private var loginViewModel = LoginViewModel()
@@ -16,9 +19,13 @@ struct ContentView: View {
     @State private var signOutErrorMessage = ""
     @State private var showLastDayView = false
     @AppStorage("lastSummaryDate") private var lastSummaryDateString: String = ""
+    @AppStorage("lastAppOpenDateForWitheringCheck") private var lastAppOpenDateForWitheringCheckString: String = ""
 
     @State private var showMigrateTasksView = false
     @State private var newDayEvaluationTriggeredLastDayView = false
+    
+    @State private var showWitheringAlert = false
+    @State private var witheringAlertMessage = ""
 
     @Query private var allTodoItems: [TodoItem]
     @StateObject private var todoViewModel = TodoViewModel()
@@ -58,16 +65,11 @@ struct ContentView: View {
                 .sheet(isPresented: $showLastDayView, onDismiss: {
                     if newDayEvaluationTriggeredLastDayView {
                         newDayEvaluationTriggeredLastDayView = false
-                        
-                        // Check if there are tasks that MigrateTasksView would display
-                        // This check is performed AFTER old completed tasks are deleted.
                         let tasksThatNeedReview = allTodoItems.filter { todoItem in
                              !todoItem.isDone || todoItem.subtasks.contains(where: { !$0.isDone })
                          }
                         if !tasksThatNeedReview.isEmpty {
                             self.showMigrateTasksView = true
-                        } else {
-                             print("ContentView: No tasks to migrate after LastDayView dismissal.")
                         }
                     }
                 }) {
@@ -87,19 +89,33 @@ struct ContentView: View {
                             .environment(\.modelContext, modelContext)
                     }
                 }
+                .alert("Plant Care Notice", isPresented: $showWitheringAlert) {
+                    Button("OK") {}
+                } message: {
+                    Text(witheringAlertMessage)
+                }
+
             } else {
                 LoginView(viewModel: loginViewModel)
             }
         }
         .onAppear {
-            if loginViewModel.isAuthenticated {
-                loginViewModel.handleUserSession(localPlayerStats: currentPlayerStats, modelContext: modelContext)
+            if loginViewModel.isAuthenticated && localPlayerStatsList.isEmpty {
+                let newStats = PlayerStats()
+                modelContext.insert(newStats)
+                do {
+                    try modelContext.save()
+                    loginViewModel.handleUserSession(localPlayerStats: newStats, modelContext: modelContext)
+                } catch {
+                    // Error saving initial PlayerStats
+                }
+            } else if loginViewModel.isAuthenticated, let stats = currentPlayerStats {
+                loginViewModel.handleUserSession(localPlayerStats: stats, modelContext: modelContext)
             }
         }
         .onChange(of: loginViewModel.isAuthenticated) { _, userIsAuthenticated in
             if userIsAuthenticated {
-                let currentLocalStatsOnChange = localPlayerStatsList.first
-                loginViewModel.handleUserSession(localPlayerStats: currentLocalStatsOnChange, modelContext: modelContext)
+                loginViewModel.handleUserSession(localPlayerStats: localPlayerStatsList.first, modelContext: modelContext)
             } else {
                 clearAllLocalUserDataOnLogout()
             }
@@ -131,7 +147,7 @@ struct ContentView: View {
         do {
             try modelContext.save()
         } catch {
-            print("ContentView: Error saving context after clearing all local data: \(error.localizedDescription)")
+            // Error saving context after clearing
         }
     }
 
@@ -139,35 +155,82 @@ struct ContentView: View {
         let descriptor = FetchDescriptor<T>()
         do {
             let fetchedItems = try modelContext.fetch(descriptor)
-            if fetchedItems.isEmpty {
-                return
-            }
-            for item in fetchedItems {
-                modelContext.delete(item)
-            }
+            if fetchedItems.isEmpty { return }
+            for item in fetchedItems { modelContext.delete(item) }
         } catch {
-            print("ContentView: Error fetching local \(String(describing:modelType)) for deletion: \(error.localizedDescription)")
+            // Error fetching for deletion
         }
     }
 
     private func processNewDayLogicIfNeeded() async {
+        guard let stats = currentPlayerStats else {
+            return
+        }
+
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
         let todayString = formatter.string(from: today)
 
-        if todayString != lastSummaryDateString {
-            print("ContentView: New day detected. Processing end-of-day tasks.")
+        // --- Plant Withering Logic ---
+        if todayString != lastAppOpenDateForWitheringCheckString {
+            if let lastLoginActual = stats.lastLoginDate {
+                let daysSinceLastLogin = calendar.dateComponents([.day], from: lastLoginActual, to: today).day ?? 0
+                
+                if daysSinceLastLogin > 5 { // More than 5 days of inactivity
+                    var witheredCount = 0
+                    // Get indices of plants that are fully grown and NOT already the "Withered Plant" by name
+                    let fullyGrownPlantIndices = stats.placedPlants.indices.filter { index in
+                        let plant = stats.placedPlants[index]
+                        return plant.isFullyGrown && plant.name != PlantLibrary.blueprint(withId: "withered_1")?.name
+                    }
+                    
+                    if !fullyGrownPlantIndices.isEmpty {
+                        let numberToWither = Int(ceil(Double(fullyGrownPlantIndices.count) / 3.0))
+                        let indicesToWither = fullyGrownPlantIndices.shuffled().prefix(numberToWither)
+                        
+                        if let witheredBlueprint = PlantLibrary.blueprint(withId: "withered_1") {
+                            for index in indicesToWither {
+                                if index < stats.placedPlants.count {
+                                    // Modify the existing plant's properties to match the withered blueprint
+                                    stats.placedPlants[index].name = witheredBlueprint.name
+                                    stats.placedPlants[index].assetName = witheredBlueprint.assetName
+                                    stats.placedPlants[index].iconName = witheredBlueprint.iconName
+                                    stats.placedPlants[index].rarity = witheredBlueprint.rarity
+                                    stats.placedPlants[index].theme = witheredBlueprint.theme
+                                    stats.placedPlants[index].baseValue = witheredBlueprint.baseValue
+                                    stats.placedPlants[index].daysLeftTillFullyGrown = witheredBlueprint.initialDaysToGrow // Should be 0
+                                    stats.placedPlants[index].initialDaysToGrow = witheredBlueprint.initialDaysToGrow // Should be 0
+                                    // Other properties like plantedDate and position remain the same.
+                                    witheredCount += 1
+                                }
+                            }
+                        }
+                        if witheredCount > 0 {
+                            self.witheringAlertMessage = "Welcome back! It's been \(daysSinceLastLogin) days. Unfortunately, \(witheredCount) of your plants withered."
+                            self.showWitheringAlert = true
+                            stats.updateGardenValue()
+                        }
+                    }
+                }
+            }
+            stats.lastLoginDate = today
+            lastAppOpenDateForWitheringCheckString = todayString
             
-            // 1. Evaluate points for the day that just ended (using tasks before any cleanup)
-            let (points, _) = PointManager.evaluateDailyPoints(context: modelContext, tasks: allTodoItems)
-            print("ContentView: Points evaluated for the previous day: \(points)")
+            do {
+                try modelContext.save()
+                loginViewModel.syncLocalPlayerStatsToFirestore(playerStatsModel: stats)
+            } catch {
+                // Error saving PlayerStats
+            }
+        }
 
-            // 2. Delete tasks from previous days that are marked as done
-            await deleteOldDoneTasks() // Renamed for clarity
-            
-            // 3. Check for tasks that MigrateTasksView would display
+        // --- Daily ToDo Points Summary & Migration Logic ---
+        if todayString != lastSummaryDateString {
+            let (points, _) = PointManager.evaluateDailyPoints(context: modelContext, tasks: allTodoItems)
+            await deleteOldDoneTasks()
+
             let tasksThatNeedReview = allTodoItems.filter { todoItem in
                 !todoItem.isDone || todoItem.subtasks.contains(where: { !$0.isDone })
             }
@@ -178,10 +241,7 @@ struct ContentView: View {
             } else {
                 newDayEvaluationTriggeredLastDayView = false
                 if !tasksThatNeedReview.isEmpty {
-                     print("ContentView: New day, no points, but tasks to review exist. Showing MigrateTasksView directly.")
                      showMigrateTasksView = true
-                } else {
-                    print("ContentView: New day, no points, and no tasks to migrate/review.")
                 }
             }
             lastSummaryDateString = todayString
@@ -190,32 +250,19 @@ struct ContentView: View {
         }
     }
 
-    // Renamed and simplified to delete old tasks that are simply marked "isDone"
     private func deleteOldDoneTasks() async {
-        print("ContentView: Attempting to delete old tasks marked as done...")
         let startOfToday = Calendar.current.startOfDay(for: Date())
-        
-        // Predicate for tasks due before today AND are marked as done
         let oldDoneTasksPredicate = #Predicate<TodoItem> {
-            $0.isDone == true
+            $0.dueDate < startOfToday && $0.isDone == true
         }
         let descriptor = FetchDescriptor<TodoItem>(predicate: oldDoneTasksPredicate)
-
         do {
             let tasksToDelete = try modelContext.fetch(descriptor)
-            if tasksToDelete.isEmpty {
-                print("ContentView: No old tasks marked as done found to delete.")
-                return
-            }
-
-            print("ContentView: Found \(tasksToDelete.count) old tasks marked as done to delete.")
-            for task in tasksToDelete {
-                modelContext.delete(task)
-            }
+            if tasksToDelete.isEmpty { return }
+            for task in tasksToDelete { modelContext.delete(task) }
             try modelContext.save()
-            print("ContentView: Successfully deleted old tasks marked as done.")
         } catch {
-            print("ContentView: Error deleting old tasks marked as done: \(error.localizedDescription)")
+            // Error deleting old done tasks
         }
     }
 }

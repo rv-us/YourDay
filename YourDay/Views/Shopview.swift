@@ -46,6 +46,8 @@ struct ThemeBannerView: View {
         case .summer: return "TG-banner-summer"
         case .fall:   return "TG-banner-fall"
         case .winter: return "TG-banner-winter"
+        case .special:
+            return "TG-banner-winter"
         }
     }
 
@@ -98,6 +100,8 @@ struct ThemePullView: View {
             case .summer: return "TG-banner-summer"
             case .fall:   return "TG-banner-fall"
             case .winter: return "TG-banner-winter"
+            case .special:
+                return "TG-banner-winter"
             }
         }
 
