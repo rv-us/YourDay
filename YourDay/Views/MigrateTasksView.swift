@@ -5,10 +5,12 @@ struct MigrateTasksView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
+    // Fetches all TodoItems. Filtering for display is done in tasksToReview.
     @Query private var allTodoItems: [TodoItem]
-    // Changed to store PersistentIdentifier for direct comparison with task.id
     @State private var selectedTasksToMigrate: Set<PersistentIdentifier> = []
 
+    // tasksToReview shows items that are incomplete OR have incomplete subtasks.
+    // These are the candidates for migration or deletion.
     private var tasksToReview: [TodoItem] {
         allTodoItems.filter { todoItem in
             let isMainTaskIncomplete = !todoItem.isDone
@@ -22,19 +24,19 @@ struct MigrateTasksView: View {
             VStack {
                 if tasksToReview.isEmpty {
                     Spacer()
-                    Text("No relevant tasks to review or migrate!")
+                    Text("No tasks need review or migration!")
                         .font(.title2)
                         .foregroundColor(.gray)
                         .multilineTextAlignment(.center)
                         .padding()
                     Spacer()
                 } else {
-                    Text("Select tasks with incomplete items to move to today's list:")
+                    Text("Select tasks to move to today's list:")
                         .font(.headline)
                         .padding(.top)
                     
                     List {
-                        ForEach(tasksToReview) { task in // task.id here is PersistentIdentifier
+                        ForEach(tasksToReview) { task in
                             HStack {
                                 VStack(alignment: .leading) {
                                     Text(task.title)
@@ -42,8 +44,7 @@ struct MigrateTasksView: View {
                                         // Strikethrough if main task is done AND no subtasks are pending
                                         .strikethrough(task.isDone && !task.subtasks.contains(where: {!$0.isDone}), color: .gray)
                                     
-                                    // Corrected: If task.detail is String (not String?)
-                                    if !task.detail.isEmpty { // Assuming task.detail is non-optional String
+                                    if !task.detail.isEmpty {
                                         Text(task.detail)
                                             .font(.caption)
                                             .foregroundColor(.gray)
@@ -65,14 +66,12 @@ struct MigrateTasksView: View {
                                     }
                                 }
                                 Spacer()
-                                // Use task.id (PersistentIdentifier) for selection state
                                 Image(systemName: selectedTasksToMigrate.contains(task.id) ? "checkmark.circle.fill" : "circle")
                                     .foregroundColor(selectedTasksToMigrate.contains(task.id) ? .blue : .gray)
                                     .font(.title2)
                             }
                             .contentShape(Rectangle())
                             .onTapGesture {
-                                // Use task.id (PersistentIdentifier) for selection
                                 if selectedTasksToMigrate.contains(task.id) {
                                     selectedTasksToMigrate.remove(task.id)
                                 } else {
@@ -86,27 +85,34 @@ struct MigrateTasksView: View {
                 VStack(spacing: 15) {
                     if !tasksToReview.isEmpty {
                         Button {
-                            migrateSelectedTasks()
+                            processTaskSelections()
                             dismiss()
                         } label: {
-                            Text("Add \(selectedTasksToMigrate.count) Selected to Today")
+                            Text("Confirm Selections (\(selectedTasksToMigrate.count) for Today)")
                                 .font(.headline)
                                 .padding()
                                 .frame(maxWidth: .infinity)
-                                .background(selectedTasksToMigrate.isEmpty ? Color.gray.opacity(0.5) : Color.blue)
+                                .background(Color.blue) // Always enabled if tasksToReview isn't empty
                                 .foregroundColor(.white)
                                 .cornerRadius(10)
                         }
-                        .disabled(selectedTasksToMigrate.isEmpty)
                     }
 
+                    // This button is now more of a "discard all remaining unmigrated tasks"
+                    // if the user doesn't want to select any.
+                    // Or it can be removed if the above button handles all cases.
+                    // For simplicity, let's assume the above button is the primary action.
+                    // If no tasks are selected, it means "delete all reviewed tasks".
+                    // If some are selected, it means "migrate selected, delete others".
+                    // So, the "Skip & Delete All Reviewed Tasks" button might be redundant
+                    // or can be rephrased if needed. Let's keep it for now for explicit "discard all".
                     Button {
                         if !tasksToReview.isEmpty {
-                             clearAllReviewedTasks()
+                             deleteAllReviewedTasks()
                         }
                         dismiss()
                     } label: {
-                        Text(tasksToReview.isEmpty ? "All Clear! Start Fresh" : "Skip & Delete Reviewed Tasks")
+                        Text(tasksToReview.isEmpty ? "All Clear!" : "Discard All Reviewed Tasks")
                             .font(.headline)
                             .padding()
                             .frame(maxWidth: .infinity)
@@ -117,11 +123,11 @@ struct MigrateTasksView: View {
                 }
                 .padding()
             }
-            .navigationTitle("Review Incomplete Tasks")
+            .navigationTitle("Review Old Tasks")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Later") {
+                    Button("Later") { // "Later" button does not delete anything
                         dismiss()
                     }
                 }
@@ -129,45 +135,42 @@ struct MigrateTasksView: View {
         }
     }
 
-    private func migrateSelectedTasks() {
+    private func processTaskSelections() {
         let today = Calendar.current.startOfDay(for: Date())
-        // taskID is now a PersistentIdentifier
-        for taskID in selectedTasksToMigrate {
-            // Find the original task by its PersistentIdentifier
-            if let originalTask = tasksToReview.first(where: { $0.id == taskID }) {
-                
-                let newSubtasks = originalTask.subtasks.map { oldSubtask in
-                    Subtask(id: UUID(), title: oldSubtask.title, isDone: false, completedAt: nil)
-                }
 
-                let newTask = TodoItem(
-                    title: originalTask.title,
-                    detail: originalTask.detail,
-                    dueDate: today,
-                    isDone: false,
-                    subtasks: newSubtasks
-                )
-                
-                modelContext.insert(newTask)
-                modelContext.delete(originalTask)
+        for taskInReview in tasksToReview {
+            if selectedTasksToMigrate.contains(taskInReview.id) {
+                // Task is selected for migration: update its due date and reset isDone
+                taskInReview.dueDate = today
+                taskInReview.isDone = false // Main task is reset to not done for the new day
+                taskInReview.completedAt = nil // Reset completion date
+                // Subtasks' isDone status is preserved as per their original state.
+                // If you wanted to reset subtasks too, you'd iterate and set them to false.
+                print("Migrating task: \(taskInReview.title) to today. Subtask statuses preserved.")
+            } else {
+                // Task was reviewed but NOT selected for migration: delete it
+                print("Deleting unselected task: \(taskInReview.title)")
+                modelContext.delete(taskInReview)
             }
         }
         
         do {
             try modelContext.save()
         } catch {
-            print("Error saving context after migrating tasks: \(error.localizedDescription)")
+            print("Error saving context after processing task selections: \(error.localizedDescription)")
         }
     }
 
-    private func clearAllReviewedTasks() {
+    private func deleteAllReviewedTasks() {
+        // This function is for the "Discard All Reviewed Tasks" button
         for task in tasksToReview {
+            print("Deleting task via 'Discard All': \(task.title)")
             modelContext.delete(task)
         }
         do {
             try modelContext.save()
         } catch {
-            print("Error saving context after clearing reviewed tasks: \(error.localizedDescription)")
+            print("Error saving context after discarding all reviewed tasks: \(error.localizedDescription)")
         }
     }
 }

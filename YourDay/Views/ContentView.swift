@@ -20,7 +20,7 @@ struct ContentView: View {
     @State private var showMigrateTasksView = false
     @State private var newDayEvaluationTriggeredLastDayView = false
 
-    @Query private var allTasks: [TodoItem]
+    @Query private var allTodoItems: [TodoItem]
     @StateObject private var todoViewModel = TodoViewModel()
 
     var body: some View {
@@ -53,12 +53,22 @@ struct ContentView: View {
                          .tabItem { Label("Settings", systemImage: "gearshape.fill") }
                 }
                 .task {
-                    checkIfShouldEvaluatePoints()
+                    await processNewDayLogicIfNeeded()
                 }
                 .sheet(isPresented: $showLastDayView, onDismiss: {
                     if newDayEvaluationTriggeredLastDayView {
                         newDayEvaluationTriggeredLastDayView = false
-                        self.showMigrateTasksView = true
+                        
+                        // Check if there are tasks that MigrateTasksView would display
+                        // This check is performed AFTER old completed tasks are deleted.
+                        let tasksThatNeedReview = allTodoItems.filter { todoItem in
+                             !todoItem.isDone || todoItem.subtasks.contains(where: { !$0.isDone })
+                         }
+                        if !tasksThatNeedReview.isEmpty {
+                            self.showMigrateTasksView = true
+                        } else {
+                             print("ContentView: No tasks to migrate after LastDayView dismissal.")
+                        }
                     }
                 }) {
                     NavigationView {
@@ -121,7 +131,7 @@ struct ContentView: View {
         do {
             try modelContext.save()
         } catch {
-            print("Error saving context after clearing all local data: \(error.localizedDescription)")
+            print("ContentView: Error saving context after clearing all local data: \(error.localizedDescription)")
         }
     }
 
@@ -136,11 +146,11 @@ struct ContentView: View {
                 modelContext.delete(item)
             }
         } catch {
-            print("Error fetching local \(String(describing:modelType)) for deletion: \(error.localizedDescription)")
+            print("ContentView: Error fetching local \(String(describing:modelType)) for deletion: \(error.localizedDescription)")
         }
     }
 
-    func checkIfShouldEvaluatePoints() {
+    private func processNewDayLogicIfNeeded() async {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
         let formatter = DateFormatter()
@@ -148,18 +158,64 @@ struct ContentView: View {
         let todayString = formatter.string(from: today)
 
         if todayString != lastSummaryDateString {
-            let (points, _) = PointManager.evaluateDailyPoints(context: modelContext, tasks: allTasks)
+            print("ContentView: New day detected. Processing end-of-day tasks.")
             
+            // 1. Evaluate points for the day that just ended (using tasks before any cleanup)
+            let (points, _) = PointManager.evaluateDailyPoints(context: modelContext, tasks: allTodoItems)
+            print("ContentView: Points evaluated for the previous day: \(points)")
+
+            // 2. Delete tasks from previous days that are marked as done
+            await deleteOldDoneTasks() // Renamed for clarity
+            
+            // 3. Check for tasks that MigrateTasksView would display
+            let tasksThatNeedReview = allTodoItems.filter { todoItem in
+                !todoItem.isDone || todoItem.subtasks.contains(where: { !$0.isDone })
+            }
+
             if points > 0 {
                 newDayEvaluationTriggeredLastDayView = true
                 showLastDayView = true
-                lastSummaryDateString = todayString
             } else {
-                lastSummaryDateString = todayString
                 newDayEvaluationTriggeredLastDayView = false
+                if !tasksThatNeedReview.isEmpty {
+                     print("ContentView: New day, no points, but tasks to review exist. Showing MigrateTasksView directly.")
+                     showMigrateTasksView = true
+                } else {
+                    print("ContentView: New day, no points, and no tasks to migrate/review.")
+                }
             }
+            lastSummaryDateString = todayString
         } else {
             newDayEvaluationTriggeredLastDayView = false
+        }
+    }
+
+    // Renamed and simplified to delete old tasks that are simply marked "isDone"
+    private func deleteOldDoneTasks() async {
+        print("ContentView: Attempting to delete old tasks marked as done...")
+        let startOfToday = Calendar.current.startOfDay(for: Date())
+        
+        // Predicate for tasks due before today AND are marked as done
+        let oldDoneTasksPredicate = #Predicate<TodoItem> {
+            $0.isDone == true
+        }
+        let descriptor = FetchDescriptor<TodoItem>(predicate: oldDoneTasksPredicate)
+
+        do {
+            let tasksToDelete = try modelContext.fetch(descriptor)
+            if tasksToDelete.isEmpty {
+                print("ContentView: No old tasks marked as done found to delete.")
+                return
+            }
+
+            print("ContentView: Found \(tasksToDelete.count) old tasks marked as done to delete.")
+            for task in tasksToDelete {
+                modelContext.delete(task)
+            }
+            try modelContext.save()
+            print("ContentView: Successfully deleted old tasks marked as done.")
+        } catch {
+            print("ContentView: Error deleting old tasks marked as done: \(error.localizedDescription)")
         }
     }
 }
