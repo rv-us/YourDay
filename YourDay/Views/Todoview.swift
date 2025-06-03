@@ -13,6 +13,13 @@ struct Todoview: View {
     @Environment(\.modelContext) private var context
     @StateObject var viewModel = TodoViewModel()
     @StateObject var loginViewModel = LoginViewModel()
+    
+    @AppStorage("hasCompletedTodoTutorial") private var hasCompletedTodoTutorial = false
+    @State private var showTodoTutorial = false
+    @State private var currentTodoTutorialStep: TodoTutorialStep = .welcome
+    @State private var highlightAddButton = false
+    @State private var highlightSettingsButton = false
+    @State private var previousInProgressCount = 0
 
     @Query(sort: [SortDescriptor(\TodoItem.dueDate, order: .reverse)]) private var items: [TodoItem]
     
@@ -67,23 +74,95 @@ struct Todoview: View {
                 .listStyle(InsetGroupedListStyle())
             }
             .navigationTitle("To Do List")
+            .onAppear {
+                if !hasCompletedTodoTutorial {
+                    showTodoTutorial = true
+                }
+                previousInProgressCount = items.filter { !$0.isDone }.count
+            }
+            .onChange(of: currentTodoTutorialStep) { newStep in
+                // Reset all highlights
+                highlightAddButton = false
+                highlightSettingsButton = false
+
+                // Set based on current step
+                switch newStep {
+                case .explainAdd:
+                    highlightAddButton = true
+                case .explainSettings:
+                    highlightSettingsButton = true
+                default:
+                    break
+                }
+            }
+            .onChange(of: items.filter { !$0.isDone }.count) { newCount in
+                if currentTodoTutorialStep == .explainAdd && newCount > previousInProgressCount {
+                    currentTodoTutorialStep = .explainSettings
+                }
+                previousInProgressCount = newCount
+            }
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) { // Ensure buttons are on the trailing side
+                ToolbarItem(placement: .navigationBarTrailing) {
                     HStack {
-                        Button {
-                            viewModel.showingNewItemView = true
-                        } label: {
-                            Image(systemName: "plus")
+                        ZStack(alignment: .center) {
+                            if highlightAddButton {
+                                Circle()
+                                    .fill(Color.yellow.opacity(0.4))
+                                    .frame(width: 44, height: 44)
+                                    .offset(x: 4)
+                                    .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: highlightAddButton)
+                            }
+
+                            Button(action: {
+                                viewModel.showingNewItemView = true
+                            }) {
+                                Image(systemName: "plus")
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 22, height: 22)
+                                    .foregroundColor(.blue)
+                                    .frame(width: 44, height: 44) // ensures consistent touch + highlight area
+                                    .contentShape(Rectangle())   // ensures full area is tappable
+                            }
                         }
-                        
-                        Button {
-                            viewModel.showingSettings = true
-                        } label: {
-                            Image(systemName: "gear")
+
+                        ZStack(alignment: .center) {
+                            if highlightSettingsButton {
+                                Circle()
+                                    .fill(Color.yellow.opacity(0.4))
+                                    .frame(width: 44, height: 44)
+                                    .offset(x: 4)
+                                    .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: highlightSettingsButton)
+                            }
+
+                            Button(action: {
+                                viewModel.showingSettings = true
+                            }) {
+                                Image(systemName: "gear")
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 22, height: 22)
+                                    .foregroundColor(.blue)
+                                    .frame(width: 44, height: 44)
+                                    .contentShape(Rectangle())
+                            }
                         }
                     }
                 }
             }
+            .overlay(
+                Group {
+                    if showTodoTutorial {
+                        TodoTutorialOverlay(
+                            currentStep: $currentTodoTutorialStep,
+                            isActive: $showTodoTutorial,
+                            hasCompletedTutorialPreviously: $hasCompletedTodoTutorial,
+                            highlightAdd: $highlightAddButton,
+                            highlightSettings: $highlightSettingsButton
+                        )
+                    }
+                }
+            )
             .sheet(isPresented: $viewModel.showingSettings) {
                 NotificationSettingsView(
                     todoViewModel: viewModel,
