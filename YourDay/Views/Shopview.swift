@@ -2,7 +2,7 @@
 //  ShopView.swift
 //  YourDay
 //
-//  Created by Your Name on 5/9/25.
+//  Created by RachitVerma on 5/9/25.
 //
 
 import SwiftUI
@@ -40,24 +40,29 @@ struct ShopView: View {
 
 struct ThemeBannerView: View {
     let theme: PlantTheme
-    private func bannerBackgroundColor() -> Color {
+    private func bannerImageName() -> String {
         switch theme {
-        case .spring: return .green.opacity(0.7)
-        case .summer: return .yellow.opacity(0.7)
-        case .fall:   return .orange.opacity(0.7)
-        case .winter: return .blue.opacity(0.7)
+        case .spring: return "TG-banner-spring"
+        case .summer: return "TG-banner-summer"
+        case .fall:   return "TG-banner-fall"
+        case .winter: return "TG-banner-winter"
+        case .special:
+            return "TG-banner-winter"
         }
     }
 
     var body: some View {
         VStack {
-            Rectangle()
-                .fill(bannerBackgroundColor())
-                .frame(height: 120).cornerRadius(15)
+            Image(bannerImageName())
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .frame(height: 120)
+                .cornerRadius(15)
                 .overlay( VStack {
                     Text(theme.rawValue).font(.title).fontWeight(.bold).foregroundColor(.white)
                     Text("Tap to Pull!").font(.caption).foregroundColor(.white.opacity(0.8))
-                }).shadow(radius: 5)
+                })
+                .shadow(radius: 5)
         }.padding(.vertical, 5)
     }
 }
@@ -89,25 +94,34 @@ struct ThemePullView: View {
     var maxShuffleCycles: Int { Int(shuffleDurationSeconds / shuffleInterval) }
 
 
-    private func bannerBackgroundColor() -> Color {
-        switch theme {
-        case .spring: return .green.opacity(0.8)
-        case .summer: return .yellow.opacity(0.8)
-        case .fall:   return .orange.opacity(0.8)
-        case .winter: return .blue.opacity(0.8)
+    private func themePageBannerImageName() -> String {
+            switch theme {
+            case .spring: return "TG-banner-spring"
+            case .summer: return "TG-banner-summer"
+            case .fall:   return "TG-banner-fall"
+            case .winter: return "TG-banner-winter"
+            case .special:
+                return "TG-banner-winter"
+            }
         }
-    }
 
     var body: some View {
         ZStack {
             ScrollView {
                 VStack(spacing: 20) {
-                    Rectangle()
-                        .fill(bannerBackgroundColor())
-                        .frame(height: 200).cornerRadius(10)
-                        .overlay(Text("\(theme.rawValue) Theme").font(.system(size: 36, weight: .bold)).foregroundColor(.white).shadow(radius: 3))
-                        .padding(.vertical)
-
+                    Image(themePageBannerImageName())
+                                            .resizable()
+                                            .scaledToFill()
+                                            .frame(width: 350, height: 180)
+                                            .cornerRadius(10)
+                                            .clipped()
+                                            .overlay(
+                                                Text("\(theme.rawValue) Theme")
+                                                    .font(.system(size: 36, weight: .bold))
+                                                    .foregroundColor(.white)
+                                                    .shadow(radius: 3)
+                                            )
+                                            .padding(.vertical)
                     Text("Current Points: \(Int(playerStats.totalPoints))").font(.headline)
 
                     VStack(spacing: 15) {

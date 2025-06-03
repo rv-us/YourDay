@@ -17,6 +17,7 @@ struct PlayerStatsCodable: Codable, Identifiable {
     var id: UUID
     var totalPoints: Double
     var lastEvaluated: Date?
+    var lastLoginDate: Date?
     var playerLevel: Int
     var currentXP: Double
     var gardenValue: Double // This will now be taken from the model during conversion
@@ -30,6 +31,7 @@ struct PlayerStatsCodable: Codable, Identifiable {
         id: UUID = UUID(),
         totalPoints: Double = 100,
         lastEvaluated: Date? = nil,
+        lastLoginDate: Date? = Calendar.current.startOfDay(for:Date()),
         playerLevel: Int = 1,
         currentXP: Double = 0,
         unplacedPlantsInventory: [String: Int] = [:],
@@ -40,6 +42,7 @@ struct PlayerStatsCodable: Codable, Identifiable {
         self.id = id
         self.totalPoints = totalPoints
         self.lastEvaluated = lastEvaluated
+        self.lastLoginDate = lastLoginDate
         self.playerLevel = playerLevel
         self.currentXP = currentXP
         self.unplacedPlantsInventory = unplacedPlantsInventory
@@ -61,6 +64,7 @@ struct PlayerStatsCodable: Codable, Identifiable {
         self.id = model.id // Assuming PlayerStats @Model has a UUID id
         self.totalPoints = model.totalPoints
         self.lastEvaluated = model.lastEvaluated
+        self.lastLoginDate = model.lastLoginDate
         self.playerLevel = model.playerLevel
         self.currentXP = model.currentXP
         self.gardenValue = model.gardenValue // Take the calculated value from the model
@@ -74,17 +78,19 @@ struct PlayerStatsCodable: Codable, Identifiable {
     // This is used when loading data from Firestore and populating/updating SwiftData.
     // The actual insertion/update into ModelContext happens where this is called.
     func toPlayerStatsModelProperties() -> (
-        id: UUID, totalPoints: Double, lastEvaluated: Date?, playerLevel: Int, currentXP: Double,
+        id: UUID, totalPoints: Double, lastEvaluated: Date?, lastLoginDate: Date?,
+                playerLevel: Int, currentXP: Double,
         gardenValue: Double, unplacedPlantsInventory: [String: Int], placedPlants: [PlacedPlant],
         numberOfOwnedPlots: Int, fertilizerCount: Int
     ) {
         return (
-            id: self.id, // Pass the ID for potential matching
+            id: self.id,
             totalPoints: self.totalPoints,
             lastEvaluated: self.lastEvaluated,
+            lastLoginDate: self.lastLoginDate,
             playerLevel: self.playerLevel,
             currentXP: self.currentXP,
-            gardenValue: self.gardenValue, // Use the value from Firestore
+            gardenValue: self.gardenValue, 
             unplacedPlantsInventory: self.unplacedPlantsInventory,
             placedPlants: self.placedPlants,
             numberOfOwnedPlots: self.numberOfOwnedPlots,

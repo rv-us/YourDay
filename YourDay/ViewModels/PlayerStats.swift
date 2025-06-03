@@ -46,6 +46,7 @@ enum PlantTheme: String, Codable, CaseIterable, Hashable {
     case summer = "Summer"
     case fall = "Fall"
     case winter = "Winter"
+    case special = "Special"
 
     // Example color property
     var color: Color {
@@ -54,6 +55,7 @@ enum PlantTheme: String, Codable, CaseIterable, Hashable {
         case .summer: return Color.yellow // Changed from .yellow to Color.yellow
         case .fall:   return .orange
         case .winter: return Color.blue
+        case .special: return .gray
         }
     }
 }
@@ -160,12 +162,13 @@ struct PlacedPlant: Codable, Identifiable, Hashable {
 class PlayerStats {
     var id: UUID = UUID()
     var totalPoints: Double
-    var lastEvaluated: Date?
+    var lastEvaluated: Date? // For daily point summary of TodoItems
+    var lastLoginDate: Date? // NEW: To track the last login date for withering
 
     var playerLevel: Int
     var currentXP: Double
     var gardenValue: Double
-    var unplacedPlantsInventory: [String: Int]
+    var unplacedPlantsInventory: [String: Int] // Key is PlantBlueprint.id
     var placedPlants: [PlacedPlant]
     var numberOfOwnedPlots: Int
     var fertilizerCount: Int
@@ -173,6 +176,7 @@ class PlayerStats {
     init(
         totalPoints: Double = 100,
         lastEvaluated: Date? = nil,
+        lastLoginDate: Date? = Calendar.current.startOfDay(for:Date()),
         playerLevel: Int = 1,
         currentXP: Double = 0,
         unplacedPlantsInventory: [String: Int] = [:],
@@ -183,6 +187,7 @@ class PlayerStats {
         self.id = UUID()
         self.totalPoints = totalPoints
         self.lastEvaluated = lastEvaluated
+        self.lastLoginDate = lastLoginDate
         self.playerLevel = playerLevel
         self.currentXP = currentXP
         self.gardenValue = 0
