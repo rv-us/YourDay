@@ -65,8 +65,7 @@ cd yourday
 - Onboarding tutorial state is managed via `@AppStorage`.
 - Lottie animations are embedded using a `UIViewRepresentable` wrapper for SwiftUI.
 - Local and push notifications are handled in `TodoViewModel`.
-- Sparkle animations appear when a task is marked as completed.
-
+  
 ---
 
 ## Project Structure
