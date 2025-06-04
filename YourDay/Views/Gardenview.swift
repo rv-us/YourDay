@@ -188,13 +188,36 @@ struct GardenView: View {
                 return
             }
 
+//            if !playerStats.unplacedPlantsInventory.isEmpty {
+//                currentTutorialStep = .explainPlanting
+//                isTutorialActive = true
+//            } else {
+//                currentTutorialStep = .explainShop
+//                isTutorialActive = true
+//                showStandardAlert(title: "Still Need Plants!", message: "It looks like you haven't acquired any plants yet. Please visit the shop to get some seeds or saplings!")
+//            }
+            let canAffordAnyPlant = playerStats.totalPoints >= 100
+
             if !playerStats.unplacedPlantsInventory.isEmpty {
+                // User got plants → proceed to planting
                 currentTutorialStep = .explainPlanting
                 isTutorialActive = true
+            } else if !canAffordAnyPlant {
+                // User couldn't afford anything → skip to next logical step
+                currentTutorialStep = .explainPlotsValue
+                isTutorialActive = true
+                showStandardAlert(
+                    title: "Out of Points",
+                    message: "You don't have enough points to buy plants right now. Earn more points and come back anytime!"
+                )
             } else {
+                // User visited shop but didn’t buy anything (yet can afford)
                 currentTutorialStep = .explainShop
                 isTutorialActive = true
-                showStandardAlert(title: "Still Need Plants!", message: "It looks like you haven't acquired any plants yet. Please visit the shop to get some seeds or saplings!")
+                showStandardAlert(
+                    title: "Still Need Plants!",
+                    message: "It looks like you haven't acquired any plants yet. Please visit the shop to get some seeds or saplings!"
+                )
             }
         }
     }

@@ -21,7 +21,8 @@ struct Todoview: View {
     @State private var highlightSummaryButton = false
     @State private var previousInProgressCount = 0
 
-    @Query(sort: [SortDescriptor(\TodoItem.dueDate, order: .reverse)]) private var items: [TodoItem]
+//    @Query(sort: [SortDescriptor(\TodoItem.dueDate, order: .reverse)]) private var items: [TodoItem]
+    @Query(sort: [SortDescriptor(\TodoItem.position)]) private var items: [TodoItem]
     
     @Query(sort: \PlayerStats.playerLevel) private var playerStatsList: [PlayerStats]
     private var currentPlayerStats: PlayerStats? {
@@ -47,6 +48,7 @@ struct Todoview: View {
                         ForEach(items.filter { !$0.isDone }) { item in
                             TodoListItemView(item: item)
                         }
+                        .onMove(perform: moveItem)
                         .onDelete { indexSet in
                             for index in indexSet {
                                 let activeItems = items.filter { !$0.isDone }
@@ -107,6 +109,9 @@ struct Todoview: View {
                 previousInProgressCount = newCount
             }
             .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    EditButton()
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     HStack {
                         ZStack(alignment: .center) {
@@ -163,7 +168,11 @@ struct Todoview: View {
                             isActive: $showTodoTutorial,
                             hasCompletedTutorialPreviously: $hasCompletedTodoTutorial,
                             highlightAdd: $highlightAddButton,
-                            highlightSettings: $highlightSummaryButton
+                            highlightSettings: $highlightSummaryButton,
+                            onDismiss: {
+                                highlightAddButton = false
+                                highlightSummaryButton = false
+                            }
                         )
                     }
                 }
@@ -182,6 +191,17 @@ struct Todoview: View {
         }
     }
 
+    func moveItem(from source: IndexSet, to destination: Int) {
+        var activeItems = items.filter { !$0.isDone }
+        activeItems.move(fromOffsets: source, toOffset: destination)
+
+        for (index, item) in activeItems.enumerated() {
+            item.position = index
+        }
+
+        try? context.save()
+    }
+    
     private func requestSignOut() {
         print("Todoview: Sign out requested from NotificationSettingsView.")
         // Use Todoview's local loginViewModel and currentPlayerStats

@@ -13,6 +13,8 @@ struct TodoTutorialOverlay: View {
     @Binding var hasCompletedTutorialPreviously: Bool
     @Binding var highlightAdd: Bool
     @Binding var highlightSettings: Bool
+    var onDismiss: () -> Void
+    
 
     var onAcknowledgeActionStep: (() -> Void)? = nil
 
@@ -92,6 +94,7 @@ struct TodoTutorialOverlay: View {
         isActive = false
         highlightAdd = false
         highlightSettings = false
+        onDismiss()
     }
 }
 
