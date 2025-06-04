@@ -36,7 +36,7 @@ If you have access to this repository and would like to run the app locally, fol
 #### Clone the Repository
 
 ```bash
-git clone https://github.com/your-username/yourday.git
+git clone https://github.com/rv-us/YourDay.git
 cd yourday
 ```
 
@@ -65,8 +65,7 @@ cd yourday
 - Onboarding tutorial state is managed via `@AppStorage`.
 - Lottie animations are embedded using a `UIViewRepresentable` wrapper for SwiftUI.
 - Local and push notifications are handled in `TodoViewModel`.
-- Sparkle animations appear when a task is marked as completed.
-
+  
 ---
 
 ## Project Structure
