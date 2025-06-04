@@ -17,11 +17,14 @@ class TodoItem {
     var subtasks: [Subtask] = []
     var completedAt: Date? = nil
 
-    init(title: String, detail: String, dueDate: Date, isDone: Bool = false, subtasks: [Subtask] = []) {
+    var position: Int = 0 // 🆕 Default to 0 to avoid optional handling
+
+    init(title: String, detail: String, dueDate: Date, isDone: Bool = false, subtasks: [Subtask] = [], position: Int = 0) {
         self.title = title
         self.detail = detail
         self.dueDate = dueDate
         self.isDone = isDone
         self.subtasks = subtasks
+        self.position = position
     }
 }

@@ -15,6 +15,11 @@ struct AddNotesView: View {
     @State private var isSelecting = false
     @State private var generatedTasks: [TodoItem] = []
     @State private var showingConfirmGeneratedTasks = false
+    
+    @AppStorage("hasCompletedNotesTutorial") private var hasCompletedNotesTutorial = false
+    @State private var showNotesTutorial = false
+    @State private var currentNotesTutorialStep: NotesTutorialStep = .welcome
+
 
     var body: some View {
         NavigationView {
@@ -73,6 +78,11 @@ struct AddNotesView: View {
                     Button {
                         isSelecting.toggle()
                         selectedNotes.removeAll()
+                        
+                        // ✅ End tutorial when selection starts
+                        if currentNotesTutorialStep == .selectNote {
+                            showNotesTutorial = false
+                        }
                     } label: {
                         Text(isSelecting ? "Cancel" : "Select Notes")
                     }
@@ -86,8 +96,16 @@ struct AddNotesView: View {
                     }
                 }
             }
+            .onChange(of: selectedNotes) { newSelection in
+                if currentNotesTutorialStep == .selectNote && !newSelection.isEmpty {
+                    currentNotesTutorialStep = .generateTasks
+                }
+            }
             .sheet(isPresented: $showingNewNoteView) {
-                NewNoteView(isPresented: $showingNewNoteView)
+                NewNoteView(
+                    isPresented: $showingNewNoteView,
+                    onNoteCreated: handleNoteCreated
+                )
             }
             .sheet(isPresented: $showingConfirmGeneratedTasks) {
                 ConfirmGeneratedTasksView(tasks: generatedTasks) { selectedTasks in
@@ -98,6 +116,28 @@ struct AddNotesView: View {
                     showingConfirmGeneratedTasks = false
                 }
             }
+            .onAppear {
+                if !hasCompletedNotesTutorial {
+                    showNotesTutorial = true
+                }
+            }
+            .overlay(
+                Group {
+                    if showNotesTutorial {
+                        NotesTutorialOverlay(
+                            currentStep: $currentNotesTutorialStep,
+                            isActive: $showNotesTutorial,
+                            hasCompletedTutorial: $hasCompletedNotesTutorial
+                        )
+                    }
+                }
+            )
+        }
+    }
+    
+    func handleNoteCreated() {
+        if currentNotesTutorialStep == .createNote {
+            currentNotesTutorialStep = .selectNote
         }
     }
 
@@ -137,8 +177,13 @@ struct AddNotesView: View {
                 if let text = response.text {
                     let tasks = parseGeminiResponse(text)
                     generatedTasks = tasks
+                    if currentNotesTutorialStep == .generateTasks {
+                        showNotesTutorial = true
+                        currentNotesTutorialStep = .finished
+                    }
                     showingConfirmGeneratedTasks = true
                     isSelecting = false
+                    
                 } else {
                     print("⚠️ Received an empty response from the AI.")
                 }
@@ -236,3 +281,48 @@ extension String {
         }
     }
 }
+
+enum NotesTutorialStep: Int, CaseIterable {
+case welcome, createNote, selectNote, generateTasks, finished
+
+var title: String {
+    switch self {
+    case .welcome: return "Welcome to Notes"
+    case .createNote: return "Create a Note"
+    case .selectNote: return "Select a Note"
+    case .generateTasks: return "Generate Tasks"
+    case .finished: return "You're All Set!"
+    }
+}
+
+var message: String {
+    switch self {
+    case .welcome:
+        return "Here you can jot down quick ideas and thoughts to reflect or turn into tasks."
+    case .createNote:
+        return "Tap the pencil icon in the top right to create your first note."
+    case .selectNote:
+        return "Now tap 'Select Notes' and choose the note(s) you just created and then tap 'Generate Tasks' to convert your notes into actionable items."
+    case .generateTasks:
+        return "Finally, tap 'Generate Tasks' to convert your notes into actionable items."
+    case .finished:
+        return "That's it! You're ready to use the Notes feature like a pro."
+    }
+}
+
+var nextButtonText: String {
+    switch self {
+    case .finished: return "Done"
+    default: return "Next"
+    }
+}
+
+var requiresUserAction: Bool {
+    switch self {
+    case .createNote, .selectNote, .generateTasks: return true
+    default: return false
+    }
+}
+}
+
+

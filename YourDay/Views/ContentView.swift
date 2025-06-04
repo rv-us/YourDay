@@ -34,20 +34,16 @@ struct ContentView: View {
         Group {
             if loginViewModel.isAuthenticated {
                 TabView {
+                    Todoview()
+                        .tabItem { Label("Tasks", systemImage: "checkmark.circle") }
+                        .environmentObject(loginViewModel)
+                    
                     GardenView()
                         .tabItem { Label("Garden", systemImage: "leaf.fill") }
                         .environmentObject(loginViewModel)
 
-                    Todoview()
-                        .tabItem { Label("Tasks", systemImage: "checkmark.circle") }
-                        .environmentObject(loginViewModel)
-
                     AddNotesView()
                         .tabItem { Label("Notes", systemImage: "square.and.pencil") }
-                        .environmentObject(loginViewModel)
-
-                    LastDayView(isModal: false)
-                        .tabItem { Label("Summary", systemImage: "star.fill") }
                         .environmentObject(loginViewModel)
                     
                     NotificationSettingsView(

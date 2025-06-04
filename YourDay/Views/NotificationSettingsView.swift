@@ -20,6 +20,12 @@ let locationRemindersEnabledKey = "locationRemindersEnabled"
 let scheduledReminderIDs: [String] = ["morningReminder", "nightReminder"] + (1...10).map { "extraReminder\($0)" }
 
 struct NotificationSettingsView: View {
+    @AppStorage("hasCompletedNotificationsTutorial") private var hasCompletedNotificationsTutorial = false
+    @State private var showNotificationsTutorial = false
+    @State private var currentNotificationTutorialStep: NotificationsTutorialStep = .welcome
+    @State private var acknowledgedSteps: Set<NotificationsTutorialStep> = []
+
+    
     @Environment(\.modelContext) private var modelContext
     @ObservedObject var todoViewModel: TodoViewModel
     @ObservedObject var loginViewModel: LoginViewModel
@@ -206,7 +212,55 @@ struct NotificationSettingsView: View {
             .onAppear {
                 loadNotificationSettings()
                 editableDisplayName = loginViewModel.userDisplayName ?? ""
+                if !hasCompletedNotificationsTutorial {
+                    showNotificationsTutorial = true
+                }
             }
+            .onAppear {
+                loadNotificationSettings()
+                editableDisplayName = loginViewModel.userDisplayName ?? ""
+                if !hasCompletedNotificationsTutorial {
+                    showNotificationsTutorial = true
+                }
+            }
+            .onChange(of: notificationsEnabled) { _, newVal in
+                if currentNotificationTutorialStep == .toggleScheduled &&
+                   newVal && acknowledgedSteps.contains(.toggleScheduled) {
+                    currentNotificationTutorialStep = .toggleLocation
+                }
+            }
+
+            .onChange(of: locationRemindersEnabled) { _, newVal in
+                if currentNotificationTutorialStep == .toggleLocation &&
+                   newVal && acknowledgedSteps.contains(.toggleLocation) {
+                    currentNotificationTutorialStep = .setTimes
+                }
+            }
+
+            .onChange(of: morningTime) { _, _ in
+                if currentNotificationTutorialStep == .setTimes &&
+                   acknowledgedSteps.contains(.setTimes) {
+                    currentNotificationTutorialStep = .extraReminders
+                }
+            }
+
+            .onChange(of: extraNotificationCount) { _, _ in
+                if currentNotificationTutorialStep == .extraReminders &&
+                   acknowledgedSteps.contains(.extraReminders) {
+                    currentNotificationTutorialStep = .finished
+                }
+            }
+            .overlay(
+                Group {
+                    if showNotificationsTutorial {
+                        NotificationsTutorialOverlay(
+                            currentStep: $currentNotificationTutorialStep,
+                            isActive: $showNotificationsTutorial,
+                            hasCompletedTutorial: $hasCompletedNotificationsTutorial
+                        )
+                    }
+                }
+            )
             .onChange(of: loginViewModel.userDisplayName) { _, newName in
                 if editableDisplayName != (newName ?? "") {
                     editableDisplayName = newName ?? ""
@@ -292,5 +346,45 @@ struct NotificationSettingsView: View {
         nightTime = UserDefaults.standard.object(forKey: nightReminderKey) as? Date ?? Calendar.current.date(from: DateComponents(hour: 21)) ?? Date()
         extraNotificationCount = UserDefaults.standard.object(forKey: extraNotificationsKey) as? Int ?? 0
         locationRemindersEnabled = UserDefaults.standard.object(forKey: locationRemindersEnabledKey) as? Bool ?? true
+    }
+}
+
+
+enum NotificationsTutorialStep: Int, CaseIterable {
+    case welcome, toggleScheduled, toggleLocation, setTimes, extraReminders, finished
+
+    var title: String {
+        switch self {
+        case .welcome: return "Customize Notifications"
+        case .toggleScheduled: return "Enable Daily Reminders"
+        case .toggleLocation: return "Enable Location Reminders"
+        case .setTimes: return "Set Morning & Night Times"
+        case .extraReminders: return "Adjust Extra Reminders"
+        case .finished: return "You're All Set!"
+        }
+    }
+
+    var message: String {
+        switch self {
+        case .welcome: return "Set up notifications to stay on track with your tasks."
+        case .toggleScheduled: return "Use this switch to enable your morning and night task reminders."
+        case .toggleLocation: return "Turn this on to receive reminders based on where you are."
+        case .setTimes: return "Pick times for your morning and night reminders."
+        case .extraReminders: return "Slide to add extra check-ins throughout the day."
+        case .finished: return "Notifications are now configured to support your productivity!"
+        }
+    }
+
+    var nextButtonText: String {
+        self == .finished ? "Done" : "Next"
+    }
+
+    var requiresUserAction: Bool {
+        switch self {
+        case .toggleScheduled, .toggleLocation, .setTimes, .extraReminders:
+            return true
+        default:
+            return false
+        }
     }
 }
