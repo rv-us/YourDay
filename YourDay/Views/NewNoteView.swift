@@ -12,6 +12,7 @@ struct NewNoteView: View {
     @Environment(\.modelContext) private var context
     @Binding var isPresented: Bool
     @State private var noteText: String = ""
+    var onNoteCreated: (() -> Void)? = nil
 
     var body: some View {
         NavigationView {
@@ -35,6 +36,7 @@ struct NewNoteView: View {
                     Button("Save") {
                         let newNote = NoteItem(content: noteText)
                         context.insert(newNote)
+                        onNoteCreated?()
                         isPresented = false
                     }
                     .disabled(noteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)

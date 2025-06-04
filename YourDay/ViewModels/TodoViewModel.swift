@@ -10,7 +10,7 @@ import UserNotifications
 
 class TodoViewModel: ObservableObject {
     @Published var showingNewItemView = false
-    @Published var showingSettings = false
+    @Published var showingDailySummary = false
 
     func scheduleDailyReminders(
         morningHour: Int,

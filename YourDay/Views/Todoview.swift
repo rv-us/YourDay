@@ -18,7 +18,7 @@ struct Todoview: View {
     @State private var showTodoTutorial = false
     @State private var currentTodoTutorialStep: TodoTutorialStep = .welcome
     @State private var highlightAddButton = false
-    @State private var highlightSettingsButton = false
+    @State private var highlightSummaryButton = false
     @State private var previousInProgressCount = 0
 
     @Query(sort: [SortDescriptor(\TodoItem.dueDate, order: .reverse)]) private var items: [TodoItem]
@@ -83,21 +83,26 @@ struct Todoview: View {
             .onChange(of: currentTodoTutorialStep) { newStep in
                 // Reset all highlights
                 highlightAddButton = false
-                highlightSettingsButton = false
+                highlightSummaryButton = false
 
                 // Set based on current step
                 switch newStep {
                 case .explainAdd:
                     highlightAddButton = true
-                case .explainSettings:
-                    highlightSettingsButton = true
+                case .explainSummary:
+                    highlightSummaryButton = true
                 default:
                     break
                 }
             }
+            .onChange(of: viewModel.showingDailySummary) { opened in
+                if opened && currentTodoTutorialStep == .explainSummary {
+                    currentTodoTutorialStep = .finished
+                }
+            }
             .onChange(of: items.filter { !$0.isDone }.count) { newCount in
                 if currentTodoTutorialStep == .explainAdd && newCount > previousInProgressCount {
-                    currentTodoTutorialStep = .explainSettings
+                    currentTodoTutorialStep = .explainSummary
                 }
                 previousInProgressCount = newCount
             }
@@ -127,18 +132,18 @@ struct Todoview: View {
                         }
 
                         ZStack(alignment: .center) {
-                            if highlightSettingsButton {
+                            if highlightSummaryButton {
                                 Circle()
                                     .fill(Color.yellow.opacity(0.4))
                                     .frame(width: 44, height: 44)
                                     .offset(x: 4)
-                                    .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: highlightSettingsButton)
+                                    .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: highlightSummaryButton)
                             }
 
                             Button(action: {
-                                viewModel.showingSettings = true
+                                viewModel.showingDailySummary = true
                             }) {
-                                Image(systemName: "gear")
+                                Image(systemName: "star")
                                     .resizable()
                                     .scaledToFit()
                                     .frame(width: 22, height: 22)
@@ -158,20 +163,13 @@ struct Todoview: View {
                             isActive: $showTodoTutorial,
                             hasCompletedTutorialPreviously: $hasCompletedTodoTutorial,
                             highlightAdd: $highlightAddButton,
-                            highlightSettings: $highlightSettingsButton
+                            highlightSettings: $highlightSummaryButton
                         )
                     }
                 }
             )
-            .sheet(isPresented: $viewModel.showingSettings) {
-                NotificationSettingsView(
-                    todoViewModel: viewModel,
-                    loginViewModel: loginViewModel, // Pass Todoview's instance
-                    onSignOutRequested: {
-                        // This closure is called when "Sign Out" is tapped in NotificationSettingsView
-                        requestSignOut()
-                    }
-                )
+            .sheet(isPresented: $viewModel.showingDailySummary) {
+                LastDayView(isModal: true)
             }
             .sheet(isPresented: $viewModel.showingNewItemView) {
                 NewItemview(newItemPresented: $viewModel.showingNewItemView) // Assuming NewItemview is defined

@@ -34,6 +34,7 @@ struct TodoTutorialOverlay: View {
                         .foregroundColor(.white.opacity(0.9))
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
+                        .fixedSize(horizontal: false, vertical: true)
 
                     if let icon = currentStep.icon {
                         Image(systemName: icon)
@@ -96,13 +97,13 @@ struct TodoTutorialOverlay: View {
 
 // Enum for tutorial steps
 enum TodoTutorialStep: Int, CaseIterable {
-    case welcome, explainAdd, explainSettings, finished
+    case welcome, explainAdd, explainSummary, finished
 
     var title: String {
         switch self {
         case .welcome: return "Welcome to YourDay"
         case .explainAdd: return "Add a New Task"
-        case .explainSettings: return "Open Settings"
+        case .explainSummary: return "Open Daily Summary"
         case .finished: return "You're Ready!"
         }
     }
@@ -111,7 +112,7 @@ enum TodoTutorialStep: Int, CaseIterable {
         switch self {
         case .welcome: return "This is your personal to-do list to stay organized."
         case .explainAdd: return "Tap the '+' button to add a new item."
-        case .explainSettings: return "Tap the gear icon to configure reminders and account settings."
+        case .explainSummary: return "Tap the star icon to view your daily summary and rewards."
         case .finished: return "You're all set to start using YourDay!"
         }
     }
@@ -126,7 +127,7 @@ enum TodoTutorialStep: Int, CaseIterable {
     var icon: String? {
         switch self {
         case .explainAdd: return "plus.circle"
-        case .explainSettings: return "gear"
+        case .explainSummary: return "star"
         default: return nil
         }
     }
@@ -134,6 +135,8 @@ enum TodoTutorialStep: Int, CaseIterable {
     var requiresUserAction: Bool {
         switch self {
         case .explainAdd:
+            return true
+        case .explainSummary:
             return true
         default:
             return false
