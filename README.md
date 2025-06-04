@@ -36,7 +36,7 @@ If you have access to this repository and would like to run the app locally, fol
 #### Clone the Repository
 
 ```bash
-git clone https://github.com/your-username/yourday.git
+git clone https://github.com/rv-us/YourDay.git
 cd yourday
 ```
 
