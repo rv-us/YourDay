@@ -16,16 +16,20 @@ struct NewNoteView: View {
 
     var body: some View {
         NavigationView {
-            VStack {
-                TextEditor(text: $noteText)
-                    .padding()
-                    .background(Color(UIColor.secondarySystemBackground))
-                    .cornerRadius(10)
-                    .padding()
-
-                Spacer()
+            VStack(spacing: 0) {
+                Form {
+                    Section(header: Text("New Note").font(.title2).bold()) {
+                        TextEditor(text: $noteText)
+                            .padding()
+                            .background(Color(UIColor.secondarySystemBackground))
+                            .cornerRadius(10)
+                            .frame(minHeight: 400)
+                    }
+                    .edgesIgnoringSafeArea(.bottom)
+                }
+                .scrollContentBackground(.hidden)
+                .background(Color(UIColor.systemBackground))
             }
-            .navigationTitle("New Note")
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Cancel") {
@@ -45,8 +49,3 @@ struct NewNoteView: View {
         }
     }
 }
-
-
-//#Preview {
-//    NewNoteView()
-//}

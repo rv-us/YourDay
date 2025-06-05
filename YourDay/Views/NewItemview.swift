@@ -20,88 +20,97 @@ struct NewItemview: View {
     }
 
     var body: some View {
-        VStack {
-            Text(viewModel.originalItem == nil ? "New Task" : "Edit Task")
-                .font(.system(size: 32))
-                .bold()
-                .padding(.top, 80)
-
+        NavigationView {
             Form {
-                TextField("Task", text: $viewModel.title)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                Text("Description")
-                    .font(.caption)
-                    .foregroundColor(.gray)
-                ZStack {
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color.gray.opacity(0.5))
-                    TextEditor(text: $viewModel.description)
-                        .frame(minHeight: 80)
-                        .padding(4)
+                Section(header: Text("Task Details").font(.headline)) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Title")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+
+                        TextField("Enter task title", text: $viewModel.title)
+                            .padding(10)
+                            .background(Color(.systemGray6))
+                            .cornerRadius(10)
+
+                        Text("Description")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+
+                        TextEditor(text: $viewModel.description)
+                            .frame(minHeight: 100)
+                            .padding(10)
+                            .background(Color(.systemGray6))
+                            .cornerRadius(10)
+                    }
+                    .padding(.vertical, 4)
                 }
+                .padding(.vertical, 15)
 
-
-                Section(header: Text("Subtasks")) {
+                Section(header: Text("Subtasks").font(.headline)) {
                     ForEach($viewModel.subtasks) { $subtask in
-                        ZStack(alignment: .leading) {
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color.gray.opacity(0.5))
-                            TextEditor(text: $subtask.title)
-                                .frame(minHeight: 44)
-                                .padding(4)
-                        }
+                        TextField("Subtask", text: $subtask.title)
+                            .padding(8)
+                            .background(Color(.systemGray6))
+                            .cornerRadius(8)
                     }
                     .onDelete { indexSet in
                         viewModel.subtasks.remove(atOffsets: indexSet)
                     }
 
                     Button(action: viewModel.addSubtask) {
-                        Label("Add Subtask", systemImage: "plus")
+                        Label("Add Subtask", systemImage: "plus.circle.fill")
+                            .foregroundColor(.blue)
                     }
                 }
 
-
-                DatePicker("Due Date", selection: $viewModel.donebye)
-                    .datePickerStyle(GraphicalDatePickerStyle())
-
-                Button(action: {
-                    // Skip validation for due date safeguard
-                    if viewModel.title.trimmingCharacters(in: .whitespaces).isEmpty {
-                        viewModel.showAlert = true
-                        return
-                    }
-
-                    if let existing = viewModel.originalItem {
-                        existing.title = viewModel.title
-                        existing.detail = viewModel.description
-                        existing.dueDate = viewModel.donebye
-                        existing.subtasks = viewModel.subtasks
-                        print("Updated task '\(existing.title)'")
-                    } else {
-                        let newItem = TodoItem(
-                            title: viewModel.title,
-                            detail: viewModel.description,
-                            dueDate: viewModel.donebye,
-                            subtasks: viewModel.subtasks
-                        )
-                        context.insert(newItem)
-                        print("Created new task '\(newItem.title)'")
-                    }
-
-                    dismiss()
-                }) {
-                    Text(viewModel.originalItem == nil ? "Add" : "Save")
-                        .foregroundColor(.white)
-                        .padding()
-                        .frame(maxWidth: .infinity)
-                        .background(Color.blue)
-                        .cornerRadius(10)
+                Section(header: Text("Due Date").font(.headline)) {
+                    DatePicker("Select Due Date", selection: $viewModel.donebye)
+                        .datePickerStyle(GraphicalDatePickerStyle())
                 }
-                .padding()
+
+                Section {
+                    Button(action: saveTask) {
+                        Text(viewModel.originalItem == nil ? "Add" : "Save")
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.blue)
+                            .cornerRadius(10)
+                    }
+                    .listRowBackground(Color.clear)
+                }
             }
+//            .navigationTitle(viewModel.originalItem == nil ? "New Task" : "Edit Task")
             .alert(isPresented: $viewModel.showAlert) {
                 Alert(title: Text("Error"), message: Text("Please fill in task field"))
             }
         }
+    }
+
+    private func saveTask() {
+        if viewModel.title.trimmingCharacters(in: .whitespaces).isEmpty {
+            viewModel.showAlert = true
+            return
+        }
+
+        if let existing = viewModel.originalItem {
+            existing.title = viewModel.title
+            existing.detail = viewModel.description
+            existing.dueDate = viewModel.donebye
+            existing.subtasks = viewModel.subtasks
+            print("Updated task '\(existing.title)')")
+        } else {
+            let newItem = TodoItem(
+                title: viewModel.title,
+                detail: viewModel.description,
+                dueDate: viewModel.donebye,
+                subtasks: viewModel.subtasks
+            )
+            context.insert(newItem)
+            print("Created new task '\(newItem.title)')")
+        }
+
+        dismiss()
     }
 }
