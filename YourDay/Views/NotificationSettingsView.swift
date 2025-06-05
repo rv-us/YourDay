@@ -24,11 +24,14 @@ struct NotificationSettingsView: View {
     @State private var showNotificationsTutorial = false
     @State private var currentNotificationTutorialStep: NotificationsTutorialStep = .welcome
     @State private var acknowledgedSteps: Set<NotificationsTutorialStep> = []
+    @State private var tempLocationToggle = false
+    @State private var showPermissionDeniedAlert = false
 
     
     @Environment(\.modelContext) private var modelContext
     @ObservedObject var todoViewModel: TodoViewModel
     @ObservedObject var loginViewModel: LoginViewModel
+    @EnvironmentObject var locationManager: LocationManager
     @AppStorage(locationRemindersEnabledKey) private var locationRemindersEnabled = true
     var onSignOutRequested: () -> Void
 
@@ -124,9 +127,27 @@ struct NotificationSettingsView: View {
                                 }
                             }
 
-                        Toggle("Enable Location-Based Reminders", isOn: $locationRemindersEnabled)
-                            .onChange(of: locationRemindersEnabled) { _, newValue in
-                                UserDefaults.standard.set(newValue, forKey: locationRemindersEnabledKey)
+                        Toggle("Enable Location-Based Reminders", isOn: $tempLocationToggle)
+                            .onChange(of: tempLocationToggle) { _, newValue in
+                                if newValue {
+                                    locationManager.requestPermissions { granted in
+                                        DispatchQueue.main.async {
+                                            if granted {
+                                                locationRemindersEnabled = true
+                                                UserDefaults.standard.set(true, forKey: locationRemindersEnabledKey)
+                                                tempLocationToggle = true
+                                            } else {
+                                                locationRemindersEnabled = false
+                                                UserDefaults.standard.set(false, forKey: locationRemindersEnabledKey)
+                                                tempLocationToggle = false
+                                                showPermissionDeniedAlert = true
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    locationRemindersEnabled = false
+                                    UserDefaults.standard.set(false, forKey: locationRemindersEnabledKey)
+                                }
                             }
                     }
 
@@ -209,8 +230,14 @@ struct NotificationSettingsView: View {
                 }
                 .navigationTitle("Settings & Account")
             }
+            .alert("Location Access Denied", isPresented: $showPermissionDeniedAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("Please enable location access in Settings to receive smart reminders.")
+            }
             .onAppear {
                 loadNotificationSettings()
+                tempLocationToggle = locationRemindersEnabled
                 editableDisplayName = loginViewModel.userDisplayName ?? ""
                 if !hasCompletedNotificationsTutorial {
                     showNotificationsTutorial = true

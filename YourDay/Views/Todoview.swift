@@ -109,9 +109,6 @@ struct Todoview: View {
                 previousInProgressCount = newCount
             }
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    EditButton()
-                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     HStack {
                         ZStack(alignment: .center) {
@@ -168,7 +165,7 @@ struct Todoview: View {
                             isActive: $showTodoTutorial,
                             hasCompletedTutorialPreviously: $hasCompletedTodoTutorial,
                             highlightAdd: $highlightAddButton,
-                            highlightSettings: $highlightSummaryButton,
+                            highlightStar: $highlightSummaryButton,
                             onDismiss: {
                                 highlightAddButton = false
                                 highlightSummaryButton = false

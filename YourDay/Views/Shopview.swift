@@ -46,8 +46,6 @@ struct ThemeBannerView: View {
         case .summer: return "TG-banner-summer"
         case .fall:   return "TG-banner-fall"
         case .winter: return "TG-banner-winter"
-        case .special:
-            return "TG-banner-winter"
         }
     }
 
@@ -95,14 +93,12 @@ struct ThemePullView: View {
 
 
     private func themePageBannerImageName() -> String {
-            switch theme {
-            case .spring: return "TG-banner-spring"
-            case .summer: return "TG-banner-summer"
-            case .fall:   return "TG-banner-fall"
-            case .winter: return "TG-banner-winter"
-            case .special:
-                return "TG-banner-winter"
-            }
+        switch theme {
+        case .spring: return "TG-banner-spring"
+        case .summer: return "TG-banner-summer"
+        case .fall:   return "TG-banner-fall"
+        case .winter: return "TG-banner-winter"
+        }
         }
 
     var body: some View {

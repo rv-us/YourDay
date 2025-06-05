@@ -132,7 +132,7 @@ struct PlantLibrary {
         PlantBlueprint(id: "phoenixbloom_l_su", name: "Phoenix Bloom", description: "Legendary summer plant of rebirth.", rarity: .legendary, theme: .summer, initialDaysToGrow: 5, baseValue: 300, assetName: "summer-legendary", iconName: "summer-legendary"),
         PlantBlueprint(id: "ancientshade_l_fa", name: "Ancient Shade", description: "A plant of immense age and wisdom, thriving in autumn's embrace.", rarity: .legendary, theme: .fall, initialDaysToGrow: 6, baseValue: 300, assetName: "fall-legendary", iconName: "fall-legendary"),
         PlantBlueprint(id: "aurorafrost_l_wi", name: "Aurora Frost", description: "Reflects the colors of the aurora in its icy petals, a winter legend.", rarity: .legendary, theme: .winter, initialDaysToGrow: 6, baseValue: 300, assetName: "winter-legendary", iconName: "winter-legendary"),
-        PlantBlueprint(id: "withered_1", name: "Withered Plant", description: "This plant has seen better days.", rarity: .common, theme: .special, initialDaysToGrow: 0, baseValue: 0, assetName: "dead-shrub", iconName: "dead-shrub")
+        PlantBlueprint(id: "withered_1", name: "Withered Plant", description: "This plant has seen better days.", rarity: .common, theme: .summer, initialDaysToGrow: 0, baseValue: 0, assetName: "dead-shrub", iconName: "dead-shrub")
     ]
 
     /// Retrieves a specific plant blueprint by its unique ID.

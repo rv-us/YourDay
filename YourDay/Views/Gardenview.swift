@@ -721,8 +721,7 @@ struct GardenView: View {
     }
     
     private func seasonColor(_ season: PlantTheme) -> Color {
-        switch season { case .spring: return .green; case .summer: return .orange; case .fall: return .red; case .winter: return .blue case .special:
-            return .gray
+        switch season { case .spring: return .green; case .summer: return .orange; case .fall: return .red; case .winter: return .blue
         }
     }
 

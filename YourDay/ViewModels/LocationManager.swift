@@ -19,12 +19,23 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyHundredMeters
         locationManager.distanceFilter = 50  // meters
-        requestPermissions()
+        requestPermissions { _ in }
     }
 
-    func requestPermissions() {
-        locationManager.requestAlwaysAuthorization()
-        locationManager.startUpdatingLocation()
+    func requestPermissions(completion: @escaping (Bool) -> Void) {
+        let status = locationManager.authorizationStatus
+        switch status {
+        case .notDetermined:
+            locationManager.requestWhenInUseAuthorization()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                completion(CLLocationManager.authorizationStatus() == .authorizedAlways ||
+                           CLLocationManager.authorizationStatus() == .authorizedWhenInUse)
+            }
+        case .authorizedAlways, .authorizedWhenInUse:
+            completion(true)
+        default:
+            completion(false)
+        }
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {

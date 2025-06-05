@@ -46,8 +46,6 @@ enum PlantTheme: String, Codable, CaseIterable, Hashable {
     case summer = "Summer"
     case fall = "Fall"
     case winter = "Winter"
-    case special = "Special"
-
     // Example color property
     var color: Color {
         switch self {
@@ -55,7 +53,6 @@ enum PlantTheme: String, Codable, CaseIterable, Hashable {
         case .summer: return Color.yellow // Changed from .yellow to Color.yellow
         case .fall:   return .orange
         case .winter: return Color.blue
-        case .special: return .gray
         }
     }
 }

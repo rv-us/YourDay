@@ -21,9 +21,9 @@ struct YourDayApp: App {
         WindowGroup {
             SplashScreenView()
                 .environmentObject(locationManager)
-                .onAppear {
-                    locationManager.requestPermissions()
-                }
+//                .onAppear {
+//                    locationManager.requestPermissions()
+//                }
         }
         .modelContainer(for: [TodoItem.self, NoteItem.self, PlayerStats.self, DailySummaryTask.self])
     }
