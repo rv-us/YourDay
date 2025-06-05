@@ -44,7 +44,7 @@ class LeaderboardViewModel: ObservableObject {
     /// - Parameters:
     ///   - orderBy: The field to sort by (e.g., "gardenValue", "playerLevel").
     ///   - limit: The maximum number of entries to fetch.
-    func fetchLeaderboardData(orderBy: String = "gardenValue", limit: Int = 100) {
+    func fetchLeaderboardData(orderBy: String = "gardenValue", limit: Int = 200) {
         self.isLoading = true
         self.errorMessage = nil
         // Clearing entries immediately can cause a flicker. Consider updating existing or replacing.

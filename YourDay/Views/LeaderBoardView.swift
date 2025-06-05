@@ -7,13 +7,14 @@
 import SwiftUI
 import FirebaseAuth // To get current user ID for initial ViewModel state
 
+
+let genericYellow = Color.yellow // Using a standard yellow
+
+
 struct LeaderboardView: View {
 
     @StateObject private var viewModel: LeaderboardViewModel
-    
-
     @EnvironmentObject var loginViewModel: LoginViewModel
-
     @State private var scrollViewProxy: ScrollViewProxy? = nil
 
     init() {
@@ -22,45 +23,56 @@ struct LeaderboardView: View {
 
     var body: some View {
         NavigationView {
-            VStack {
+            VStack(spacing: 0) {
                 if viewModel.isLoading && viewModel.leaderboardEntries.isEmpty {
+                    Spacer()
                     ProgressView("Loading Leaderboard...")
+                        .progressViewStyle(CircularProgressViewStyle(tint: plantMediumGreen)) // Reverted
                         .scaleEffect(1.5)
                         .padding()
                     Spacer()
                 } else if let errorMessage = viewModel.errorMessage {
+                    Spacer()
                     VStack {
                         Text("Error: \(errorMessage)")
-                            .foregroundColor(.red)
+                            .foregroundColor(plantPink) // Kept for error emphasis
                             .multilineTextAlignment(.center)
+                            .padding(.horizontal)
                         Button("Retry") {
                             viewModel.refreshLeaderboard()
                         }
+                        .padding()
+                        .background(plantMediumGreen) // Reverted
+                        .foregroundColor(.white)    // Reverted
+                        .cornerRadius(8)
                         .padding(.top)
                     }
                     .padding()
                     Spacer()
                 } else if viewModel.leaderboardEntries.isEmpty {
-                    Text("Leaderboard is currently empty or no data found.")
-                        .foregroundColor(.secondary)
+                    Spacer()
+                    Text("Leaderboard is currently empty.")
+                        .foregroundColor(plantDustyBlue) // Reverted
                         .padding()
                     Spacer()
                 } else {
-        
                     if viewModel.currentUserRank != nil && viewModel.currentUserID != nil {
                         Button(action: {
                             scrollToCurrentUser()
                         }) {
                             HStack {
+                                Image(systemName: "scope")
                                 Text("Find My Rank")
+                                    .fontWeight(.semibold)
                             }
-                            .padding(.vertical, 8)
-                            .padding(.horizontal, 12)
-                            .background(Color.blue.opacity(0.8))
-                            .foregroundColor(.white)
-                            .cornerRadius(8)
+                            .padding(.vertical, 10)
+                            .padding(.horizontal, 16)
+                            .background(plantPastelBlue) // Reverted
+                            .foregroundColor(plantDarkGreen) // Reverted
+                            .cornerRadius(10)
+                            .shadow(color: plantDustyBlue.opacity(0.3), radius: 3, x: 0, y: 2) // Reverted
                         }
-                        .padding(.vertical, 10)
+                        .padding(.vertical, 15)
                     }
 
                     ScrollViewReader { proxy in
@@ -76,6 +88,7 @@ struct LeaderboardView: View {
                             }
                         }
                         .listStyle(PlainListStyle())
+                        .background(plantBeige) // Reverted
                         .onAppear {
                             self.scrollViewProxy = proxy
                             if viewModel.currentUserID != Auth.auth().currentUser?.uid {
@@ -88,22 +101,53 @@ struct LeaderboardView: View {
                             viewModel.refreshLeaderboard()
                         }
                     }
+                    
+                    if !viewModel.leaderboardEntries.isEmpty {
+                        VStack {
+                            Divider().background(plantLightMintGreen) // Reverted
+                            HStack {
+                                if let rank = viewModel.currentUserRank {
+                                    Text("Your Rank: \(rank)")
+                                        .fontWeight(.semibold)
+                                } else if viewModel.currentUserID != nil {
+                                    Text("Your Rank: N/A")
+                                }
+                                Spacer()
+                                Text("Total Players: \(viewModel.leaderboardEntries.count)")
+                            }
+                            .font(.caption)
+                            .foregroundColor(plantMediumGreen) // Reverted
+                            .padding(.horizontal)
+                            .padding(.vertical, 8)
+                        }
+                        .background(plantBeige) // Reverted
+                    }
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(plantBeige.edgesIgnoringSafeArea(.all)) // Reverted
             .navigationTitle("Leaderboard")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(plantLightMintGreen, for: .navigationBar) // Reverted
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text("Leaderboard")
+                        .fontWeight(.bold)
+                        .foregroundColor(plantDarkGreen) // Reverted
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: {
                         viewModel.refreshLeaderboard()
                     }) {
                         Image(systemName: "arrow.clockwise")
+                            .foregroundColor(plantDarkGreen) // Reverted
                     }
                     .disabled(viewModel.isLoading)
                 }
             }
         }
-        // Ensure loginViewModel is passed if it's not in the global environment from a parent
-        // .environmentObject(LoginViewModel()) // Only if LoginViewModel is created here or passed down
+        .navigationViewStyle(.stack)
     }
 
     private func scrollToCurrentUser() {
@@ -118,7 +162,6 @@ struct LeaderboardView: View {
             }
         } else {
             print("LeaderboardView: Current user rank not found, cannot scroll.")
-            // Optionally show an alert to the user
         }
     }
 }
@@ -127,22 +170,29 @@ struct LeaderboardHeaderView: View {
     var body: some View {
         HStack {
             Text("Rank")
-                .fontWeight(.bold)
+                .fontWeight(.semibold)
+                .foregroundColor(plantDarkGreen)
                 .frame(width: 50, alignment: .center)
             Text("Player")
-                .fontWeight(.bold)
+                .fontWeight(.semibold)
+                .foregroundColor(plantDarkGreen)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.leading, 5)
             Text("Level")
-                .fontWeight(.bold)
+                .fontWeight(.semibold)
+                .foregroundColor(plantDarkGreen)
                 .frame(width: 50, alignment: .trailing)
-            Text("Value") // Shortened for space
-                .fontWeight(.bold)
+            Text("Value")
+                .fontWeight(.semibold)
+                .foregroundColor(plantDarkGreen)
                 .frame(width: 80, alignment: .trailing)
         }
         .font(.subheadline)
         .padding(.horizontal)
-        .padding(.vertical, 5) // Add some vertical padding to the header
+        .padding(.vertical, 8)
+        .background(plantPastelGreen.opacity(0.5)) // Reverted
+        .cornerRadius(6)
+        .listRowInsets(EdgeInsets())
     }
 }
 
@@ -154,10 +204,12 @@ struct LeaderboardRowView: View {
         HStack {
             Text("\(entry.rank ?? 0)")
                 .fontWeight(isCurrentUser ? .bold : .regular)
+                .foregroundColor(isCurrentUser ? plantDarkGreen : plantMediumGreen)
                 .frame(width: 50, alignment: .center)
             
             Text(entry.displayName)
                 .fontWeight(isCurrentUser ? .bold : .regular)
+                .foregroundColor(isCurrentUser ? plantDarkGreen : plantMediumGreen) // User's name in yellow
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -165,18 +217,20 @@ struct LeaderboardRowView: View {
             
             Text("\(entry.playerLevel)")
                 .fontWeight(isCurrentUser ? .bold : .regular)
+                .foregroundColor(isCurrentUser ? plantDarkGreen : plantMediumGreen)
                 .frame(width: 50, alignment: .trailing)
             
             Text("\(Int(entry.gardenValue))")
                 .fontWeight(isCurrentUser ? .bold : .regular)
+                .foregroundColor(isCurrentUser ? plantDarkGreen : plantMediumGreen)
                 .frame(width: 80, alignment: .trailing)
         }
-        .padding(.vertical, 8) // Increased padding for better readability
-        .background(isCurrentUser ? Color.yellow.opacity(0.3) : Color.clear) // Highlight current user
-        .cornerRadius(isCurrentUser ? 6 : 0)
-        .listRowInsets(EdgeInsets(top: 0, leading: isCurrentUser ? 0 : 16, bottom: 0, trailing: 16)) // Adjust insets
+        .padding(.vertical, 10)
+        .padding(.horizontal, 5)
+        .background(isCurrentUser ? plantPink.opacity(0.6) : Color.clear) // User's row highlighted in pink
+        .cornerRadius(isCurrentUser ? 8 : 0)
+        .listRowBackground(plantBeige) // Reverted
     }
 }
-
 
 
