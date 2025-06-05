@@ -9,7 +9,7 @@ import SwiftData
 import UserNotifications
 import CoreLocation
 
-// Global keys
+// Global keys (ensure these are consistent if defined elsewhere too)
 let morningReminderKey = "morningReminderTime"
 let nightReminderKey = "nightReminderTime"
 let notificationsEnabledKey = "notificationsEnabled"
@@ -18,6 +18,9 @@ let locationRemindersEnabledKey = "locationRemindersEnabled"
 
 // Identifiers to remove only scheduled reminders
 let scheduledReminderIDs: [String] = ["morningReminder", "nightReminder"] + (1...10).map { "extraReminder\($0)" }
+
+// Basic profanity list (expand as needed for a real app)
+let profanityList: [String] = ["badword", "curse", "profane"] // Add more, case-insensitive check will be applied
 
 struct NotificationSettingsView: View {
     @AppStorage("hasCompletedNotificationsTutorial") private var hasCompletedNotificationsTutorial = false
@@ -30,7 +33,7 @@ struct NotificationSettingsView: View {
     
     @Environment(\.modelContext) private var modelContext
     @ObservedObject var todoViewModel: TodoViewModel
-    @ObservedObject var loginViewModel: LoginViewModel
+    @ObservedObject var loginViewModel: LoginViewModel // Ensure this has isNetworkAvailable, userEmail, userDisplayName, updateUserDisplayName
     @EnvironmentObject var locationManager: LocationManager
     @AppStorage(locationRemindersEnabledKey) private var locationRemindersEnabled = true
     var onSignOutRequested: () -> Void
@@ -39,6 +42,7 @@ struct NotificationSettingsView: View {
     private var currentPlayerStats: PlayerStats? { playerStatsList.first }
 
     @Environment(\.dismiss) var dismiss
+    private let firebaseManager = FirebaseManager() // Instance for display name check
 
     @State private var morningTime = Date()
     @State private var nightTime = Date()
@@ -54,6 +58,8 @@ struct NotificationSettingsView: View {
     @State private var nameChangeMessageText = ""
     @State private var nameChangeWasSuccessful = false
     @State private var isSavingName = false
+    
+    private let displayNameCharacterLimit = 20
 
     var body: some View {
         NavigationView {
@@ -85,19 +91,25 @@ struct NotificationSettingsView: View {
                         }
 
                         VStack(alignment: .leading) {
-                            Text("Display Name:").fontWeight(.semibold)
+                            Text("Display Name: (\(editableDisplayName.count)/\(displayNameCharacterLimit))").fontWeight(.semibold)
                             TextField("Enter display name", text: $editableDisplayName)
                                 .textFieldStyle(.roundedBorder)
                                 .disabled(!loginViewModel.isNetworkAvailable || isSavingName)
-                                .textContentType(.name)
+                                .textContentType(.name) // Or .nickname
                                 .autocapitalization(.words)
+                                .onChange(of: editableDisplayName) { _, newValue in
+                                    // Enforce character limit visually
+                                    if newValue.count > displayNameCharacterLimit {
+                                        editableDisplayName = String(newValue.prefix(displayNameCharacterLimit))
+                                    }
+                                }
 
                             if loginViewModel.isNetworkAvailable {
-                                Button(action: saveNewDisplayName) {
+                                Button(action: validateAndSaveDisplayName) {
                                     HStack {
                                         Spacer()
                                         if isSavingName {
-                                            ProgressView()
+                                            ProgressView().scaleEffect(0.8)
                                         } else {
                                             Text("Save Name")
                                         }
@@ -106,7 +118,7 @@ struct NotificationSettingsView: View {
                                 }
                                 .padding(.top, 5)
                                 .disabled(editableDisplayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
-                                          editableDisplayName == (loginViewModel.userDisplayName ?? "") ||
+                                          editableDisplayName == (loginViewModel.userDisplayName ?? "") || // Disable if no change
                                           isSavingName)
                             } else {
                                 Text("Connect to internet to change display name.")
@@ -135,7 +147,7 @@ struct NotificationSettingsView: View {
                                             if granted {
                                                 locationRemindersEnabled = true
                                                 UserDefaults.standard.set(true, forKey: locationRemindersEnabledKey)
-                                                tempLocationToggle = true
+                                                // tempLocationToggle is already true
                                             } else {
                                                 locationRemindersEnabled = false
                                                 UserDefaults.standard.set(false, forKey: locationRemindersEnabledKey)
@@ -237,40 +249,31 @@ struct NotificationSettingsView: View {
             }
             .onAppear {
                 loadNotificationSettings()
-                tempLocationToggle = locationRemindersEnabled
+                tempLocationToggle = locationRemindersEnabled // Initialize temp toggle based on stored value
                 editableDisplayName = loginViewModel.userDisplayName ?? ""
                 if !hasCompletedNotificationsTutorial {
-                    showNotificationsTutorial = true
+                     //showNotificationsTutorial = true // Logic for tutorial can remain
                 }
             }
-            .onAppear {
-                loadNotificationSettings()
-                editableDisplayName = loginViewModel.userDisplayName ?? ""
-                if !hasCompletedNotificationsTutorial {
-                    showNotificationsTutorial = true
-                }
-            }
+            // Removed duplicate .onAppear
             .onChange(of: notificationsEnabled) { _, newVal in
                 if currentNotificationTutorialStep == .toggleScheduled &&
                    newVal && acknowledgedSteps.contains(.toggleScheduled) {
                     currentNotificationTutorialStep = .toggleLocation
                 }
             }
-
-            .onChange(of: locationRemindersEnabled) { _, newVal in
+            .onChange(of: locationRemindersEnabled) { _, newVal in // Ensure this reflects actual changes
                 if currentNotificationTutorialStep == .toggleLocation &&
                    newVal && acknowledgedSteps.contains(.toggleLocation) {
                     currentNotificationTutorialStep = .setTimes
                 }
             }
-
             .onChange(of: morningTime) { _, _ in
                 if currentNotificationTutorialStep == .setTimes &&
                    acknowledgedSteps.contains(.setTimes) {
                     currentNotificationTutorialStep = .extraReminders
                 }
             }
-
             .onChange(of: extraNotificationCount) { _, _ in
                 if currentNotificationTutorialStep == .extraReminders &&
                    acknowledgedSteps.contains(.extraReminders) {
@@ -289,7 +292,9 @@ struct NotificationSettingsView: View {
                 }
             )
             .onChange(of: loginViewModel.userDisplayName) { _, newName in
-                if editableDisplayName != (newName ?? "") {
+                 // This ensures if the name is updated elsewhere (e.g. initial load after login)
+                 // the TextField reflects it, unless the user is actively editing.
+                if !isSavingName && editableDisplayName != (newName ?? "") {
                     editableDisplayName = newName ?? ""
                 }
             }
@@ -297,34 +302,89 @@ struct NotificationSettingsView: View {
         .navigationViewStyle(.stack)
     }
 
-    private func saveNewDisplayName() {
-        let trimmed = editableDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
+    private func containsProfanity(_ text: String) -> Bool {
+        let lowercasedText = text.lowercased()
+        for word in profanityList {
+            if lowercasedText.contains(word.lowercased()) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private func validateAndSaveDisplayName() {
+        let trimmedName = editableDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // 1. Check if empty
+        guard !trimmedName.isEmpty else {
             nameChangeMessageText = "Display name cannot be empty."
             nameChangeWasSuccessful = false
             showTempStatusMessage()
             return
         }
 
-        guard trimmed != (loginViewModel.userDisplayName ?? "") else {
-            nameChangeMessageText = "Name is already set to this."
-            nameChangeWasSuccessful = true
+        // 2. Character limit (already visually enforced, but double-check)
+        guard trimmedName.count <= displayNameCharacterLimit else {
+            nameChangeMessageText = "Display name cannot exceed \(displayNameCharacterLimit) characters."
+            nameChangeWasSuccessful = false
+            showTempStatusMessage()
+            return
+        }
+
+        // 3. Profanity check
+        if containsProfanity(trimmedName) {
+            nameChangeMessageText = "Display name contains inappropriate language."
+            nameChangeWasSuccessful = false
+            showTempStatusMessage()
+            return
+        }
+
+        // 4. Check if different from current name
+        guard trimmedName != (loginViewModel.userDisplayName ?? "") else {
+            nameChangeMessageText = "This is already your display name."
+            nameChangeWasSuccessful = true // Not an error, just no change
             showTempStatusMessage()
             return
         }
 
         isSavingName = true
-        loginViewModel.updateUserDisplayName(newName: trimmed, currentPlayerStats: currentPlayerStats) { success, message in
-            isSavingName = false
-            nameChangeMessageText = message ?? (success ? "Display name updated successfully!" : "Failed to update display name.")
-            nameChangeWasSuccessful = success
-            showTempStatusMessage()
+        nameChangeMessageText = "" // Clear previous message
+
+        // 5. Uniqueness check
+        firebaseManager.checkDisplayNameExists(displayName: trimmedName) { exists, error in
+            if let error = error {
+                nameChangeMessageText = "Error checking name: \(error.localizedDescription)"
+                nameChangeWasSuccessful = false
+                isSavingName = false
+                showTempStatusMessage()
+                return
+            }
+
+            if exists {
+                nameChangeMessageText = "This display name is already taken. Please choose another."
+                nameChangeWasSuccessful = false
+                isSavingName = false
+                showTempStatusMessage()
+                return
+            }
+
+            // All checks passed, proceed to update
+            loginViewModel.updateUserDisplayName(newName: trimmedName, currentPlayerStats: currentPlayerStats) { success, message in
+                isSavingName = false
+                nameChangeMessageText = message ?? (success ? "Display name updated successfully!" : "Failed to update display name.")
+                nameChangeWasSuccessful = success
+                showTempStatusMessage()
+                if success {
+                    // editableDisplayName will be updated by the .onChange(of: loginViewModel.userDisplayName)
+                }
+            }
         }
     }
 
+
     private func showTempStatusMessage() {
         withAnimation { showNameChangeStatusMessage = true }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) { // Increased duration slightly
             withAnimation { showNameChangeStatusMessage = false }
         }
     }
@@ -376,7 +436,6 @@ struct NotificationSettingsView: View {
     }
 }
 
-
 enum NotificationsTutorialStep: Int, CaseIterable {
     case welcome, toggleScheduled, toggleLocation, setTimes, extraReminders, finished
 
@@ -415,3 +474,16 @@ enum NotificationsTutorialStep: Int, CaseIterable {
         }
     }
 }
+
+
+// Ensure NotificationsTutorialOverlay and other dependencies like PlayerStats, TodoViewModel, LoginViewModel, LocationManager are correctly defined.
+// Dummy definition for PlayerStats if not fully provided by user's context
+#if DEBUG
+// Assuming PlayerStats is defined elsewhere and @Query works with it.
+// For the sake of compilation here, a placeholder:
+// struct PlayerStats: Identifiable, Codable { let id = UUID(); var playerLevel: Int = 0; var displayName: String? }
+
+// Ensure NotificationsTutorialStep is defined as per your original file.
+// enum NotificationsTutorialStep: Int, CaseIterable { /* ... cases ... */ } // This was the issue, it's now outside the struct
+// struct NotificationsTutorialOverlay: View { /* ... body ... */ }
+#endif

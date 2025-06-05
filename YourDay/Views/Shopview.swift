@@ -112,13 +112,13 @@ struct ThemeBannerView: View {
 
             VStack { // Text overlay on top of image
                 Text(theme.rawValue).font(.title).fontWeight(.bold).foregroundColor(.white)
-                Text("Tap to Pull!").font(.caption).foregroundColor(.white.opacity(0.8)) // Reverted to 0.8 opacity
+                Text("Tap to Pull!").font(.caption).foregroundColor(.white.opacity(0.8))
             }
         }
-        .frame(height: 120) // Original frame height
-        .cornerRadius(15)   // Original corner radius
-        .clipped()          // Ensures content within bounds
-        .shadow(color: plantDustyBlue.opacity(0.4), radius: 5, x: 0, y: 2) // Consistent shadow style
+        .frame(height: 120)
+        .cornerRadius(15)
+        .clipped()
+        .shadow(color: plantDustyBlue.opacity(0.4), radius: 5, x: 0, y: 2) 
         .padding(.vertical, 5)
     }
 }

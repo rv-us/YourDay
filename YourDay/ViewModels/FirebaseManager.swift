@@ -124,7 +124,28 @@ class FirebaseManager: ObservableObject {
             completion(entries, nil)
         }
     }
-    
+    func checkDisplayNameExists(displayName: String, completion: @escaping (Bool, Error?) -> Void) {
+            db.collection("leaderboard_entries")
+              .whereField("displayName", isEqualTo: displayName)
+              .limit(to: 1) // We only need to know if at least one exists
+              .getDocuments { (querySnapshot, error) in
+                if let error = error {
+                    print("Error checking display name existence for '\(displayName)': \(error.localizedDescription)")
+                    completion(false, error)
+                    return
+                }
+                
+                if let snapshot = querySnapshot, !snapshot.documents.isEmpty {
+                    // If we found any document with this display name
+                    print("Display name '\(displayName)' exists.")
+                    completion(true, nil)
+                } else {
+                    // No document found with this display name
+                    print("Display name '\(displayName)' does not exist.")
+                    completion(false, nil)
+                }
+            }
+        }
     // MARK: - Other Data Types (Placeholders - ensure Codable versions or mapping)
     // func saveTodoItem(_ todoItem: CodableTodoItem, completion: @escaping (Error?) -> Void) { ... }
     // func loadTodoItems(completion: @escaping ([CodableTodoItem]?, Error?) -> Void) { ... }
