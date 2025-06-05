@@ -15,30 +15,28 @@ struct NoteDetailView: View {
     @State private var editedText: String = ""
 
     var body: some View {
-        VStack {
-            TextEditor(text: $editedText)
-                .padding()
-                .background(Color(UIColor.secondarySystemBackground))
-                .cornerRadius(10)
-                .padding()
-
-            Spacer()
+        VStack(spacing: 0) {
+            Form {
+                Section(header: Text("Edit Note").font(.headline)) {
+                    TextEditor(text: $editedText)
+                        .frame(minHeight: 400, maxHeight: .infinity)
+                        .padding(8)
+                        .background(Color(UIColor.secondarySystemBackground))
+                        .cornerRadius(10)
+                }
+            }
         }
         .onAppear {
             editedText = note.content
         }
-        .navigationTitle("Edit Note")
         .toolbar {
-            Button("Save") {
-                note.content = editedText
-                try? context.save()
-                dismiss()
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button("Save") {
+                    note.content = editedText
+                    try? context.save()
+                    dismiss()
+                }
             }
         }
     }
 }
-
-
-//#Preview {
-//    NoteDetailView()
-//}
