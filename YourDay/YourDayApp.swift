@@ -8,6 +8,7 @@
 import SwiftUI
 import SwiftData
 import FirebaseCore
+import UIKit
 
 @main
 struct YourDayApp: App {
@@ -15,6 +16,15 @@ struct YourDayApp: App {
 
     init() {
         FirebaseApp.configure()
+        let appearance = UITabBarAppearance()
+        appearance.backgroundColor = UIColor(plantLightMintGreen)
+        UITabBar.appearance().standardAppearance = appearance
+        UITabBar.appearance().scrollEdgeAppearance = appearance
+        UITabBar.appearance().tintColor = UIColor(plantDarkGreen)
+        appearance.stackedLayoutAppearance.normal.iconColor = UIColor(plantDustyBlue)
+        appearance.stackedLayoutAppearance.normal.titleTextAttributes = [.foregroundColor: UIColor(plantDustyBlue)]
+        UITabBar.appearance().standardAppearance = appearance
+        UITabBar.appearance().scrollEdgeAppearance = appearance
     }
 
     var body: some Scene {
