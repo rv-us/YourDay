@@ -3,10 +3,6 @@ import Firebase
 import GoogleSignIn
 import GoogleSignInSwift
 
-// The Color extension and the global color constants (plantDarkGreen, plantMediumGreen, etc.)
-// are now assumed to be defined elsewhere (e.g., in your ShopView.swift or a dedicated extensions file)
-// and are accessible here.
-
 struct LoginView: View {
 
     @StateObject var viewModel: LoginViewModel
@@ -19,12 +15,12 @@ struct LoginView: View {
                 Text("Welcome to YourDay")
                     .font(.largeTitle)
                     .fontWeight(.bold)
-                    .foregroundColor(plantDarkGreen)
+                    .foregroundColor(dynamicTextColor)
                     .multilineTextAlignment(.center)
 
                 Text("Sign in to continue and save your progress.")
                     .font(.headline)
-                    .foregroundColor(plantMediumGreen)
+                    .foregroundColor(dynamicSecondaryTextColor)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 40)
                 
@@ -33,7 +29,7 @@ struct LoginView: View {
                 if viewModel.isLoading {
                     ProgressView("Signing In...")
                         .scaleEffect(1.5)
-                        .progressViewStyle(CircularProgressViewStyle(tint: plantMediumGreen))
+                        .progressViewStyle(CircularProgressViewStyle(tint: dynamicSecondaryColor))
                 } else {
                     GoogleSignInButton(action: {
                           viewModel.signInWithGoogle()
@@ -43,7 +39,7 @@ struct LoginView: View {
 
                 if let errorMessage = viewModel.errorMessage {
                     Text(errorMessage)
-                        .foregroundColor(.red)
+                        .foregroundColor(dynamicDestructiveColor)
                         .font(.caption)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
@@ -55,14 +51,14 @@ struct LoginView: View {
                 
                 Text("By signing in, you agree to our Terms of Service and Privacy Policy.")
                     .font(.caption2)
-                    .foregroundColor(plantDustyBlue)
+                    .foregroundColor(dynamicSecondaryTextColor)
                     .multilineTextAlignment(.center)
                     .padding(.bottom)
 
             }
             .padding()
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(plantBeige.edgesIgnoringSafeArea(.all))
+            .background(dynamicBackgroundColor.edgesIgnoringSafeArea(.all))
             .navigationTitle("Login")
             .navigationBarHidden(true)
         }

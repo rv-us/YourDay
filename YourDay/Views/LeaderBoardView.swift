@@ -1,14 +1,5 @@
-//
-//  LeaderBoardView.swift
-//  YourDay
-//
-//  Created by Rachit Verma on 5/20/25.
-//
 import SwiftUI
-import FirebaseAuth // To get current user ID for initial ViewModel state
-
-
-let genericYellow = Color.yellow // Using a standard yellow
+import FirebaseAuth
 
 
 struct LeaderboardView: View {
@@ -27,7 +18,7 @@ struct LeaderboardView: View {
                 if viewModel.isLoading && viewModel.leaderboardEntries.isEmpty {
                     Spacer()
                     ProgressView("Loading Leaderboard...")
-                        .progressViewStyle(CircularProgressViewStyle(tint: plantMediumGreen)) // Reverted
+                        .progressViewStyle(CircularProgressViewStyle(tint: dynamicSecondaryColor))
                         .scaleEffect(1.5)
                         .padding()
                     Spacer()
@@ -35,15 +26,15 @@ struct LeaderboardView: View {
                     Spacer()
                     VStack {
                         Text("Error: \(errorMessage)")
-                            .foregroundColor(plantPink) // Kept for error emphasis
+                            .foregroundColor(dynamicDestructiveColor)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal)
                         Button("Retry") {
                             viewModel.refreshLeaderboard()
                         }
                         .padding()
-                        .background(plantMediumGreen) // Reverted
-                        .foregroundColor(.white)    // Reverted
+                        .background(dynamicSecondaryColor)
+                        .foregroundColor(.white)
                         .cornerRadius(8)
                         .padding(.top)
                     }
@@ -52,7 +43,7 @@ struct LeaderboardView: View {
                 } else if viewModel.leaderboardEntries.isEmpty {
                     Spacer()
                     Text("Leaderboard is currently empty.")
-                        .foregroundColor(plantDustyBlue) // Reverted
+                        .foregroundColor(dynamicSecondaryTextColor)
                         .padding()
                     Spacer()
                 } else {
@@ -67,10 +58,10 @@ struct LeaderboardView: View {
                             }
                             .padding(.vertical, 10)
                             .padding(.horizontal, 16)
-                            .background(plantPastelBlue) // Reverted
-                            .foregroundColor(plantDarkGreen) // Reverted
+                            .background(dynamicPrimaryColor)
+                            .foregroundColor(Color.white)
                             .cornerRadius(10)
-                            .shadow(color: plantDustyBlue.opacity(0.3), radius: 3, x: 0, y: 2) // Reverted
+                            .shadow(color: dynamicSecondaryTextColor.opacity(0.3), radius: 3, x: 0, y: 2)
                         }
                         .padding(.vertical, 15)
                     }
@@ -88,7 +79,7 @@ struct LeaderboardView: View {
                             }
                         }
                         .listStyle(PlainListStyle())
-                        .background(plantBeige) // Reverted
+                        .background(dynamicBackgroundColor)
                         .onAppear {
                             self.scrollViewProxy = proxy
                             if viewModel.currentUserID != Auth.auth().currentUser?.uid {
@@ -104,7 +95,7 @@ struct LeaderboardView: View {
                     
                     if !viewModel.leaderboardEntries.isEmpty {
                         VStack {
-                            Divider().background(plantLightMintGreen) // Reverted
+                            Divider().background(dynamicSecondaryBackgroundColor)
                             HStack {
                                 if let rank = viewModel.currentUserRank {
                                     Text("Your Rank: \(rank)")
@@ -116,32 +107,32 @@ struct LeaderboardView: View {
                                 Text("Total Players: \(viewModel.leaderboardEntries.count)")
                             }
                             .font(.caption)
-                            .foregroundColor(plantMediumGreen) // Reverted
+                            .foregroundColor(dynamicSecondaryTextColor)
                             .padding(.horizontal)
                             .padding(.vertical, 8)
                         }
-                        .background(plantBeige) // Reverted
+                        .background(dynamicBackgroundColor)
                     }
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(plantBeige.edgesIgnoringSafeArea(.all)) // Reverted
+            .background(dynamicBackgroundColor.edgesIgnoringSafeArea(.all))
             .navigationTitle("Leaderboard")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(plantLightMintGreen, for: .navigationBar) // Reverted
+            .toolbarBackground(dynamicSecondaryBackgroundColor, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     Text("Leaderboard")
                         .fontWeight(.bold)
-                        .foregroundColor(plantDarkGreen) // Reverted
+                        .foregroundColor(dynamicTextColor)
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: {
                         viewModel.refreshLeaderboard()
                     }) {
                         Image(systemName: "arrow.clockwise")
-                            .foregroundColor(plantDarkGreen) // Reverted
+                            .foregroundColor(dynamicPrimaryColor)
                     }
                     .disabled(viewModel.isLoading)
                 }
@@ -171,26 +162,26 @@ struct LeaderboardHeaderView: View {
         HStack {
             Text("Rank")
                 .fontWeight(.semibold)
-                .foregroundColor(plantDarkGreen)
+                .foregroundColor(dynamicTextColor)
                 .frame(width: 50, alignment: .center)
             Text("Player")
                 .fontWeight(.semibold)
-                .foregroundColor(plantDarkGreen)
+                .foregroundColor(dynamicTextColor)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.leading, 5)
             Text("Level")
                 .fontWeight(.semibold)
-                .foregroundColor(plantDarkGreen)
+                .foregroundColor(dynamicTextColor)
                 .frame(width: 50, alignment: .trailing)
             Text("Value")
                 .fontWeight(.semibold)
-                .foregroundColor(plantDarkGreen)
+                .foregroundColor(dynamicTextColor)
                 .frame(width: 80, alignment: .trailing)
         }
         .font(.subheadline)
         .padding(.horizontal)
         .padding(.vertical, 8)
-        .background(plantPastelGreen.opacity(0.5)) // Reverted
+        .background(dynamicSecondaryBackgroundColor.opacity(0.8))
         .cornerRadius(6)
         .listRowInsets(EdgeInsets())
     }
@@ -204,12 +195,12 @@ struct LeaderboardRowView: View {
         HStack {
             Text("\(entry.rank ?? 0)")
                 .fontWeight(isCurrentUser ? .bold : .regular)
-                .foregroundColor(isCurrentUser ? plantDarkGreen : plantMediumGreen)
+                .foregroundColor(isCurrentUser ? dynamicTextColor : dynamicSecondaryTextColor)
                 .frame(width: 50, alignment: .center)
             
             Text(entry.displayName)
                 .fontWeight(isCurrentUser ? .bold : .regular)
-                .foregroundColor(isCurrentUser ? plantDarkGreen : plantMediumGreen) // User's name in yellow
+                .foregroundColor(isCurrentUser ? dynamicTextColor : dynamicSecondaryTextColor)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -217,20 +208,18 @@ struct LeaderboardRowView: View {
             
             Text("\(entry.playerLevel)")
                 .fontWeight(isCurrentUser ? .bold : .regular)
-                .foregroundColor(isCurrentUser ? plantDarkGreen : plantMediumGreen)
+                .foregroundColor(isCurrentUser ? dynamicTextColor : dynamicSecondaryTextColor)
                 .frame(width: 50, alignment: .trailing)
             
             Text("\(Int(entry.gardenValue))")
                 .fontWeight(isCurrentUser ? .bold : .regular)
-                .foregroundColor(isCurrentUser ? plantDarkGreen : plantMediumGreen)
+                .foregroundColor(isCurrentUser ? dynamicTextColor : dynamicSecondaryTextColor)
                 .frame(width: 80, alignment: .trailing)
         }
         .padding(.vertical, 10)
         .padding(.horizontal, 5)
-        .background(isCurrentUser ? plantPink.opacity(0.6) : Color.clear) // User's row highlighted in pink
+        .background(isCurrentUser ? dynamicPrimaryColor.opacity(0.3) : Color.clear)
         .cornerRadius(isCurrentUser ? 8 : 0)
-        .listRowBackground(plantBeige) // Reverted
+        .listRowBackground(dynamicBackgroundColor)
     }
 }
-
-

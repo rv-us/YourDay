@@ -55,7 +55,7 @@ struct ContentView: View {
                     )
                          .tabItem { Label("Settings", systemImage: "gearshape.fill") }
                 }
-                .tint(plantDarkGreen)
+                .tint(dynamicPrimaryColor)
                 .task {
                     await processNewDayLogicIfNeeded()
                 }
@@ -170,14 +170,12 @@ struct ContentView: View {
         formatter.dateFormat = "yyyy-MM-dd"
         let todayString = formatter.string(from: today)
 
-        // --- Plant Withering Logic ---
         if todayString != lastAppOpenDateForWitheringCheckString {
             if let lastLoginActual = stats.lastLoginDate {
                 let daysSinceLastLogin = calendar.dateComponents([.day], from: lastLoginActual, to: today).day ?? 0
                 
-                if daysSinceLastLogin > 5 { // More than 5 days of inactivity
+                if daysSinceLastLogin > 5 {
                     var witheredCount = 0
-                    // Get indices of plants that are fully grown and NOT already the "Withered Plant" by name
                     let fullyGrownPlantIndices = stats.placedPlants.indices.filter { index in
                         let plant = stats.placedPlants[index]
                         return plant.isFullyGrown && plant.name != PlantLibrary.blueprint(withId: "withered_1")?.name
@@ -190,16 +188,14 @@ struct ContentView: View {
                         if let witheredBlueprint = PlantLibrary.blueprint(withId: "withered_1") {
                             for index in indicesToWither {
                                 if index < stats.placedPlants.count {
-                                    // Modify the existing plant's properties to match the withered blueprint
                                     stats.placedPlants[index].name = witheredBlueprint.name
                                     stats.placedPlants[index].assetName = witheredBlueprint.assetName
                                     stats.placedPlants[index].iconName = witheredBlueprint.iconName
                                     stats.placedPlants[index].rarity = witheredBlueprint.rarity
                                     stats.placedPlants[index].theme = witheredBlueprint.theme
                                     stats.placedPlants[index].baseValue = witheredBlueprint.baseValue
-                                    stats.placedPlants[index].daysLeftTillFullyGrown = witheredBlueprint.initialDaysToGrow // Should be 0
-                                    stats.placedPlants[index].initialDaysToGrow = witheredBlueprint.initialDaysToGrow // Should be 0
-                                    // Other properties like plantedDate and position remain the same.
+                                    stats.placedPlants[index].daysLeftTillFullyGrown = witheredBlueprint.initialDaysToGrow
+                                    stats.placedPlants[index].initialDaysToGrow = witheredBlueprint.initialDaysToGrow
                                     witheredCount += 1
                                 }
                             }
@@ -223,7 +219,6 @@ struct ContentView: View {
             }
         }
 
-        // --- Daily ToDo Points Summary & Migration Logic ---
         if todayString != lastSummaryDateString {
             let (points, _) = PointManager.evaluateDailyPoints(context: modelContext, tasks: allTodoItems)
             await deleteOldDoneTasks()

@@ -1,10 +1,3 @@
-//
-//  TodoListItemView.swift
-//  YourDay
-//
-//  Created by Ruthwika Gajjala on 4/17/25.
-//
-
 import SwiftUI
 import SwiftData
 
@@ -24,17 +17,14 @@ struct TodoListItemView: View {
                     print("Main item '\(item.title)' toggled to \(item.isDone), completedAt: \(String(describing: item.completedAt))")
                 }) {
                     Image(systemName: item.isDone ? "checkmark.circle.fill" : "circle")
-                        // Apply darker green for completed checkbox icon, keeping dusty blue for uncompleted
-                        .foregroundColor(item.isDone ? plantDarkGreen : plantDustyBlue)
+                        .foregroundColor(item.isDone ? dynamicPrimaryColor : dynamicSecondaryTextColor)
                         .frame(width: 24, height: 24)
                         .padding(6)
-                        // Apply themed background for checkbox circle
-                        .background(item.isDone ? plantLightMintGreen.opacity(0.6) : plantPastelGreen.opacity(0.3))
+                        .background(item.isDone ? dynamicPrimaryColor.opacity(0.2) : dynamicSecondaryBackgroundColor)
                         .clipShape(Circle())
-                        .overlay( // Add a subtle border to checkbox
-                            // Use darker green for completed border, dusty blue for uncompleted
+                        .overlay(
                             Circle()
-                                .stroke(item.isDone ? plantDarkGreen : plantDustyBlue, lineWidth: 1.5)
+                                .stroke(item.isDone ? dynamicPrimaryColor : dynamicSecondaryTextColor, lineWidth: 1.5)
                         )
                 }
                 .buttonStyle(PlainButtonStyle())
@@ -42,19 +32,17 @@ struct TodoListItemView: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(item.title)
-                        .font(.body) // Keep original font size
+                        .font(.body)
                         .lineLimit(1)
-                        .strikethrough(item.isDone, color: plantDustyBlue) // Themed strikethrough color
-                        // Apply original themed colors for main title text
-                        .foregroundColor(item.isDone ? plantDustyBlue : plantDarkGreen)
+                        .strikethrough(item.isDone, color: dynamicSecondaryTextColor)
+                        .foregroundColor(item.isDone ? dynamicSecondaryTextColor : dynamicTextColor)
 
                     if !item.detail.isEmpty {
                         Text(item.detail)
-                            .font(.caption) // Keep original font size
+                            .font(.caption)
                             .lineLimit(2)
-                            .strikethrough(item.isDone, color: plantDustyBlue.opacity(0.7)) // Themed strikethrough color
-                            // Apply original themed colors for detail text
-                            .foregroundColor(item.isDone ? plantDustyBlue.opacity(0.7) : plantMediumGreen)
+                            .strikethrough(item.isDone, color: dynamicSecondaryTextColor.opacity(0.7))
+                            .foregroundColor(item.isDone ? dynamicSecondaryTextColor : dynamicSecondaryTextColor)
                     }
                 }
                 .onTapGesture {
@@ -69,9 +57,8 @@ struct TodoListItemView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     ForEach($item.subtasks) { $subtask in
                         SubtaskCheckboxView(subtask: $subtask)
-                        // Apply original themed strikethrough and text colors for subtasks
-                            .strikethrough(subtask.isDone, color: plantDustyBlue.opacity(0.7))
-                            .foregroundColor(subtask.isDone ? plantDustyBlue.opacity(0.7) : plantMediumGreen)
+                            .strikethrough(subtask.isDone, color: dynamicSecondaryTextColor.opacity(0.7))
+                            .foregroundColor(subtask.isDone ? dynamicSecondaryTextColor.opacity(0.7) : dynamicTextColor)
                     }
                 }
                 .padding(.leading, 34)

@@ -1,7 +1,7 @@
 import SwiftUI
 import SwiftData
 
-// MARK: - Color Definitions
+// MARK: - Original Color Palette
 let plantDarkGreen = Color(hex: "#477468")
 let plantMediumGreen = Color(hex: "#3A9C75")
 let plantLightMintGreen = Color(hex: "#A7E2CD")
@@ -14,6 +14,41 @@ let plantPink = Color(hex: "#FBB7C7")
 let plantLightPink = Color(hex: "#FAD9D5")
 let plantPeach = Color(hex: "#FCE6D3")
 let gardenViewBackground = Color(hex: "#72b084")
+
+
+// MARK: - New Dynamic Color Palette (Gardening/Productivity Theme) - For Future Implementation
+struct LightTheme {
+    static let primary = Color(hex: "#4A90E2") // A calm, sky blue for focus
+    static let secondary = Color(hex: "#50C878") // A fresh, emerald green for growth
+    static let accent = Color(hex: "#F8E71C") // A bright, sunny yellow for highlights
+    static let destructive = Color(hex: "#E57373") // A softer, terracotta red
+    static let background = Color(hex: "#F7F9FC") // A very light, airy blue-gray
+    static let secondaryBackground = Color(hex: "#FFFFFF") // Pure white for cards/modals
+    static let text = Color(hex: "#2C3E50") // A dark, desaturated navy for readability
+    static let secondaryText = Color(hex: "#8D99AE") // A muted gray for subtitles
+}
+
+struct DarkTheme {
+    static let primary = Color(hex: "#58A6FF") // A slightly more vibrant blue for dark mode
+    static let secondary = Color(hex: "#58D68D") // A brighter green for visibility
+    static let accent = Color(hex: "#FFD700") // A classic gold for accents
+    static let destructive = Color(hex: "#EF5350") // A clear red for destructive actions
+    static let background = Color(hex: "#1A202C") // A deep, dark navy/charcoal
+    static let secondaryBackground = Color(hex: "#2D3748") // A lighter dark gray for elevation
+    static let text = Color(hex: "#EDF2F7") // A soft off-white to reduce eye strain
+    static let secondaryText = Color(hex: "#A0AEC0") // A light gray for secondary info
+}
+
+// Dynamic Colors (will be used when the new theme is applied)
+let dynamicPrimaryColor = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(DarkTheme.primary) : UIColor(LightTheme.primary) })
+let dynamicSecondaryColor = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(DarkTheme.secondary) : UIColor(LightTheme.secondary) })
+let dynamicAccentColor = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(DarkTheme.accent) : UIColor(LightTheme.accent) })
+let dynamicDestructiveColor = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(DarkTheme.destructive) : UIColor(LightTheme.destructive) })
+let dynamicBackgroundColor = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(DarkTheme.background) : UIColor(LightTheme.background) })
+let dynamicSecondaryBackgroundColor = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(DarkTheme.secondaryBackground) : UIColor(LightTheme.secondaryBackground) })
+let dynamicTextColor = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(DarkTheme.text) : UIColor(LightTheme.text) })
+let dynamicSecondaryTextColor = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(DarkTheme.secondaryText) : UIColor(LightTheme.secondaryText) })
+
 
 extension Color {
     init(hex: String) {
@@ -52,9 +87,9 @@ struct ShopView: View {
                 VStack(alignment: .center, spacing: 20) {
                     Text("Plant Gacha Shop")
                         .font(.largeTitle).fontWeight(.bold).padding(.top)
-                        .foregroundColor(plantDarkGreen)
+                        .foregroundColor(dynamicTextColor)
                     Text("Select a theme to pull plants!")
-                        .font(.headline).foregroundColor(plantMediumGreen).padding(.bottom, 10)
+                        .font(.headline).foregroundColor(dynamicSecondaryTextColor).padding(.bottom, 10)
                     ForEach(themes, id: \.self) { theme in
                         NavigationLink(destination: ThemePullView(theme: theme)) {
                             ThemeBannerView(theme: theme)
@@ -62,20 +97,20 @@ struct ShopView: View {
                     }
                 }.padding()
             }
-            .background(plantBeige.edgesIgnoringSafeArea(.all))
+            .background(dynamicBackgroundColor.edgesIgnoringSafeArea(.all))
             .navigationTitle("Shop")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(plantLightMintGreen, for: .navigationBar)
+            .toolbarBackground(dynamicSecondaryBackgroundColor, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Close") { dismiss() }
-                        .foregroundColor(plantDarkGreen)
+                        .foregroundColor(dynamicPrimaryColor)
                 }
                 ToolbarItem(placement: .principal) {
                     Text("Shop")
                         .fontWeight(.bold)
-                        .foregroundColor(plantDarkGreen)
+                        .foregroundColor(dynamicTextColor)
                 }
             }
         }
@@ -95,23 +130,22 @@ struct ThemeBannerView: View {
 
     private var bannerTintColor: Color {
         switch theme {
-        case .spring: return plantPink.opacity(0.6)
-        case .summer: return plantPastelBlue.opacity(0.6)
-        case .fall: return plantPeach.opacity(0.6)
-        case .winter: return plantVeryLightBlue.opacity(0.6)
+        case .spring: return dynamicSecondaryColor.opacity(0.8)
+        case .summer: return dynamicPrimaryColor.opacity(0.8)
+        case .fall: return dynamicAccentColor.opacity(0.8)
+        case .winter: return dynamicPrimaryColor.opacity(0.7)
         }
     }
 
     var body: some View {
         ZStack {
-            bannerTintColor // Tint layer as background
+            bannerTintColor
 
-            Image(bannerImageName()) // Image asset on top of tint
+            Image(bannerImageName())
                 .resizable()
-                .aspectRatio(contentMode: .fill) // Original scaling
-                // Image will fill the frame of the ZStack
+                .aspectRatio(contentMode: .fill)
 
-            VStack { // Text overlay on top of image
+            VStack {
                 Text(theme.rawValue).font(.title).fontWeight(.bold).foregroundColor(.white)
                 Text("Tap to Pull!").font(.caption).foregroundColor(.white.opacity(0.8))
             }
@@ -119,7 +153,7 @@ struct ThemeBannerView: View {
         .frame(height: 120)
         .cornerRadius(15)
         .clipped()
-        .shadow(color: plantDustyBlue.opacity(0.4), radius: 5, x: 0, y: 2) 
+        .shadow(color: dynamicSecondaryTextColor.opacity(0.4), radius: 5, x: 0, y: 2)
         .padding(.vertical, 5)
     }
 }
@@ -160,30 +194,30 @@ struct ThemePullView: View {
         }
     }
     
-    private var themeAccentColor: Color { // Used for buttons and highlights
+    private var themeAccentColor: Color {
         switch theme {
-        case .spring: return plantPink
-        case .summer: return plantPastelBlue
-        case .fall: return plantPeach
-        case .winter: return plantVeryLightBlue
+        case .spring: return dynamicSecondaryColor
+        case .summer: return dynamicPrimaryColor
+        case .fall: return dynamicAccentColor
+        case .winter: return dynamicPrimaryColor
         }
     }
     
-    private var themePageBannerTintColor: Color { // Used for the banner background/tint
+    private var themePageBannerTintColor: Color {
         switch theme {
-        case .spring: return plantPink.opacity(0.5)
-        case .summer: return plantPastelBlue.opacity(0.5)
-        case .fall: return plantPeach.opacity(0.5)
-        case .winter: return plantVeryLightBlue.opacity(0.5)
+        case .spring: return dynamicSecondaryColor.opacity(0.7)
+        case .summer: return dynamicPrimaryColor.opacity(0.7)
+        case .fall: return dynamicAccentColor.opacity(0.7)
+        case .winter: return dynamicPrimaryColor.opacity(0.6)
         }
     }
     
-    private var themePageBackgroundColor: Color { // Overall page background
+    private var themePageBackgroundColor: Color {
         switch theme {
-        case .spring: return plantLightPink.opacity(0.3)
-        case .summer: return plantPastelGreen.opacity(0.3)
-        case .fall: return plantPeach.opacity(0.2)
-        case .winter: return plantVeryLightBlue.opacity(0.3)
+        case .spring: return dynamicSecondaryColor.opacity(0.15)
+        case .summer: return dynamicPrimaryColor.opacity(0.15)
+        case .fall: return dynamicAccentColor.opacity(0.15)
+        case .winter: return dynamicPrimaryColor.opacity(0.15)
         }
     }
 
@@ -194,26 +228,26 @@ struct ThemePullView: View {
             ScrollView {
                 VStack(spacing: 20) {
                     ZStack {
-                        themePageBannerTintColor // Tint layer as background
+                        themePageBannerTintColor
 
-                        Image(themePageBannerImageName()) // Image asset on top of tint
+                        Image(themePageBannerImageName())
                             .resizable()
-                            .scaledToFill() // Original scaling
+                            .scaledToFill()
 
-                        Text("\(theme.rawValue) Theme") // Text overlay on top of image
+                        Text("\(theme.rawValue) Theme")
                             .font(.system(size: 36, weight: .bold))
                             .foregroundColor(.white)
-                            .shadow(radius: 3) // Reverted to original simpler shadow
+                            .shadow(radius: 3)
                     }
-                    .frame(width: 350, height: 180) // Original frame dimensions
-                    .cornerRadius(10) // Original corner radius
-                    .clipped() // Ensures content within bounds
-                    .shadow(color: plantDustyBlue.opacity(0.3), radius: 5, x: 0, y: 2) // Consistent shadow style
+                    .frame(width: 350, height: 180)
+                    .cornerRadius(10)
+                    .clipped()
+                    .shadow(color: dynamicSecondaryTextColor.opacity(0.3), radius: 5, x: 0, y: 2)
                     .padding(.vertical)
 
                     Text("Current Points: \(Int(playerStats.totalPoints))")
                         .font(.headline)
-                        .foregroundColor(plantDarkGreen)
+                        .foregroundColor(dynamicTextColor)
 
                     VStack(spacing: 15) {
                         pullButton(numPulls: 2, cost: 100)
@@ -222,25 +256,25 @@ struct ThemePullView: View {
 
                     if !revealedPlantsThisPull.isEmpty {
                         Divider().padding(.vertical)
-                            .background(plantMediumGreen)
+                            .background(dynamicSecondaryColor)
                         Text("Pulled This Session:").font(.title2).fontWeight(.semibold)
-                            .foregroundColor(plantDarkGreen)
+                            .foregroundColor(dynamicTextColor)
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 10) {
                                 ForEach(revealedPlantsThisPull) { plantBlueprint in
                                     VStack {
                                         plantBlueprint.iconVisual
                                             .frame(width: 60, height: 60)
-                                            .background(plantPastelGreen.opacity(0.7)).cornerRadius(8)
-                                            .shadow(color: plantDustyBlue.opacity(0.3), radius: 2, x: 0, y: 1)
+                                            .background(dynamicSecondaryBackgroundColor.opacity(0.7)).cornerRadius(8)
+                                            .shadow(color: dynamicSecondaryTextColor.opacity(0.3), radius: 2, x: 0, y: 1)
                                         Text(plantBlueprint.name).font(.caption).lineLimit(1)
-                                            .foregroundColor(plantDarkGreen)
+                                            .foregroundColor(dynamicTextColor)
                                         Text(plantBlueprint.rarity.rawValue).font(.caption2).foregroundColor(rarityColor(plantBlueprint.rarity))
                                     }.frame(width: 70)
                                 }
                             }.padding()
                         }.frame(height: 120)
-                        .background(plantBeige.opacity(0.5))
+                        .background(dynamicSecondaryBackgroundColor)
                         .cornerRadius(10)
                     }
                     Spacer()
@@ -248,7 +282,7 @@ struct ThemePullView: View {
                  .blur(radius: animationStep != .idle ? 3 : 0)
             }
             .navigationTitle("\(theme.rawValue) Pulls")
-            .background(plantBeige.edgesIgnoringSafeArea(.all))  
+            .background(dynamicBackgroundColor.edgesIgnoringSafeArea(.all))
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden(true)
             .toolbarBackground(themeAccentColor.opacity(0.8), for: .navigationBar)
@@ -264,8 +298,8 @@ struct ThemePullView: View {
                 }
             }
             .alert(isPresented: $showingFinalResultMessageAlert) {
-                Alert(title: Text("Pull Result").foregroundColor(plantDarkGreen),
-                      message: Text(finalResultMessage).foregroundColor(plantMediumGreen),
+                Alert(title: Text("Pull Result").foregroundColor(dynamicTextColor),
+                      message: Text(finalResultMessage).foregroundColor(dynamicSecondaryTextColor),
                       dismissButton: .default(Text("OK").foregroundColor(themeAccentColor)))
             }
             .disabled(animationStep != .idle)
@@ -279,7 +313,7 @@ struct ThemePullView: View {
     @ViewBuilder
     private func gachaAnimationOverlay() -> some View {
         ZStack {
-            plantDarkGreen.opacity(0.7).edgesIgnoringSafeArea(.all)
+            dynamicBackgroundColor.opacity(0.85).edgesIgnoringSafeArea(.all)
                 .onTapGesture {
                     if animationStep == .revealedPoppedUp {
                         dismissRevealedPlant()
@@ -292,31 +326,31 @@ struct ThemePullView: View {
                 if animationStep == .shuffling, let plant = plantForAnimation {
                     plant.iconVisual
                         .frame(width: 100, height: 100).scaleEffect(1.2)
-                        .background(plantPastelGreen.opacity(0.5))
+                        .background(dynamicSecondaryBackgroundColor.opacity(0.5))
                         .cornerRadius(15)
                         .transition(.opacity.combined(with: .scale))
                         .id("shuffle_display_\(plant.id)_\(shuffleCount)")
-                    Text("Shuffling...").foregroundColor(plantBeige).padding(.top)
+                    Text("Shuffling...").foregroundColor(dynamicTextColor).padding(.top)
                         .font(.title3)
                 } else if (animationStep == .revealing || animationStep == .revealedPoppedUp), let plant = plantForAnimation {
                     VStack {
-                        Text("You got...").font(.title2).fontWeight(.bold).foregroundColor(plantBeige)
+                        Text("You got...").font(.title2).fontWeight(.bold).foregroundColor(dynamicTextColor)
                         plant.iconVisual
                             .frame(width: 150, height: 150)
                             .background(rarityColor(plant.rarity).opacity(0.2))
                             .cornerRadius(25)
-                            .scaleEffect(animationStep == .revealing ? 0.5 : 1.8) // This scaling is for animation, not static display
+                            .scaleEffect(animationStep == .revealing ? 0.5 : 1.8)
                             .animation(.spring(response: 0.4, dampingFraction: 0.6).delay(animationStep == .revealing ? 0 : 0.1), value: animationStep)
                             .padding()
-                        Text(plant.name).font(.title).fontWeight(.bold).foregroundColor(plantBeige)
+                        Text(plant.name).font(.title).fontWeight(.bold).foregroundColor(dynamicTextColor)
                         Text(plant.rarity.rawValue).font(.headline).foregroundColor(rarityColor(plant.rarity))
-                        Text(plant.theme.rawValue).font(.subheadline).foregroundColor(plantPastelGreen)
+                        Text(plant.theme.rawValue).font(.subheadline).foregroundColor(dynamicSecondaryTextColor)
                         if animationStep == .revealedPoppedUp {
-                            Text("Tap plant to continue").font(.caption).foregroundColor(plantBeige.opacity(0.7)).padding(.top)
+                            Text("Tap plant to continue").font(.caption).foregroundColor(dynamicSecondaryTextColor.opacity(0.7)).padding(.top)
                         }
                     }
                     .padding(30)
-                    .background(plantMediumGreen.opacity(0.9))
+                    .background(dynamicSecondaryBackgroundColor)
                     .cornerRadius(20)
                     .shadow(color: .black.opacity(0.4), radius: 10, x:0, y:5)
                     .transition(.scale.combined(with: .opacity))
@@ -337,7 +371,7 @@ struct ThemePullView: View {
                         }
                         .padding(.horizontal, 20)
                         .padding(.vertical, 10)
-                        .background(plantPink.opacity(0.9))
+                        .background(dynamicDestructiveColor)
                         .foregroundColor(.white)
                         .cornerRadius(8)
                         .shadow(radius: 3)
@@ -407,20 +441,20 @@ struct ThemePullView: View {
                 if isGuaranteed {
                     Text("Guaranteed Rare or Better!")
                         .font(.caption2)
-                        .foregroundColor(plantMediumGreen)
+                        .foregroundColor(dynamicSecondaryColor)
                         .fontWeight(.bold)
                 }
             }
             .padding().frame(maxWidth: .infinity)
             .background(
                 LinearGradient(
-                    gradient: Gradient(colors: playerStats.totalPoints >= cost ? [themeAccentColor, themeAccentColor.opacity(0.7)] : [plantDustyBlue.opacity(0.6), plantDustyBlue.opacity(0.4)]),
+                    gradient: Gradient(colors: playerStats.totalPoints >= cost ? [themeAccentColor, themeAccentColor.opacity(0.7)] : [dynamicSecondaryTextColor.opacity(0.6), dynamicSecondaryTextColor.opacity(0.4)]),
                     startPoint: .top,
                     endPoint: .bottom
                 )
             )
             .foregroundColor(.white).cornerRadius(10)
-            .shadow(color: playerStats.totalPoints >= cost ? themeAccentColor.opacity(0.5) : plantDustyBlue.opacity(0.3), radius: 3, x: 0, y: 2)
+            .shadow(color: playerStats.totalPoints >= cost ? themeAccentColor.opacity(0.5) : dynamicSecondaryTextColor.opacity(0.3), radius: 3, x: 0, y: 2)
         }
         .disabled(playerStats.totalPoints < cost || animationStep != .idle)
     }
@@ -507,11 +541,11 @@ struct ThemePullView: View {
     
     private func rarityColor(_ rarity: Rarity) -> Color {
         switch rarity {
-        case .common: return plantDustyBlue
-        case .uncommon: return plantMediumGreen
-        case .rare: return plantPastelBlue
-        case .epic: return plantPink
-        case .legendary: return plantPeach
+        case .common: return .gray
+        case .uncommon: return .green
+        case .rare: return .blue
+        case .epic: return .purple
+        case .legendary: return .orange
         }
     }
 }

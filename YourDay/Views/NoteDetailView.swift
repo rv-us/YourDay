@@ -1,10 +1,3 @@
-//
-//  NoteDetailView.swift
-//  YourDay
-//
-//  Created by Ruthwika Gajjala on 4/27/25.
-//
-
 import SwiftUI
 import SwiftData
 
@@ -17,33 +10,33 @@ struct NoteDetailView: View {
     var body: some View {
         VStack(spacing: 0) {
             TextEditor(text: $editedText)
-                .padding() // Padding inside the editor
-                .background(plantPastelGreen.opacity(0.3)) // Softer background for text editor content
-                .cornerRadius(12) // Slightly larger corner radius for a softer look
-                .overlay( // Add a subtle border
+                .padding()
+                .background(dynamicSecondaryBackgroundColor)
+                .cornerRadius(12)
+                .overlay(
                     RoundedRectangle(cornerRadius: 12)
-                        .stroke(plantMediumGreen.opacity(0.5), lineWidth: 1)
+                        .stroke(dynamicSecondaryTextColor.opacity(0.5), lineWidth: 1)
                 )
-                .frame(minHeight: 250, idealHeight: 400, maxHeight: .infinity) // Flexible height
-                .padding(.horizontal) // Padding around the text editor block
-                .padding(.vertical, 10) // Vertical padding for separation
-                .foregroundColor(plantDarkGreen) // Text color
-                .textInputAutocapitalization(.sentences) // Good default for notes
-                .scrollContentBackground(.hidden) // Hide default scroll background if needed
+                .frame(minHeight: 250, idealHeight: 400, maxHeight: .infinity)
+                .padding(.horizontal)
+                .padding(.vertical, 10)
+                .foregroundColor(dynamicTextColor)
+                .textInputAutocapitalization(.sentences)
+                .scrollContentBackground(.hidden)
         }
-        .background(plantBeige.edgesIgnoringSafeArea(.all)) // Apply background to the entire view
+        .background(dynamicBackgroundColor.edgesIgnoringSafeArea(.all))
         .onAppear {
             editedText = note.content
         }
-        .navigationTitle("") // Hide default title
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(plantLightMintGreen, for: .navigationBar) // Custom toolbar background
+        .toolbarBackground(dynamicSecondaryBackgroundColor, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbar {
-            ToolbarItem(placement: .principal) { // Custom title
+            ToolbarItem(placement: .principal) {
                 Text("Edit Note")
                     .fontWeight(.bold)
-                    .foregroundColor(plantDarkGreen)
+                    .foregroundColor(dynamicTextColor)
             }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button("Save") {
@@ -52,7 +45,7 @@ struct NoteDetailView: View {
                     dismiss()
                 }
                 .disabled(editedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                .foregroundColor(editedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? plantDustyBlue.opacity(0.5) : plantDarkGreen) // Dynamic color
+                .foregroundColor(editedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? dynamicSecondaryTextColor.opacity(0.5) : dynamicPrimaryColor)
             }
         }
     }

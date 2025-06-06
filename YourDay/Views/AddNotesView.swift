@@ -3,6 +3,11 @@
 //  YourDay
 //
 
+//
+//  AddNotesView.swift
+//  YourDay
+//
+
 import SwiftUI
 import SwiftData
 import FirebaseVertexAI
@@ -31,29 +36,28 @@ struct AddNotesView: View {
                                 Text(note.content.isEmpty ? "New Note" : note.content)
                                     .lineLimit(1)
                                     .font(.body)
-                                    .foregroundColor(plantDarkGreen)
+                                    .foregroundColor(dynamicTextColor)
                                 Text(note.createdAt, style: .date)
                                     .font(.caption)
-                                    .foregroundColor(.gray)
-                                    .foregroundColor(plantMediumGreen)
+                                    .foregroundColor(dynamicSecondaryTextColor)
                             }
                             .padding(.vertical, 4)
                             .tag(note)
-                            .listRowBackground(selectedNotes.contains(note) ? plantPastelGreen.opacity(0.6) : plantBeige)
+                            .listRowBackground(selectedNotes.contains(note) ? dynamicPrimaryColor.opacity(0.3) : dynamicSecondaryBackgroundColor)
                         } else {
                             NavigationLink(destination: NoteDetailView(note: note)) {
                                 VStack(alignment: .leading, spacing: 5) {
                                     Text(note.content.isEmpty ? "New Note" : note.content)
                                         .lineLimit(1)
                                         .font(.headline)
-                                        .foregroundColor(plantDarkGreen)
+                                        .foregroundColor(dynamicTextColor)
                                     Text(note.createdAt, style: .date)
                                         .font(.caption)
-                                        .foregroundColor(plantMediumGreen)
+                                        .foregroundColor(dynamicSecondaryTextColor)
                                 }
                                 .padding(.vertical, 4)
                             }
-                            .listRowBackground(plantBeige)
+                            .listRowBackground(dynamicSecondaryBackgroundColor)
                         }
                     }
                     .onDelete { indexSet in
@@ -63,15 +67,14 @@ struct AddNotesView: View {
                     }
                 }
                 .listStyle(.plain)
-                .background(plantBeige)
-//                .navigationTitle("Notes")
+                .background(dynamicBackgroundColor)
 
                 if isSelecting {
                     Button(action: generateTasksFromSelectedNotes) {
                         Text("Generate Tasks")
                             .frame(maxWidth: .infinity)
                             .padding()
-                            .background(selectedNotes.isEmpty ? plantDustyBlue.opacity(0.5) : plantMediumGreen)
+                            .background(selectedNotes.isEmpty ? dynamicSecondaryTextColor.opacity(0.5) : dynamicPrimaryColor)
                             .foregroundColor(.white)
                             .cornerRadius(10)
                             .padding(.horizontal)
@@ -79,10 +82,10 @@ struct AddNotesView: View {
                     .disabled(selectedNotes.isEmpty)
                 }
             }
-            .background(plantBeige.edgesIgnoringSafeArea(.all))
+            .background(dynamicBackgroundColor.edgesIgnoringSafeArea(.all))
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(plantLightMintGreen, for: .navigationBar)
+            .toolbarBackground(dynamicSecondaryBackgroundColor, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -90,26 +93,25 @@ struct AddNotesView: View {
                         isSelecting.toggle()
                         selectedNotes.removeAll()
                         
-                        // ✅ End tutorial when selection starts
                         if currentNotesTutorialStep == .selectNote {
                             showNotesTutorial = false
                         }
                     } label: {
                         Text(isSelecting ? "Cancel" : "Select Notes")
-                            .foregroundColor(plantDarkGreen)
+                            .foregroundColor(dynamicPrimaryColor)
                     }
                 }
-                ToolbarItem(placement: .principal) { // Custom title placement
+                ToolbarItem(placement: .principal) {
                     Text("Notes")
                         .fontWeight(.bold)
-                        .foregroundColor(plantDarkGreen) // Applied color
+                        .foregroundColor(dynamicTextColor)
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
                         showingNewNoteView = true
                     } label: {
                         Image(systemName: "square.and.pencil")
-                            .foregroundColor(plantDarkGreen)
+                            .foregroundColor(dynamicPrimaryColor)
                     }
                 }
             }
@@ -213,7 +215,6 @@ struct AddNotesView: View {
     func parseGeminiResponse(_ text: String) -> [TodoItem] {
         var tasks: [TodoItem] = []
 
-        // Use regex to find each [Task X] block
         let pattern = "\\[Task.*\\]"
         let regex = try? NSRegularExpression(pattern: pattern, options: [])
 
@@ -232,7 +233,6 @@ struct AddNotesView: View {
             lastIndex = range.location
         }
 
-        // Append final block
         if lastIndex < nsText.length {
             let finalBlock = nsText.substring(from: lastIndex)
             blocks.append(finalBlock)
@@ -341,5 +341,3 @@ var requiresUserAction: Bool {
     }
 }
 }
-
-
