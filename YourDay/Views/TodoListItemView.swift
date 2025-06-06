@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct TodoListItemView: View {
     @Bindable var item: TodoItem
@@ -23,28 +24,37 @@ struct TodoListItemView: View {
                     print("Main item '\(item.title)' toggled to \(item.isDone), completedAt: \(String(describing: item.completedAt))")
                 }) {
                     Image(systemName: item.isDone ? "checkmark.circle.fill" : "circle")
-                        .foregroundColor(item.isDone ? .green : .gray)
+                        // Apply darker green for completed checkbox icon, keeping dusty blue for uncompleted
+                        .foregroundColor(item.isDone ? plantDarkGreen : plantDustyBlue)
                         .frame(width: 24, height: 24)
                         .padding(6)
-                        .background(Color(.systemGray6))
+                        // Apply themed background for checkbox circle
+                        .background(item.isDone ? plantLightMintGreen.opacity(0.6) : plantPastelGreen.opacity(0.3))
                         .clipShape(Circle())
+                        .overlay( // Add a subtle border to checkbox
+                            // Use darker green for completed border, dusty blue for uncompleted
+                            Circle()
+                                .stroke(item.isDone ? plantDarkGreen : plantDustyBlue, lineWidth: 1.5)
+                        )
                 }
                 .buttonStyle(PlainButtonStyle())
                 .contentShape(Rectangle())
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(item.title)
-                        .font(.body)
+                        .font(.body) // Keep original font size
                         .lineLimit(1)
-                        .strikethrough(item.isDone)
-                        .foregroundColor(item.isDone ? .gray : .primary)
+                        .strikethrough(item.isDone, color: plantDustyBlue) // Themed strikethrough color
+                        // Apply original themed colors for main title text
+                        .foregroundColor(item.isDone ? plantDustyBlue : plantDarkGreen)
 
                     if !item.detail.isEmpty {
                         Text(item.detail)
-                            .font(.caption)
+                            .font(.caption) // Keep original font size
                             .lineLimit(2)
-                            .foregroundColor(item.isDone ? .gray.opacity(0.7) : .gray)
-                            .strikethrough(item.isDone)
+                            .strikethrough(item.isDone, color: plantDustyBlue.opacity(0.7)) // Themed strikethrough color
+                            // Apply original themed colors for detail text
+                            .foregroundColor(item.isDone ? plantDustyBlue.opacity(0.7) : plantMediumGreen)
                     }
                 }
                 .onTapGesture {
@@ -59,8 +69,9 @@ struct TodoListItemView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     ForEach($item.subtasks) { $subtask in
                         SubtaskCheckboxView(subtask: $subtask)
-                        .strikethrough(subtask.isDone)
-                        .foregroundColor(subtask.isDone ? .gray : .primary)
+                        // Apply original themed strikethrough and text colors for subtasks
+                            .strikethrough(subtask.isDone, color: plantDustyBlue.opacity(0.7))
+                            .foregroundColor(subtask.isDone ? plantDustyBlue.opacity(0.7) : plantMediumGreen)
                     }
                 }
                 .padding(.leading, 34)

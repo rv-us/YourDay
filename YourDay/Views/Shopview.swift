@@ -247,6 +247,7 @@ struct ThemePullView: View {
                  .blur(radius: animationStep != .idle ? 3 : 0)
             }
             .navigationTitle("\(theme.rawValue) Pulls")
+            .background(plantBeige.edgesIgnoringSafeArea(.all))  
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden(true)
             .toolbarBackground(themeAccentColor.opacity(0.8), for: .navigationBar)
