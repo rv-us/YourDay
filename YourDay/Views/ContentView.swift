@@ -37,17 +37,14 @@ struct ContentView: View {
                     Todoview()
                         .tabItem { Label("Tasks", systemImage: "checkmark.circle") }
                         .environmentObject(loginViewModel)
-                        .tint(plantDarkGreen)
                     
                     GardenView()
                         .tabItem { Label("Garden", systemImage: "leaf.fill") }
                         .environmentObject(loginViewModel)
-                        .tint(plantDarkGreen)
 
                     AddNotesView()
                         .tabItem { Label("Notes", systemImage: "square.and.pencil") }
                         .environmentObject(loginViewModel)
-                        .tint(plantDarkGreen)
                     
                     NotificationSettingsView(
                         todoViewModel: todoViewModel,
@@ -57,8 +54,8 @@ struct ContentView: View {
                         }
                     )
                          .tabItem { Label("Settings", systemImage: "gearshape.fill") }
-                            .tint(plantDarkGreen)
                 }
+                .tint(plantDarkGreen)
                 .task {
                     await processNewDayLogicIfNeeded()
                 }

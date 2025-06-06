@@ -1129,7 +1129,7 @@ struct GardenView: View {
     var body: some View {
         NavigationView {
             ZStack {
-                plantBeige.edgesIgnoringSafeArea(.all) // Overall background color
+                gardenViewBackground.edgesIgnoringSafeArea(.all) // Overall background color
                 
                 VStack(spacing: 10) {
                     currentSeasonDisplay

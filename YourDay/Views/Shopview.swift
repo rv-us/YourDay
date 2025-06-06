@@ -8,11 +8,12 @@ let plantLightMintGreen = Color(hex: "#A7E2CD")
 let plantPastelGreen = Color(hex: "#CDEDDD")
 let plantDustyBlue = Color(hex: "#82A9BF")
 let plantVeryLightBlue = Color(hex: "#D5E8EF")
-let plantPastelBlue = Color(hex: "#C0E9ED")
+let plantPastelBlue = Color(hex: "#55b7e0")
 let plantBeige = Color(hex: "#EEE7D6")
 let plantPink = Color(hex: "#FBB7C7")
 let plantLightPink = Color(hex: "#FAD9D5")
 let plantPeach = Color(hex: "#FCE6D3")
+let gardenViewBackground = Color(hex: "#72b084")
 
 extension Color {
     init(hex: String) {
