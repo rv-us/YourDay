@@ -39,9 +39,34 @@ struct YourDayApp: App {
 
     var body: some Scene {
         WindowGroup {
-            SplashScreenView()
+            AppRestartView()
                 .environmentObject(locationManager)
         }
         .modelContainer(for: [TodoItem.self, NoteItem.self, PlayerStats.self, DailySummaryTask.self])
+    }
+}
+
+struct AppRestartView: View {
+    @State private var viewId = UUID()
+    @AppStorage("lastAppActiveDate") private var lastAppActiveDate: String = ""
+
+    var body: some View {
+        SplashScreenView()
+            .id(viewId)
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+                let todayString = formattedDateString(from: Date())
+                
+                if !lastAppActiveDate.isEmpty && lastAppActiveDate != todayString {
+                    viewId = UUID()
+                }
+                
+                lastAppActiveDate = todayString
+            }
+    }
+    
+    private func formattedDateString(from date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: date)
     }
 }
