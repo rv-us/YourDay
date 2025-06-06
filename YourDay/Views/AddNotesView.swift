@@ -31,24 +31,29 @@ struct AddNotesView: View {
                                 Text(note.content.isEmpty ? "New Note" : note.content)
                                     .lineLimit(1)
                                     .font(.body)
+                                    .foregroundColor(plantDarkGreen)
                                 Text(note.createdAt, style: .date)
                                     .font(.caption)
                                     .foregroundColor(.gray)
+                                    .foregroundColor(plantMediumGreen)
                             }
                             .padding(.vertical, 4)
                             .tag(note)
+                            .listRowBackground(selectedNotes.contains(note) ? plantPastelGreen.opacity(0.6) : plantBeige)
                         } else {
                             NavigationLink(destination: NoteDetailView(note: note)) {
                                 VStack(alignment: .leading, spacing: 5) {
                                     Text(note.content.isEmpty ? "New Note" : note.content)
                                         .lineLimit(1)
-                                        .font(.body)
+                                        .font(.headline)
+                                        .foregroundColor(plantDarkGreen)
                                     Text(note.createdAt, style: .date)
                                         .font(.caption)
-                                        .foregroundColor(.gray)
+                                        .foregroundColor(plantMediumGreen)
                                 }
                                 .padding(.vertical, 4)
                             }
+                            .listRowBackground(plantBeige)
                         }
                     }
                     .onDelete { indexSet in
@@ -58,14 +63,15 @@ struct AddNotesView: View {
                     }
                 }
                 .listStyle(.plain)
-                .navigationTitle("Notes")
+                .background(plantBeige)
+//                .navigationTitle("Notes")
 
                 if isSelecting {
                     Button(action: generateTasksFromSelectedNotes) {
                         Text("Generate Tasks")
                             .frame(maxWidth: .infinity)
                             .padding()
-                            .background(selectedNotes.isEmpty ? Color.gray : Color.blue)
+                            .background(selectedNotes.isEmpty ? plantDustyBlue.opacity(0.5) : plantMediumGreen)
                             .foregroundColor(.white)
                             .cornerRadius(10)
                             .padding(.horizontal)
@@ -73,6 +79,11 @@ struct AddNotesView: View {
                     .disabled(selectedNotes.isEmpty)
                 }
             }
+            .background(plantBeige.edgesIgnoringSafeArea(.all))
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(plantLightMintGreen, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button {
@@ -85,14 +96,20 @@ struct AddNotesView: View {
                         }
                     } label: {
                         Text(isSelecting ? "Cancel" : "Select Notes")
+                            .foregroundColor(plantDarkGreen)
                     }
                 }
-
+                ToolbarItem(placement: .principal) { // Custom title placement
+                    Text("Notes")
+                        .fontWeight(.bold)
+                        .foregroundColor(plantDarkGreen) // Applied color
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
                         showingNewNoteView = true
                     } label: {
                         Image(systemName: "square.and.pencil")
+                            .foregroundColor(plantDarkGreen)
                     }
                 }
             }
