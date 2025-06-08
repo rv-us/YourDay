@@ -40,7 +40,7 @@ struct Todoview: View {
                                 HStack {
                                     Text("In Progress")
                                         .fontWeight(.semibold)
-                                        .foregroundColor(dynamicTextColor)
+                                        .foregroundColor(dynamicPrimaryColor)
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                 }
                                 .font(.subheadline)
@@ -69,7 +69,7 @@ struct Todoview: View {
                                 HStack {
                                     Text("Completed")
                                         .fontWeight(.semibold)
-                                        .foregroundColor(dynamicTextColor)
+                                        .foregroundColor(dynamicPrimaryColor)
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                 }
                                 .font(.subheadline)

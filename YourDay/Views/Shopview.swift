@@ -18,25 +18,37 @@ let gardenViewBackground = Color(hex: "#72b084")
 
 // MARK: - New Dynamic Color Palette (Gardening/Productivity Theme) - For Future Implementation
 struct LightTheme {
-    static let primary = Color(hex: "#4A90E2") // A calm, sky blue for focus
-    static let secondary = Color(hex: "#50C878") // A fresh, emerald green for growth
-    static let accent = Color(hex: "#F8E71C") // A bright, sunny yellow for highlights
-    static let destructive = Color(hex: "#E57373") // A softer, terracotta red
-    static let background = Color(hex: "#F7F9FC") // A very light, airy blue-gray
-    static let secondaryBackground = Color(hex: "#FFFFFF") // Pure white for cards/modals
-    static let text = Color(hex: "#2C3E50") // A dark, desaturated navy for readability
-    static let secondaryText = Color(hex: "#8D99AE") // A muted gray for subtitles
+    static let primary = Color(hex: "#6D2726") // brown for icons/accents
+    static let secondary = Color(hex: "#6D2726") // more brown???
+    static let accent = Color(hex: "#5E8D3F") // highlights?? and hopefully navbar
+    static let destructive = Color(hex: "#5E8D3F") // forest green for i have no clue
+    static let background = Color(hex: "#CAE4C5") // tea green background for all pages
+    static let secondaryBackground = Color(hex: "#FFF7CD") // lemon chiffon for modules (tasks/notes)
+    static let text = Color(hex: "#254222") // dark green for titles
+    static let secondaryText = Color(hex: "#254222") // dark green for titles
 }
 
+//struct DarkTheme {
+//    static let primary = Color(hex: "#58A6FF") // A slightly more vibrant blue for dark mode
+//    static let secondary = Color(hex: "#58D68D") // A brighter green for visibility
+//    static let accent = Color(hex: "#FFD700") // A classic gold for accents
+//    static let destructive = Color(hex: "#EF5350") // A clear red for destructive actions
+//    static let background = Color(hex: "#1A202C") // A deep, dark navy/charcoal
+//    static let secondaryBackground = Color(hex: "#2D3748") // A lighter dark gray for elevation
+//    static let text = Color(hex: "#EDF2F7") // A soft off-white to reduce eye strain
+//    static let secondaryText = Color(hex: "#A0AEC0") // A light gray for secondary info
+//}
+
+//replacement dark theme, can switch back if needed
 struct DarkTheme {
-    static let primary = Color(hex: "#58A6FF") // A slightly more vibrant blue for dark mode
-    static let secondary = Color(hex: "#58D68D") // A brighter green for visibility
-    static let accent = Color(hex: "#FFD700") // A classic gold for accents
-    static let destructive = Color(hex: "#EF5350") // A clear red for destructive actions
-    static let background = Color(hex: "#1A202C") // A deep, dark navy/charcoal
-    static let secondaryBackground = Color(hex: "#2D3748") // A lighter dark gray for elevation
-    static let text = Color(hex: "#EDF2F7") // A soft off-white to reduce eye strain
-    static let secondaryText = Color(hex: "#A0AEC0") // A light gray for secondary info
+    static let primary = Color(hex: "#6D2726") // brown for icons/accents
+    static let secondary = Color(hex: "#6D2726") // more brown???
+    static let accent = Color(hex: "#5E8D3F") // highlights?? and hopefully navbar
+    static let destructive = Color(hex: "#5E8D3F") // forest green for i have no clue
+    static let background = Color(hex: "#CAE4C5") // tea green background for all pages
+    static let secondaryBackground = Color(hex: "#FFF7CD") // lemon chiffon for modules (tasks/notes)
+    static let text = Color(hex: "#254222") // dark green for titles
+    static let secondaryText = Color(hex: "#254222") // dark green for titles
 }
 
 // Dynamic Colors (will be used when the new theme is applied)

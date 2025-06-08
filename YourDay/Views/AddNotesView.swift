@@ -82,6 +82,7 @@ struct AddNotesView: View {
                     .disabled(selectedNotes.isEmpty)
                 }
             }
+            .padding(.top, 20)
             .background(dynamicBackgroundColor.edgesIgnoringSafeArea(.all))
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)

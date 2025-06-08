@@ -226,10 +226,10 @@ struct PlantInfoView: View {
                 }
                 .padding() // Padding around the main VStack content
             }
-            .background(plantBeige.edgesIgnoringSafeArea(.all)) // Overall view background
+            .background(dynamicSecondaryBackgroundColor.edgesIgnoringSafeArea(.all)) // Overall view background
             .navigationTitle("Plant Details")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(plantLightMintGreen, for: .navigationBar) // Themed navigation bar background
+            .toolbarBackground(dynamicBackgroundColor, for: .navigationBar) // Themed navigation bar background
             .toolbarBackground(.visible, for: .navigationBar) // Make background visible
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
