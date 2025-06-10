@@ -116,23 +116,24 @@ struct LoginView: View {
 
                             // MARK: Social & Guest Logins
                             
-                            // Apple Sign In Button
-                            SignInWithAppleButton(
-                                .signIn,
-                                onRequest: viewModel.handleAppleSignInRequest,
-                                onCompletion: viewModel.handleAppleSignInCompletion
-                            )
-                            .signInWithAppleButtonStyle(.black) // Or .white, .whiteOutline
-                            .frame(height: 50)
-                            .cornerRadius(8)
-                            .padding(.horizontal)
-                            .accessibilityLabel("Sign in with Apple")
+//                            // Apple Sign In Button
+//                            SignInWithAppleButton(
+//                                .signIn,
+//                                onRequest: viewModel.handleAppleSignInRequest,
+//                                onCompletion: viewModel.handleAppleSignInCompletion
+//                            )
+//                            .signInWithAppleButtonStyle(.black) // Or .white, .whiteOutline
+//                            .frame(height: 50)
+//                            .cornerRadius(8)
                             
-                            // Google Sign In Button
-                            GoogleSignInButton(scheme: .light, style: .wide, state: .normal, action: viewModel.signInWithGoogle)
-                                .frame(height: 50)
-                                .padding(.horizontal)
-                                .accessibilityLabel("Sign in with Google")
+//                            .padding(.horizontal)
+//                            .accessibilityLabel("Sign in with Apple")
+//                            
+//                            // Google Sign In Button
+//                            GoogleSignInButton(scheme: .light, style: .wide, state: .normal, action: viewModel.signInWithGoogle)
+//                                .frame(height: 50)
+//                                .padding(.horizontal)
+//                                .accessibilityLabel("Sign in with Google")
 
                             TextField("Enter Your Guest Name", text: $viewModel.guestDisplayName)
                                 .textFieldStyle(.roundedBorder)
