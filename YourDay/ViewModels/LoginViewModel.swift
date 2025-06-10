@@ -5,6 +5,8 @@ import FirebaseAuth
 import GoogleSignIn
 import SwiftData
 import Network // For NWPathMonitor
+import AuthenticationServices // Required for Apple Sign In
+import CryptoKit // Required for SHA256 hashing
 
 @MainActor
 class LoginViewModel: ObservableObject {
@@ -34,6 +36,7 @@ class LoginViewModel: ObservableObject {
     private let firebaseManager = FirebaseManager()
     private let networkMonitor = NWPathMonitor()
     private let networkMonitorQueue = DispatchQueue(label: "NetworkMonitor")
+    private var currentNonce: String? // For Apple Sign In
 
     // MARK: - Initialization and Deinitialization
     init() {
@@ -186,6 +189,111 @@ class LoginViewModel: ObservableObject {
                 self.isProcessingFreshLogin = true
             }
         }
+    }
+    
+    // MARK: - Apple Sign In
+    
+    func handleAppleSignInRequest(_ request: ASAuthorizationAppleIDRequest) {
+        self.isLoading = true
+        self.errorMessage = nil
+        self.isProcessingFreshLogin = true
+        
+        request.requestedScopes = [.fullName, .email]
+        let nonce = randomNonceString()
+        currentNonce = nonce
+        request.nonce = sha256(nonce)
+    }
+
+    func handleAppleSignInCompletion(_ result: Result<ASAuthorization, Error>) {
+        switch result {
+        case .success(let auth):
+            guard let appleIDCredential = auth.credential as? ASAuthorizationAppleIDCredential else {
+                self.errorMessage = "Apple Authorization failed: Invalid credential"
+                self.isLoading = false
+                self.isProcessingFreshLogin = false
+                return
+            }
+
+            guard let nonce = currentNonce else {
+                self.errorMessage = "Apple Authorization failed: Invalid state."
+                self.isLoading = false
+                self.isProcessingFreshLogin = false
+                return
+            }
+
+            guard let appleIDToken = appleIDCredential.identityToken else {
+                self.errorMessage = "Apple Authorization failed: Unable to fetch identity token."
+                self.isLoading = false
+                self.isProcessingFreshLogin = false
+                return
+            }
+            
+            guard let idTokenString = String(data: appleIDToken, encoding: .utf8) else {
+                self.errorMessage = "Apple Authorization failed: Unable to serialize token."
+                self.isLoading = false
+                self.isProcessingFreshLogin = false
+                return
+            }
+
+            let credential = OAuthProvider.credential(withProviderID: "apple.com",
+                                                      idToken: idTokenString,
+                                                      rawNonce: nonce)
+            
+            // For new users, extract the name and save it.
+            // This is only provided on the first authorization.
+            if let fullName = appleIDCredential.fullName {
+                let nameFormatter = PersonNameComponentsFormatter()
+                self.userDisplayName = nameFormatter.string(from: fullName)
+            }
+            
+            signInToFirebase(with: credential)
+
+        case .failure(let error):
+            // Handle error, user cancellation, etc.
+            self.errorMessage = "Apple Sign-In error: \(error.localizedDescription)"
+            self.isLoading = false
+            self.isProcessingFreshLogin = false
+        }
+    }
+
+    private func randomNonceString(length: Int = 32) -> String {
+        precondition(length > 0)
+        let charset: [Character] =
+            Array("0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz-._")
+        var result = ""
+        var remainingLength = length
+
+        while remainingLength > 0 {
+            let randoms: [UInt8] = (0 ..< 16).map { _ in
+                var random: UInt8 = 0
+                let errorCode = SecRandomCopyBytes(kSecRandomDefault, 1, &random)
+                if errorCode != errSecSuccess {
+                    fatalError("Unable to generate nonce. SecRandomCopyBytes failed with OSStatus \(errorCode)")
+                }
+                return random
+            }
+
+            randoms.forEach { random in
+                if remainingLength == 0 {
+                    return
+                }
+
+                if random < charset.count {
+                    result.append(charset[Int(random)])
+                    remainingLength -= 1
+                }
+            }
+        }
+        return result
+    }
+    
+    private func sha256(_ input: String) -> String {
+        let inputData = Data(input.utf8)
+        let hashedData = SHA256.hash(data: inputData)
+        let hashString = hashedData.compactMap {
+            String(format: "%02x", $0)
+        }.joined()
+        return hashString
     }
 
 
@@ -543,11 +651,48 @@ class LoginViewModel: ObservableObject {
     private func signInToFirebase(with credential: AuthCredential) {
         Auth.auth().signIn(with: credential) { [weak self] authResult, error in
             guard let self = self else { return }
+            
             if let error = error {
-                self.errorMessage = "Firebase Sign-In error: \(error.localizedDescription)"; self.isLoading = false; self.isProcessingFreshLogin = false; return
+                self.errorMessage = "Firebase Sign-In error: \(error.localizedDescription)"
+                self.isLoading = false
+                self.isProcessingFreshLogin = false
+                return
             }
-            print("LoginViewModel: Firebase sign-in successful for: \(authResult?.user.uid ?? "N/A")")
-            self.isProcessingFreshLogin = true
+            
+            guard let user = authResult?.user else {
+                self.errorMessage = "Failed to get user after sign in."
+                self.isLoading = false
+                self.isProcessingFreshLogin = false
+                return
+            }
+
+            // If the user's display name in Firebase is empty,
+            // try to set it from the information we got from Apple Sign In.
+            if user.displayName == nil || user.displayName?.isEmpty == true {
+                if let name = self.userDisplayName, !name.isEmpty {
+                    let changeRequest = user.createProfileChangeRequest()
+                    changeRequest.displayName = name
+                    changeRequest.commitChanges { [weak self] error in
+                        if let error = error {
+                            // This is not a fatal error, so we just log it.
+                            print("LoginViewModel: Signed in, but failed to update display name: \(error.localizedDescription)")
+                        } else {
+                            print("LoginViewModel: Display name updated successfully after sign-in.")
+                        }
+                        // Continue with the login process regardless
+                        self?.isProcessingFreshLogin = true
+                        self?.isLoading = false
+                    }
+                } else {
+                    // Name was not available, proceed without it.
+                    self.isProcessingFreshLogin = true
+                    self.isLoading = false
+                }
+            } else {
+                // User already has a display name, so we just proceed.
+                self.isProcessingFreshLogin = true
+                self.isLoading = false
+            }
         }
     }
     

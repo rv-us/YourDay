@@ -1,161 +1,8 @@
-//import SwiftUI
-//import Firebase
-//import GoogleSignIn
-//import GoogleSignInSwift
-//
-//struct LoginView: View {
-//
-//    @StateObject var viewModel: LoginViewModel
-//    @FocusState private var isGuestNameFieldFocused: Bool
-//    @State private var isRegistering = false
-//
-//    var body: some View {
-//        NavigationView {
-//            ScrollView {
-//                VStack(spacing: 20) {
-//                    Spacer(minLength: 50)
-//
-//                    Text("Welcome to YourDay")
-//                        .font(.largeTitle)
-//                        .fontWeight(.bold)
-//                        .foregroundColor(Color.primary)
-//                        .multilineTextAlignment(.center)
-//
-//                    Text("Sign in to save your progress online or continue as a guest.")
-//                        .font(.headline)
-//                        .foregroundColor(Color.secondary)
-//                        .multilineTextAlignment(.center)
-//                        .padding(.horizontal, 40)
-//                    
-//                    if viewModel.isLoading {
-//                        ProgressView("Please Wait...")
-//                            .scaleEffect(1.5)
-//                            .progressViewStyle(CircularProgressViewStyle())
-//                            .padding(.vertical, 50)
-//                    } else {
-//                        // MARK: Email/Password Form
-//                        VStack {
-//                            Picker("Login or Register", selection: $isRegistering) {
-//                                Text("Sign In").tag(false)
-//                                Text("Create Account").tag(true)
-//                            }
-//                            .pickerStyle(SegmentedPickerStyle())
-//                            .padding(.bottom)
-//
-//                            if isRegistering {
-//                                TextField("Display Name", text: $viewModel.displayNameForRegistration)
-//                                    .textContentType(.nickname)
-//                                    .autocapitalization(.words)
-//                            }
-//
-//                            TextField("Email", text: $viewModel.email)
-//                                .keyboardType(.emailAddress)
-//                                .textContentType(.emailAddress)
-//                                .autocapitalization(.none)
-//                            
-//                            SecureField("Password", text: $viewModel.password)
-//                                .textContentType(isRegistering ? .newPassword : .password)
-//
-//                            Button(action: {
-//                                if isRegistering {
-//                                    viewModel.createAccountWithEmailPassword()
-//                                } else {
-//                                    viewModel.signInWithEmailPassword()
-//                                }
-//                            }) {
-//                                Text(isRegistering ? "Create Account" : "Sign In")
-//                                    .fontWeight(.semibold)
-//                                    .frame(maxWidth: .infinity)
-//                                    .padding()
-//                                    .background(Color.blue)
-//                                    .foregroundColor(.white)
-//                                    .cornerRadius(8)
-//                            }
-//                            .padding(.top)
-//                        }
-//                        .textFieldStyle(.roundedBorder)
-//                        .padding(.horizontal)
-//
-//                        // MARK: Divider
-//                        HStack {
-//                            VStack { Divider() }
-//                            Text("OR")
-//                            VStack { Divider() }
-//                        }
-//                        .foregroundColor(.secondary)
-//                        .padding()
-//
-//                        // MARK: Social & Guest Logins
-//                        GoogleSignInButton(scheme: .dark, style: .wide, state: .normal, action: viewModel.signInWithGoogle)
-//                            .frame(height: 50)
-//                            .padding(.horizontal)
-//                            .accessibilityLabel("Sign in with Google")
-//
-//                        TextField("Enter Your Guest Name", text: $viewModel.guestDisplayName)
-//                            .textFieldStyle(.roundedBorder)
-//                            .textContentType(.nickname)
-//                            .autocapitalization(.words)
-//                            .multilineTextAlignment(.center)
-//                            .focused($isGuestNameFieldFocused)
-//                            .padding(.horizontal)
-//
-//                        Button(action: {
-//                            isGuestNameFieldFocused = false
-//                            viewModel.startGuestSession()
-//                        }) {
-//                            Text("Continue as Guest")
-//                                .fontWeight(.semibold)
-//                                .frame(maxWidth: .infinity)
-//                                .padding()
-//                                .background(isGuestButtonDisabled ? Color.secondary.opacity(0.1) : Color.green)
-//                                .foregroundColor(isGuestButtonDisabled ? .secondary : .white)
-//                                .cornerRadius(8)
-//                        }
-//                        .frame(height: 50)
-//                        .padding(.horizontal)
-//                        .disabled(isGuestButtonDisabled)
-//                        .accessibilityLabel("Continue as a guest")
-//                    }
-//
-//                    if let errorMessage = viewModel.errorMessage {
-//                        Text(errorMessage)
-//                            .foregroundColor(.red)
-//                            .font(.caption)
-//                            .multilineTextAlignment(.center)
-//                            .padding(.horizontal)
-//                            .padding(.top, 10)
-//                    }
-//                    
-//                    Spacer(minLength: 20)
-//                    
-//                    Text("By signing in or creating an account, you agree to our Terms of Service and Privacy Policy.")
-//                        .font(.caption2)
-//                        .foregroundColor(Color.secondary)
-//                        .multilineTextAlignment(.center)
-//                        .padding(.bottom)
-//
-//                }
-//                .padding()
-//            }
-//            .background(Color(UIColor.systemBackground).edgesIgnoringSafeArea(.all))
-//            .navigationTitle("Welcome")
-//            .navigationBarHidden(true)
-//            .onTapGesture {
-//                isGuestNameFieldFocused = false
-//            }
-//        }
-//    }
-//
-//    private var isGuestButtonDisabled: Bool {
-//        viewModel.guestDisplayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-//    }
-//}
-
-
 import SwiftUI
 import Firebase
 import GoogleSignIn
 import GoogleSignInSwift
+import AuthenticationServices // Import for Apple Sign In
 
 // MARK: - Login View
 struct LoginView: View {
@@ -268,6 +115,20 @@ struct LoginView: View {
                             .padding()
 
                             // MARK: Social & Guest Logins
+                            
+                            // Apple Sign In Button
+                            SignInWithAppleButton(
+                                .signIn,
+                                onRequest: viewModel.handleAppleSignInRequest,
+                                onCompletion: viewModel.handleAppleSignInCompletion
+                            )
+                            .signInWithAppleButtonStyle(.black) // Or .white, .whiteOutline
+                            .frame(height: 50)
+                            .cornerRadius(8)
+                            .padding(.horizontal)
+                            .accessibilityLabel("Sign in with Apple")
+                            
+                            // Google Sign In Button
                             GoogleSignInButton(scheme: .light, style: .wide, state: .normal, action: viewModel.signInWithGoogle)
                                 .frame(height: 50)
                                 .padding(.horizontal)
