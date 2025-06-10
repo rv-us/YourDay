@@ -124,6 +124,54 @@ class FirebaseManager: ObservableObject {
             completion(entries, nil)
         }
     }
+    func deleteAllUserData(completion: @escaping (Error?) -> Void) {
+            guard let userId = userId else {
+                let error = NSError(domain: "AppError", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated for deletion."])
+                completion(error)
+                return
+            }
+            
+            let group = DispatchGroup()
+            var capturedError: Error?
+
+            // Delete PlayerStats document
+            group.enter()
+            let playerStatsDocRef = db.collection("users").document(userId).collection("playerData").document("playerStats")
+            playerStatsDocRef.delete { error in
+                if let error = error {
+                    print("Error deleting playerStats for user \(userId): \(error.localizedDescription)")
+                    capturedError = error
+                } else {
+                    print("Deleted playerStats for user \(userId).")
+                }
+                group.leave()
+            }
+            
+            // Delete Leaderboard Entry document
+            group.enter()
+            let leaderboardDocRef = db.collection("leaderboard_entries").document(userId)
+            leaderboardDocRef.delete { error in
+                if let error = error {
+                    print("Error deleting leaderboard entry for user \(userId): \(error.localizedDescription)")
+                    if capturedError == nil { capturedError = error }
+                } else {
+                    print("Deleted leaderboard entry for user \(userId).")
+                }
+                group.leave()
+            }
+            
+            // Notify when all deletions are complete
+            group.notify(queue: .main) {
+                if let error = capturedError {
+                    print("Finished deleting user data for \(userId) with errors.")
+                    completion(error)
+                } else {
+                    print("Successfully deleted all user data from Firestore for user \(userId).")
+                    completion(nil)
+                }
+            }
+        }
+
     func checkDisplayNameExists(displayName: String, completion: @escaping (Bool, Error?) -> Void) {
             db.collection("leaderboard_entries")
               .whereField("displayName", isEqualTo: displayName)

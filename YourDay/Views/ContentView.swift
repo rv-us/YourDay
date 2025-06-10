@@ -32,7 +32,7 @@ struct ContentView: View {
 
     var body: some View {
         Group {
-            if loginViewModel.isAuthenticated {
+            if loginViewModel.isAuthenticated || loginViewModel.isGuest {
                 TabView {
                     Todoview()
                         .tabItem { Label("Tasks", systemImage: "checkmark.circle") }
@@ -113,7 +113,16 @@ struct ContentView: View {
         .onChange(of: loginViewModel.isAuthenticated) { _, userIsAuthenticated in
             if userIsAuthenticated {
                 loginViewModel.handleUserSession(localPlayerStats: localPlayerStatsList.first, modelContext: modelContext)
-            } else {
+            } else if !loginViewModel.isGuest { // Only clear data on explicit sign-out, not when entering guest mode
+                clearAllLocalUserDataOnLogout()
+            }
+        }
+        .onChange(of: loginViewModel.isGuest) { _, isGuestNow in
+            if isGuestNow && localPlayerStatsList.isEmpty {
+                // If entering guest mode and no local data exists, create it.
+                loginViewModel.handleUserSession(localPlayerStats: nil, modelContext: modelContext)
+            } else if !isGuestNow && !loginViewModel.isAuthenticated {
+                // If exiting guest mode (and not to an authenticated state), clear local data.
                 clearAllLocalUserDataOnLogout()
             }
         }
@@ -128,9 +137,9 @@ struct ContentView: View {
     }
 
     private func requestSignOut() {
-        loginViewModel.attemptSignOut(currentPlayerStatsToSync: currentPlayerStats) { didSignOut, errorMessageText in
-            if !didSignOut {
-                self.signOutErrorMessage = errorMessageText ?? "An unknown error occurred during sign out."
+        loginViewModel.requestSignOut(currentPlayerStatsToSync: currentPlayerStats) { didSignOut, errorMessageText in
+             if !didSignOut, let message = errorMessageText {
+                self.signOutErrorMessage = message
                 self.showSignOutErrorAlert = true
             }
         }
