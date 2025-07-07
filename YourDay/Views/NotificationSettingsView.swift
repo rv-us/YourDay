@@ -295,7 +295,7 @@ struct NotificationSettingsView: View {
                     editableDisplayName = loginViewModel.userDisplayName ?? ""
                 }
                 if !hasCompletedNotificationsTutorial {
-                    // showNotificationsTutorial = true // Uncomment to re-enable tutorial logic
+                    showNotificationsTutorial = true // Uncomment to re-enable tutorial logic
                 }
             }
             .onChange(of: loginViewModel.userDisplayName) { _, newName in
@@ -306,12 +306,12 @@ struct NotificationSettingsView: View {
             .overlay(
                 Group {
                     if showNotificationsTutorial {
-                        // Assuming NotificationsTutorialOverlay is a defined view
-                        // NotificationsTutorialOverlay(
-                        //     currentStep: $currentNotificationTutorialStep,
-                        //     isActive: $showNotificationsTutorial,
-                        //     hasCompletedTutorial: $hasCompletedNotificationsTutorial
-                        // )
+                        
+                        NotificationsTutorialOverlay(
+                             currentStep: $currentNotificationTutorialStep,
+                             isActive: $showNotificationsTutorial,
+                             hasCompletedTutorial: $hasCompletedNotificationsTutorial
+                        )
                     }
                 }
             )

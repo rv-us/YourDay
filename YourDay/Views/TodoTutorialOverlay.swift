@@ -116,7 +116,7 @@ enum TodoTutorialStep: Int, CaseIterable {
         switch self {
         case .welcome: return "This is your personal to-do list to stay organized."
         case .explainAdd: return "Tap the '+' button to add a new item."
-        case .explainSummary: return "Tap the star icon to view your daily summary and rewards."
+        case .explainSummary: return "Tap the star icon to view your daily summary and rewards. Remember you will earn points at the start of everyday based on the tasks you completed the previous day. The points from tasks are determined by your garden value"
         case .finished: return "You're all set to start using YourDay!"
         }
     }

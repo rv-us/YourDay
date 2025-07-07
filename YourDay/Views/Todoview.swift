@@ -38,17 +38,17 @@ struct Todoview: View {
                 List {
                     Section(header:
                                 HStack {
-                                    Text("In Progress")
-                                        .fontWeight(.semibold)
-                                        .foregroundColor(dynamicPrimaryColor)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                }
-                                .font(.subheadline)
-                                .padding(.horizontal)
-                                .padding(.vertical, 8)
-                                .background(dynamicSecondaryBackgroundColor.opacity(0.8))
-                                .cornerRadius(6)
-                                .listRowInsets(EdgeInsets())
+                        Text("In Progress")
+                            .fontWeight(.semibold)
+                            .foregroundColor(dynamicPrimaryColor)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                        .font(.subheadline)
+                        .padding(.horizontal)
+                        .padding(.vertical, 8)
+                        .background(dynamicSecondaryBackgroundColor.opacity(0.8))
+                        .cornerRadius(6)
+                        .listRowInsets(EdgeInsets())
                     ) {
                         ForEach(items.filter { !$0.isDone }) { item in
                             TodoListItemView(item: item)
@@ -64,20 +64,20 @@ struct Todoview: View {
                             }
                         }
                     }
-
+                    
                     Section(header:
                                 HStack {
-                                    Text("Completed")
-                                        .fontWeight(.semibold)
-                                        .foregroundColor(dynamicPrimaryColor)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                }
-                                .font(.subheadline)
-                                .padding(.horizontal)
-                                .padding(.vertical, 8)
-                                .background(dynamicSecondaryBackgroundColor.opacity(0.8))
-                                .cornerRadius(6)
-                                .listRowInsets(EdgeInsets())
+                        Text("Completed")
+                            .fontWeight(.semibold)
+                            .foregroundColor(dynamicPrimaryColor)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                        .font(.subheadline)
+                        .padding(.horizontal)
+                        .padding(.vertical, 8)
+                        .background(dynamicSecondaryBackgroundColor.opacity(0.8))
+                        .cornerRadius(6)
+                        .listRowInsets(EdgeInsets())
                     ) {
                         ForEach(items.filter { $0.isDone }) { item in
                             TodoListItemView(item: item)
@@ -86,7 +86,7 @@ struct Todoview: View {
                         .onDelete { indexSet in
                             for index in indexSet {
                                 let doneItems = items.filter { $0.isDone }
-                                 if index < doneItems.count {
+                                if index < doneItems.count {
                                     context.delete(doneItems[index])
                                 }
                             }
@@ -117,7 +117,7 @@ struct Todoview: View {
                                     .offset(x: 4)
                                     .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: highlightAddButton)
                             }
-
+                            
                             Button(action: {
                                 viewModel.showingNewItemView = true
                             }) {
@@ -130,7 +130,7 @@ struct Todoview: View {
                                     .contentShape(Rectangle())
                             }
                         }
-
+                        
                         ZStack(alignment: .center) {
                             if highlightSummaryButton {
                                 Circle()
@@ -139,7 +139,7 @@ struct Todoview: View {
                                     .offset(x: 4)
                                     .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: highlightSummaryButton)
                             }
-
+                            
                             Button(action: {
                                 viewModel.showingDailySummary = true
                             }) {
@@ -185,6 +185,12 @@ struct Todoview: View {
             }
         }
         .navigationViewStyle(.stack)
+        .navigationViewStyle(.stack) // This is the last existing modifier
+        .onAppear { // Paste the new modifier here
+            if !hasCompletedTodoTutorial {
+                showTodoTutorial = true
+            }
+        }
     }
 
     func moveItem(from source: IndexSet, to destination: Int) {
