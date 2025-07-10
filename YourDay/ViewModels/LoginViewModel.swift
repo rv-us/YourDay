@@ -779,7 +779,26 @@ class LoginViewModel: ObservableObject {
                 performFirebaseAndGoogleSignOut(completion: completion)
             }
         }
-    
+    func sendPasswordResetEmail() {
+        errorMessage = nil
+        guard !email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            errorMessage = "Please enter your email address to reset your password."
+            return
+        }
+        isLoading = true
+        Auth.auth().sendPasswordReset(withEmail: email) { [weak self] error in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.isLoading = false
+                if let error = error {
+                    self.errorMessage = "Failed to send password reset email: \(error.localizedDescription)"
+                } else {
+                    self.errorMessage = "A password reset email has been sent."
+                }
+            }
+        }
+    }
+
     func deleteAccount(completion: @escaping (Bool, String?) -> Void) {
         guard !isGuest, let user = Auth.auth().currentUser else {
             completion(false, "No authenticated user to delete.")

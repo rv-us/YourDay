@@ -101,6 +101,19 @@ struct LoginView: View {
                                         .cornerRadius(8)
                                 }
                                 .padding(.top, 5)
+
+                                if !isRegistering {
+                                    Button(action: {
+                                        viewModel.sendPasswordResetEmail()
+                                    }) {
+                                        Text("Forgot your password?")
+                                            .font(.footnote)
+                                            .foregroundColor(LightTheme.accent)
+                                            .underline()
+                                            .frame(maxWidth: .infinity, alignment: .trailing)
+                                            .padding(.top, 4)
+                                    }
+                                }
                             }
                             .textFieldStyle(RoundedBorderTextFieldStyle())
                             .padding(.horizontal)
@@ -128,7 +141,7 @@ struct LoginView: View {
                             
 //                            .padding(.horizontal)
 //                            .accessibilityLabel("Sign in with Apple")
-//                            
+//
 //                            // Google Sign In Button
 //                            GoogleSignInButton(scheme: .light, style: .wide, state: .normal, action: viewModel.signInWithGoogle)
 //                                .frame(height: 50)
