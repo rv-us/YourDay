@@ -12,6 +12,8 @@ class NewItemModel: ObservableObject {
     @Published var donebye = Date()
     @Published var showAlert = false
     @Published var subtasks: [Subtask] = []
+    @Published var origin: TaskOrigin = .today
+
     
     var originalItem: TodoItem? = nil
 

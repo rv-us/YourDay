@@ -3,11 +3,6 @@
 //  YourDay
 //
 
-//
-//  AddNotesView.swift
-//  YourDay
-//
-
 import SwiftUI
 import SwiftData
 import FirebaseVertexAI
@@ -20,11 +15,12 @@ struct AddNotesView: View {
     @State private var isSelecting = false
     @State private var generatedTasks: [TodoItem] = []
     @State private var showingConfirmGeneratedTasks = false
-    
+
     @AppStorage("hasCompletedNotesTutorial") private var hasCompletedNotesTutorial = false
     @State private var showNotesTutorial = false
     @State private var currentNotesTutorialStep: NotesTutorialStep = .welcome
 
+    @State private var generatedTaskOrigin: TaskOrigin = .today // ✅ New state to track origin
 
     var body: some View {
         NavigationView {
@@ -70,6 +66,14 @@ struct AddNotesView: View {
                 .background(dynamicBackgroundColor)
 
                 if isSelecting {
+                    Picker("Assign Tasks To", selection: $generatedTaskOrigin) {
+                        Text("Today").tag(TaskOrigin.today)
+                        Text("Master List").tag(TaskOrigin.master)
+                    }
+                    .pickerStyle(SegmentedPickerStyle())
+                    .padding(.horizontal)
+                    .padding(.bottom, 8)
+
                     Button(action: generateTasksFromSelectedNotes) {
                         Text("Generate Tasks")
                             .frame(maxWidth: .infinity)
@@ -93,7 +97,7 @@ struct AddNotesView: View {
                     Button {
                         isSelecting.toggle()
                         selectedNotes.removeAll()
-                        
+
                         if currentNotesTutorialStep == .selectNote {
                             showNotesTutorial = false
                         }
@@ -154,7 +158,7 @@ struct AddNotesView: View {
             )
         }
     }
-    
+
     func handleNoteCreated() {
         if currentNotesTutorialStep == .createNote {
             currentNotesTutorialStep = .selectNote
@@ -190,12 +194,12 @@ struct AddNotesView: View {
 
                 let vertex = VertexAI.vertexAI()
                 let model = vertex.generativeModel(modelName: "gemini-1.5-flash")
-                
+
                 let userMessage = try ModelContent(role: "user", parts: [TextPart(prompt)])
                 let response = try await model.generateContent([userMessage])
                 print(response)
                 if let text = response.text {
-                    let tasks = parseGeminiResponse(text)
+                    let tasks = parseGeminiResponse(text, origin: generatedTaskOrigin) // ✅ updated call
                     generatedTasks = tasks
                     if currentNotesTutorialStep == .generateTasks {
                         showNotesTutorial = true
@@ -203,7 +207,7 @@ struct AddNotesView: View {
                     }
                     showingConfirmGeneratedTasks = true
                     isSelecting = false
-                    
+
                 } else {
                     print("⚠️ Received an empty response from the AI.")
                 }
@@ -213,7 +217,7 @@ struct AddNotesView: View {
         }
     }
 
-    func parseGeminiResponse(_ text: String) -> [TodoItem] {
+    func parseGeminiResponse(_ text: String, origin: TaskOrigin) -> [TodoItem] { // ✅ added origin param
         var tasks: [TodoItem] = []
 
         let pattern = "\\[Task.*\\]"
@@ -269,7 +273,8 @@ struct AddNotesView: View {
                     title: title,
                     detail: description,
                     dueDate: dueDate,
-                    subtasks: subtasks
+                    subtasks: subtasks,
+                    origin: origin // ✅ set origin
                 )
                 tasks.append(newTask)
             }
@@ -277,7 +282,6 @@ struct AddNotesView: View {
 
         return tasks
     }
-
 
     func parseDate(_ str: String) -> Date? {
         let formatter = DateFormatter()

@@ -142,14 +142,17 @@ struct MigrateTasksView: View {
         for taskInReview in tasksToReview {
             if selectedTasksToMigrate.contains(taskInReview.id) {
                 taskInReview.dueDate = today
+                taskInReview.origin = .today
                 taskInReview.isDone = false
                 taskInReview.completedAt = nil
                 print("Migrating task: \(taskInReview.title) to today. Subtask statuses preserved.")
-            } else {
-                print("Deleting unselected task: \(taskInReview.title)")
-                modelContext.delete(taskInReview)
+            } else if taskInReview.origin == .today {
+                    print("Deleting unselected TODAY task: \(taskInReview.title)")
+                    modelContext.delete(taskInReview)
+                } else {
+                    print("Keeping unselected MASTER task: \(taskInReview.title)")
+                }
             }
-        }
         
         do {
             try modelContext.save()

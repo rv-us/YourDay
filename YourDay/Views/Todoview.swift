@@ -24,6 +24,13 @@ struct Todoview: View {
     @State private var showSignOutAlertInTodoView = false
     @State private var signOutAlertMessageInTodoView = ""
 
+    enum TaskListFilter {
+        case today
+        case master
+    }
+
+    @State private var selectedFilter: TaskListFilter = .today
+
     init() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
             if let error = error {
@@ -35,14 +42,21 @@ struct Todoview: View {
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
+                Picker("Filter", selection: $selectedFilter) {
+                    Text("Today").tag(TaskListFilter.today)
+                    Text("Master List").tag(TaskListFilter.master)
+                }
+                .pickerStyle(SegmentedPickerStyle())
+                .padding()
+
                 List {
                     Section(header:
-                                HStack {
-                        Text("In Progress")
-                            .fontWeight(.semibold)
-                            .foregroundColor(dynamicPrimaryColor)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
+                        HStack {
+                            Text("In Progress")
+                                .fontWeight(.semibold)
+                                .foregroundColor(dynamicPrimaryColor)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
                         .font(.subheadline)
                         .padding(.horizontal)
                         .padding(.vertical, 8)
@@ -50,28 +64,28 @@ struct Todoview: View {
                         .cornerRadius(6)
                         .listRowInsets(EdgeInsets())
                     ) {
-                        ForEach(items.filter { !$0.isDone }) { item in
+                        ForEach(filteredItems.filter { !$0.isDone }) { item in
                             TodoListItemView(item: item)
                                 .listRowBackground(dynamicSecondaryBackgroundColor)
                         }
                         .onMove(perform: moveItem)
                         .onDelete { indexSet in
                             for index in indexSet {
-                                let activeItems = items.filter { !$0.isDone }
+                                let activeItems = filteredItems.filter { !$0.isDone }
                                 if index < activeItems.count {
                                     context.delete(activeItems[index])
                                 }
                             }
                         }
                     }
-                    
+
                     Section(header:
-                                HStack {
-                        Text("Completed")
-                            .fontWeight(.semibold)
-                            .foregroundColor(dynamicPrimaryColor)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
+                        HStack {
+                            Text("Completed")
+                                .fontWeight(.semibold)
+                                .foregroundColor(dynamicPrimaryColor)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
                         .font(.subheadline)
                         .padding(.horizontal)
                         .padding(.vertical, 8)
@@ -79,13 +93,13 @@ struct Todoview: View {
                         .cornerRadius(6)
                         .listRowInsets(EdgeInsets())
                     ) {
-                        ForEach(items.filter { $0.isDone }) { item in
+                        ForEach(filteredItems.filter { $0.isDone }) { item in
                             TodoListItemView(item: item)
                                 .listRowBackground(dynamicSecondaryBackgroundColor)
                         }
                         .onDelete { indexSet in
                             for index in indexSet {
-                                let doneItems = items.filter { $0.isDone }
+                                let doneItems = filteredItems.filter { $0.isDone }
                                 if index < doneItems.count {
                                     context.delete(doneItems[index])
                                 }
@@ -185,16 +199,24 @@ struct Todoview: View {
             }
         }
         .navigationViewStyle(.stack)
-        .navigationViewStyle(.stack) // This is the last existing modifier
-        .onAppear { // Paste the new modifier here
+        .onAppear {
             if !hasCompletedTodoTutorial {
                 showTodoTutorial = true
             }
         }
     }
 
+    private var filteredItems: [TodoItem] {
+        switch selectedFilter {
+        case .today:
+            return items.filter { $0.origin == .today }
+        case .master:
+            return items.filter { $0.origin == .master }
+        }
+    }
+
     func moveItem(from source: IndexSet, to destination: Int) {
-        var activeItems = items.filter { !$0.isDone }
+        var activeItems = filteredItems.filter { !$0.isDone }
         activeItems.move(fromOffsets: source, toOffset: destination)
 
         for (index, item) in activeItems.enumerated() {

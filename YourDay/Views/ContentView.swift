@@ -254,7 +254,7 @@ struct ContentView: View {
     private func deleteOldDoneTasks() async {
         let startOfToday = Calendar.current.startOfDay(for: Date())
         let oldDoneTasksPredicate = #Predicate<TodoItem> {
-            $0.dueDate < startOfToday && $0.isDone == true
+            $0.isDone == true
         }
         let descriptor = FetchDescriptor<TodoItem>(predicate: oldDoneTasksPredicate)
         do {

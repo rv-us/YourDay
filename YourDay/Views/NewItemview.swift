@@ -22,6 +22,13 @@ struct NewItemview: View {
                         .padding(.top, 5)
                 ) {
                     VStack(alignment: .leading, spacing: 12) {
+                        Picker("Add To", selection: $viewModel.origin) {
+                            Text("Today").tag(TaskOrigin.today)
+                            Text("Master List").tag(TaskOrigin.master)
+                        }
+                        .pickerStyle(SegmentedPickerStyle())
+                        .padding(.bottom, 4)
+
                         Text("Title")
                             .font(.subheadline)
                             .foregroundColor(dynamicSecondaryTextColor)
@@ -159,16 +166,18 @@ struct NewItemview: View {
             existing.detail = viewModel.description
             existing.dueDate = viewModel.donebye
             existing.subtasks = viewModel.subtasks
-            print("Updated task '\(existing.title)')")
+            existing.origin = viewModel.origin
+            print("Updated task '\(existing.title)'")
         } else {
             let newItem = TodoItem(
                 title: viewModel.title,
                 detail: viewModel.description,
                 dueDate: viewModel.donebye,
-                subtasks: viewModel.subtasks
+                subtasks: viewModel.subtasks,
+                origin: viewModel.origin
             )
             context.insert(newItem)
-            print("Created new task '\(newItem.title)')")
+            print("Created new task '\(newItem.title)'")
         }
 
         dismiss()
