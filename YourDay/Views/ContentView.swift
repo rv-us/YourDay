@@ -2,8 +2,10 @@ import SwiftUI
 import SwiftData
 import GoogleSignIn
 
+
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
+
 
     @Query(sort: \PlayerStats.playerLevel) private var localPlayerStatsList: [PlayerStats]
     private var currentPlayerStats: PlayerStats? {
@@ -14,6 +16,8 @@ struct ContentView: View {
     }
 
     @StateObject private var loginViewModel = LoginViewModel()
+    @StateObject private var firebaseManager = FirebaseManager.shared
+
 
     @State private var showSignOutErrorAlert = false
     @State private var signOutErrorMessage = ""
@@ -45,7 +49,12 @@ struct ContentView: View {
                     AddNotesView()
                         .tabItem { Label("Notes", systemImage: "square.and.pencil") }
                         .environmentObject(loginViewModel)
-                    
+
+                    FriendsView()
+                        .tabItem { Label("Friends", systemImage: "person.2.fill") }
+                        .environmentObject(loginViewModel)
+                        .environmentObject(firebaseManager)
+
                     NotificationSettingsView(
                         todoViewModel: todoViewModel,
                         loginViewModel: loginViewModel,

@@ -1,12 +1,12 @@
 import SwiftUI
 import FirebaseAuth
 
-
 struct LeaderboardView: View {
 
     @StateObject private var viewModel: LeaderboardViewModel
     @EnvironmentObject var loginViewModel: LoginViewModel
     @State private var scrollViewProxy: ScrollViewProxy? = nil
+    @State private var showFriendsOnly: Bool = false  // ✅ Picker state
 
     init() {
         _viewModel = StateObject(wrappedValue: LeaderboardViewModel(currentUserID: Auth.auth().currentUser?.uid))
@@ -15,6 +15,20 @@ struct LeaderboardView: View {
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
+                Picker("Scope", selection: $showFriendsOnly) {
+                    Text("All").tag(false)
+                    Text("Friends").tag(true)
+                }
+                .pickerStyle(SegmentedPickerStyle())
+                .padding(.horizontal)
+                .onChange(of: showFriendsOnly) { isFriends in
+                    if isFriends {
+                        viewModel.fetchLeaderboardFriendsOnly()
+                    } else {
+                        viewModel.fetchLeaderboardData()
+                    }
+                }
+
                 if viewModel.isLoading && viewModel.leaderboardEntries.isEmpty {
                     Spacer()
                     ProgressView("Loading Leaderboard...")
@@ -92,7 +106,7 @@ struct LeaderboardView: View {
                             viewModel.refreshLeaderboard()
                         }
                     }
-                    
+
                     if !viewModel.leaderboardEntries.isEmpty {
                         VStack {
                             Divider().background(dynamicSecondaryBackgroundColor)
@@ -197,7 +211,7 @@ struct LeaderboardRowView: View {
                 .fontWeight(isCurrentUser ? .bold : .regular)
                 .foregroundColor(isCurrentUser ? dynamicTextColor : dynamicSecondaryTextColor)
                 .frame(width: 50, alignment: .center)
-            
+
             Text(entry.displayName)
                 .fontWeight(isCurrentUser ? .bold : .regular)
                 .foregroundColor(isCurrentUser ? dynamicTextColor : dynamicSecondaryTextColor)
@@ -205,12 +219,12 @@ struct LeaderboardRowView: View {
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.leading, 5)
-            
+
             Text("\(entry.playerLevel)")
                 .fontWeight(isCurrentUser ? .bold : .regular)
                 .foregroundColor(isCurrentUser ? dynamicTextColor : dynamicSecondaryTextColor)
                 .frame(width: 50, alignment: .trailing)
-            
+
             Text("\(Int(entry.gardenValue))")
                 .fontWeight(isCurrentUser ? .bold : .regular)
                 .foregroundColor(isCurrentUser ? dynamicTextColor : dynamicSecondaryTextColor)

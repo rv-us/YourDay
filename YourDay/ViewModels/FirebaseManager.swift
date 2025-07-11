@@ -10,6 +10,7 @@ import FirebaseFirestore
 import FirebaseAuth
 
 class FirebaseManager: ObservableObject {
+    static let shared = FirebaseManager()
     private var db = Firestore.firestore()
     private var listenerRegistrations: [ListenerRegistration] = []
 
@@ -200,6 +201,185 @@ class FirebaseManager: ObservableObject {
     // ... and so on for NoteItem, DailySummaryTask ...
     
     // MARK: - Listener Management
+    // Send a friend request by display name
+    func sendFriendRequest(toDisplayName: String, completion: @escaping (Error?) -> Void) {
+        guard let currentUserId = userId else { return }
+
+        let leaderboardRef = db.collection("leaderboard_entries")
+
+        // First, fetch recipient UID by display name
+        leaderboardRef.whereField("displayName", isEqualTo: toDisplayName)
+            .getDocuments { snapshot, error in
+                if let error = error {
+                    completion(error)
+                    return
+                }
+                guard let doc = snapshot?.documents.first else {
+                    completion(NSError(domain: "", code: 404, userInfo: [NSLocalizedDescriptionKey: "User not found."]))
+                    return
+                }
+
+                let toUserId = doc.documentID
+
+                // ✅ Now fetch the sender’s display name
+                leaderboardRef.document(currentUserId).getDocument { senderSnapshot, err in
+                    guard let senderData = senderSnapshot?.data(),
+                          let senderDisplayName = senderData["displayName"] as? String else {
+                        completion(NSError(domain: "", code: 400, userInfo: [NSLocalizedDescriptionKey: "Could not retrieve your display name."]))
+                        return
+                    }
+
+                    let friendRequest = [
+                        "fromUserId": currentUserId,
+                        "toUserId": toUserId,
+                        "displayName": senderDisplayName, // ✅ Sender’s display name shown to recipient
+                        "status": "pending",
+                        "timestamp": FieldValue.serverTimestamp()
+                    ] as [String : Any]
+
+                    self.db.collection("users").document(toUserId)
+                        .collection("friend_requests")
+                        .addDocument(data: friendRequest) { error in
+                            completion(error)
+                        }
+                }
+            }
+    }
+    func declineFriendRequest(fromUserId: String, completion: @escaping (Error?) -> Void) {
+        guard let currentUserId = userId else {
+            completion(NSError(domain: "", code: 401, userInfo: [NSLocalizedDescriptionKey: "Not authenticated"]))
+            return
+        }
+
+        let requestQuery = db.collection("users").document(currentUserId)
+            .collection("friend_requests")
+            .whereField("fromUserId", isEqualTo: fromUserId)
+
+        requestQuery.getDocuments { snapshot, error in
+            guard let doc = snapshot?.documents.first else {
+                completion(error ?? NSError(domain: "", code: 404, userInfo: [NSLocalizedDescriptionKey: "Request not found"]))
+                return
+            }
+
+            doc.reference.delete(completion: completion)
+        }
+    }
+
+    // Accept a friend request and establish friendship
+    func acceptFriendRequest(fromUserId: String, displayName: String, completion: @escaping (Error?) -> Void) {
+        guard let currentUserId = userId else {
+            completion(NSError(domain: "", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+
+        let myRef = db.collection("users").document(currentUserId).collection("friends").document(fromUserId)
+        let theirRef = db.collection("users").document(fromUserId).collection("friends").document(currentUserId)
+
+        let friendData: [String: Any] = [
+            "status": "accepted",
+            "displayName": displayName,
+            "timestamp": FieldValue.serverTimestamp()
+        ]
+
+        // Locate the request first
+        let requestQuery = db.collection("users").document(currentUserId)
+            .collection("friend_requests")
+            .whereField("fromUserId", isEqualTo: fromUserId)
+
+        requestQuery.getDocuments { snapshot, error in
+            guard let doc = snapshot?.documents.first else {
+                completion(error ?? NSError(domain: "", code: 404, userInfo: [NSLocalizedDescriptionKey: "Friend request not found"]))
+                return
+            }
+
+            let requestRef = doc.reference
+
+            let batch = self.db.batch()
+            batch.setData(friendData, forDocument: myRef)
+            batch.setData(friendData, forDocument: theirRef)
+            batch.deleteDocument(requestRef)
+
+            batch.commit(completion: completion)
+        }
+    }
+
+
+    // Fetch friend user IDs
+    func fetchFriendUserIDs(completion: @escaping ([String]) -> Void) {
+        guard let currentUserId = userId else {
+            completion([])
+            return
+        }
+
+        db.collection("users").document(currentUserId).collection("friends")
+            .whereField("status", isEqualTo: "accepted")
+            .getDocuments { snapshot, error in
+                if let documents = snapshot?.documents {
+                    let ids = documents.map { $0.documentID }
+                    completion(ids)
+                } else {
+                    completion([])
+                }
+            }
+    }
+    // Fetch pending friend requests sent to current user
+    func fetchPendingFriendRequests(completion: @escaping ([FriendRequest]) -> Void) {
+        guard let currentUserId = userId else {
+            completion([])
+            return
+        }
+
+        db.collection("users").document(currentUserId)
+            .collection("friend_requests")
+            .whereField("status", isEqualTo: "pending")
+            .getDocuments { snapshot, error in
+                guard let documents = snapshot?.documents, error == nil else {
+                    completion([])
+                    return
+                }
+
+                let requests: [FriendRequest] = documents.compactMap { doc in
+                    let data = doc.data()
+                    guard let fromUserId = data["fromUserId"] as? String,
+                          let displayName = data["displayName"] as? String else {
+                        return nil
+                    }
+                    return FriendRequest(fromUserId: fromUserId, displayName: displayName)
+                }
+
+                completion(requests)
+            }
+    }
+
+    // Fetch accepted friends of current user
+    func fetchAcceptedFriends(completion: @escaping ([FriendEntry]) -> Void) {
+        guard let currentUserId = userId else {
+            completion([])
+            return
+        }
+
+        db.collection("users").document(currentUserId)
+            .collection("friends")
+            .whereField("status", isEqualTo: "accepted")
+            .getDocuments { snapshot, error in
+                guard let documents = snapshot?.documents, error == nil else {
+                    completion([])
+                    return
+                }
+
+                let friends: [FriendEntry] = documents.compactMap { doc in
+                    let data = doc.data()
+                    let friendUserId = doc.documentID
+                    guard let displayName = data["displayName"] as? String else {
+                        return nil
+                    }
+                    return FriendEntry(userId: friendUserId, displayName: displayName)
+                }
+
+                completion(friends)
+            }
+    }
+
     func removeAllListeners() {
         listenerRegistrations.forEach { $0.remove() }
         listenerRegistrations.removeAll()
