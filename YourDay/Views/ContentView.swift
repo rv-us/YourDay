@@ -45,6 +45,7 @@ struct ContentView: View {
                     GardenView()
                         .tabItem { Label("Garden", systemImage: "leaf.fill") }
                         .environmentObject(loginViewModel)
+                        .environmentObject(firebaseManager)
 
                     AddNotesView()
                         .tabItem { Label("Notes", systemImage: "square.and.pencil") }

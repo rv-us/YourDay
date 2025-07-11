@@ -143,6 +143,7 @@ enum TutorialStep: Int, Identifiable {
 struct GardenView: View {
     @Environment(\.modelContext) private var context
     @EnvironmentObject var loginViewModel: LoginViewModel
+    @EnvironmentObject var firebaseManager: FirebaseManager
     @Query(filter: #Predicate<PlayerStats> { _ in true } ) private var playerStatsList: [PlayerStats]
     @State private var showingStandardAlert = false
     @State private var standardAlertTitle = ""
@@ -167,11 +168,16 @@ struct GardenView: View {
     @State private var hasShownSellModeAlert = false
 
     @State private var selectedPlantForInfo: PlacedPlant? = nil
+    @State private var draggedPlant: PlacedPlant?
+
 
     @AppStorage("hasCompletedGardenTutorial_v1") var hasCompletedGardenTutorial: Bool = false
     @State private var isTutorialActive: Bool = false
     @State private var currentTutorialStep: TutorialStep = .welcome
     @State private var wasShopVisitedForTutorial: Bool = false
+    
+   
+
 
 
     private var playerStats: PlayerStats {
@@ -415,11 +421,25 @@ struct GardenView: View {
                                     }
                                 }
                             )
+                            .onDrag {
+                                self.draggedPlant = plant
+                                return NSItemProvider(object: plant.id.uuidString as NSString)
+                            }
+                            .onDrop(of: [.text], delegate: GardenDropDelegate(
+                                targetPlant: plant,
+                                draggedPlant: $draggedPlant,
+                                placedPlants: Binding(get: { playerStats.placedPlants }, set: { playerStats.placedPlants = $0 }),
+                                playerStats: playerStats,
+                                firebaseManager: firebaseManager
+                            ))
+
+
                             .allowsHitTesting(!isTutorialActive ||
                                              (currentTutorialStep == .explainFertilizer && !plant.isFullyGrown) ||
                                              (currentTutorialStep == .explainSell && plant.isFullyGrown) ||
                                              currentTutorialStep == .explainPlanting
                             )
+
                         }
                     } else {
                         EmptyPlotIconView(plotIndex: index)
@@ -975,3 +995,48 @@ struct PlantPlotView: View {
         return vibrantPlotColor
     }
 }
+struct GardenDropDelegate: DropDelegate {
+    let targetPlant: PlacedPlant
+    @Binding var draggedPlant: PlacedPlant?
+    @Binding var placedPlants: [PlacedPlant]
+    let playerStats: PlayerStats
+    let firebaseManager: FirebaseManager
+
+    func performDrop(info: DropInfo) -> Bool {
+        guard let dragged = draggedPlant,
+              let fromIndex = placedPlants.firstIndex(of: dragged),
+              let toIndex = placedPlants.firstIndex(of: targetPlant),
+              fromIndex != toIndex else {
+            draggedPlant = nil
+            return false
+        }
+
+        withAnimation {
+            // ✅ Swap positions
+            let fromPos = placedPlants[fromIndex].position
+            placedPlants[fromIndex].position = placedPlants[toIndex].position
+            placedPlants[toIndex].position = fromPos
+
+            // ✅ Swap plants in the array too (visual order)
+            placedPlants.swapAt(fromIndex, toIndex)
+
+            // ✅ Save after drop is completed
+            let codableStats = PlayerStatsCodable(from: playerStats)
+            firebaseManager.savePlayerStats(codableStats) { error in
+                if let error = error {
+                    print("🔥 Error saving reordered garden: \(error.localizedDescription)")
+                }
+            }
+        }
+
+        draggedPlant = nil
+        return true
+    }
+
+    func dropEntered(info: DropInfo) {
+        // No shifting — we only swap on drop
+    }
+}
+
+
+
