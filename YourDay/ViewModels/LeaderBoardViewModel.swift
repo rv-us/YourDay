@@ -98,20 +98,27 @@ class LeaderboardViewModel: ObservableObject {
             self.firebaseManager.fetchLeaderboardEntries(orderBy: orderBy, descending: true, limit: limit) { (entries, error) in
                 DispatchQueue.main.async {
                     if let entries = entries {
-                        self.leaderboardEntries = entries.filter { entry in
-                            return entry.id == uid || friendIds.contains(entry.id)
+                        // ✅ Filter to self + friends
+                        let filtered = entries.filter { entry in
+                            entry.id == uid || friendIds.contains(entry.id)
                         }
-                        self.currentUserRank = nil
-                        for (i, entry) in self.leaderboardEntries.enumerated() {
-                            if entry.id == uid {
-                                self.currentUserRank = i + 1
-                            }
+
+                        // ✅ Now reassign rank on the filtered list
+                        var ranked: [LeaderboardEntry] = []
+                        for (i, var entry) in filtered.enumerated() {
+                            entry.rank = i + 1
+                            ranked.append(entry)
                         }
+
+                        self.leaderboardEntries = ranked
+                        self.currentUserRank = ranked.first(where: { $0.id == uid })?.rank
                     }
                 }
             }
         }
     }
+
+
 
     /// Updates the current user's entry in the leaderboard.
     /// This should be called when the user's PlayerStats (level, gardenValue) or display name changes.

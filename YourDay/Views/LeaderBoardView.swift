@@ -143,12 +143,14 @@ struct LeaderboardView: View {
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: {
+                        showFriendsOnly = false // ✅ reset picker to \"All\"
                         viewModel.refreshLeaderboard()
                     }) {
                         Image(systemName: "arrow.clockwise")
                             .foregroundColor(dynamicPrimaryColor)
                     }
                     .disabled(viewModel.isLoading)
+
                 }
             }
         }

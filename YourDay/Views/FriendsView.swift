@@ -1,10 +1,3 @@
-//
-//  FriendsView.swift
-//  YourDay
-//
-//  Created by Rachit Verma on 7/10/25.
-//
-
 import SwiftUI
 
 struct FriendsView: View {
@@ -12,7 +5,7 @@ struct FriendsView: View {
     @State private var statusMessage: String?
     @State private var pendingRequests: [FriendRequest] = []
     @State private var acceptedFriends: [FriendEntry] = []
-    
+
     @EnvironmentObject var firebaseManager: FirebaseManager
 
     var body: some View {
@@ -51,7 +44,7 @@ struct FriendsView: View {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(request.displayName)
                                     .foregroundColor(dynamicTextColor)
-                                
+
                                 HStack {
                                     Button("Accept") {
                                         firebaseManager.acceptFriendRequest(fromUserId: request.fromUserId, displayName: request.displayName) { error in
@@ -65,7 +58,7 @@ struct FriendsView: View {
                                     }
                                     .buttonStyle(.borderless)
                                     .foregroundColor(dynamicPrimaryColor)
-                                    
+
                                     Button("Decline") {
                                         firebaseManager.declineFriendRequest(fromUserId: request.fromUserId) { error in
                                             if let error = error {
