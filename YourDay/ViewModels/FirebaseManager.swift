@@ -275,12 +275,6 @@ class FirebaseManager: ObservableObject {
         let myRef = db.collection("users").document(currentUserId).collection("friends").document(fromUserId)
         let theirRef = db.collection("users").document(fromUserId).collection("friends").document(currentUserId)
 
-        let friendData: [String: Any] = [
-            "status": "accepted",
-            "displayName": displayName,
-            "timestamp": FieldValue.serverTimestamp()
-        ]
-
         // Locate the request first
         let requestQuery = db.collection("users").document(currentUserId)
             .collection("friend_requests")
@@ -294,12 +288,35 @@ class FirebaseManager: ObservableObject {
 
             let requestRef = doc.reference
 
-            let batch = self.db.batch()
-            batch.setData(friendData, forDocument: myRef)
-            batch.setData(friendData, forDocument: theirRef)
-            batch.deleteDocument(requestRef)
+            // Get current user's display name from leaderboard
+            let leaderboardRef = self.db.collection("leaderboard_entries")
+            leaderboardRef.document(currentUserId).getDocument { currentUserSnapshot, currentUserError in
+                guard let currentUserData = currentUserSnapshot?.data(),
+                      let currentUserDisplayName = currentUserData["displayName"] as? String else {
+                    completion(NSError(domain: "", code: 400, userInfo: [NSLocalizedDescriptionKey: "Could not retrieve your display name."]))
+                    return
+                }
 
-            batch.commit(completion: completion)
+                // Create separate friend data for each user
+                let myFriendData: [String: Any] = [
+                    "status": "accepted",
+                    "displayName": displayName,  // The sender's name (for current user's friend list)
+                    "timestamp": FieldValue.serverTimestamp()
+                ]
+
+                let theirFriendData: [String: Any] = [
+                    "status": "accepted", 
+                    "displayName": currentUserDisplayName,  // Current user's name (for other user's friend list)
+                    "timestamp": FieldValue.serverTimestamp()
+                ]
+
+                let batch = self.db.batch()
+                batch.setData(myFriendData, forDocument: myRef)
+                batch.setData(theirFriendData, forDocument: theirRef)
+                batch.deleteDocument(requestRef)
+
+                batch.commit(completion: completion)
+            }
         }
     }
 
@@ -378,6 +395,30 @@ class FirebaseManager: ObservableObject {
 
                 completion(friends)
             }
+    }
+
+    // Remove a friend (unfriend)
+    func removeFriend(friendUserId: String, completion: @escaping (Error?) -> Void) {
+        guard let currentUserId = userId else {
+            completion(NSError(domain: "", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+
+        let myRef = db.collection("users").document(currentUserId).collection("friends").document(friendUserId)
+        let theirRef = db.collection("users").document(friendUserId).collection("friends").document(currentUserId)
+
+        let batch = db.batch()
+        batch.deleteDocument(myRef)
+        batch.deleteDocument(theirRef)
+
+        batch.commit { error in
+            if let error = error {
+                print("Error removing friend: \(error.localizedDescription)")
+            } else {
+                print("Successfully removed friend relationship between \(currentUserId) and \(friendUserId)")
+            }
+            completion(error)
+        }
     }
 
     func removeAllListeners() {

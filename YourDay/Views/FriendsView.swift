@@ -1,10 +1,13 @@
 import SwiftUI
+import FirebaseAuth
+import FirebaseFirestore
 
 struct FriendsView: View {
     @State private var searchName: String = ""
     @State private var statusMessage: String?
     @State private var pendingRequests: [FriendRequest] = []
     @State private var acceptedFriends: [FriendEntry] = []
+    @State private var friendRequestListener: ListenerRegistration?
 
     @EnvironmentObject var firebaseManager: FirebaseManager
 
@@ -78,8 +81,23 @@ struct FriendsView: View {
 
                     Section(header: Text("Your Friends").foregroundColor(dynamicTextColor)) {
                         ForEach(acceptedFriends) { friend in
-                            Text(friend.displayName)
-                                .foregroundColor(dynamicTextColor)
+                            HStack {
+                                Text(friend.displayName)
+                                    .foregroundColor(dynamicTextColor)
+                                Spacer()
+                                Button("Remove") {
+                                    firebaseManager.removeFriend(friendUserId: friend.userId) { error in
+                                        if let error = error {
+                                            statusMessage = error.localizedDescription
+                                        } else {
+                                            fetchRequestsAndFriends()
+                                            statusMessage = "Friend removed"
+                                        }
+                                    }
+                                }
+                                .buttonStyle(.borderless)
+                                .foregroundColor(dynamicDestructiveColor)
+                            }
                         }
                     }
                 }
@@ -98,7 +116,13 @@ struct FriendsView: View {
                         .foregroundColor(dynamicTextColor)
                 }
             }
-            .onAppear(perform: fetchRequestsAndFriends)
+            .onAppear {
+                fetchRequestsAndFriends()
+                setupFriendRequestListener()
+            }
+            .onDisappear {
+                removeFriendRequestListener()
+            }
         }
         .navigationViewStyle(.stack)
     }
@@ -110,6 +134,44 @@ struct FriendsView: View {
         firebaseManager.fetchAcceptedFriends { friends in
             self.acceptedFriends = friends
         }
+    }
+    
+    func setupFriendRequestListener() {
+        guard let currentUserId = Auth.auth().currentUser?.uid else { return }
+        
+        let db = Firestore.firestore()
+        friendRequestListener = db.collection("users").document(currentUserId)
+            .collection("friend_requests")
+            .whereField("status", isEqualTo: "pending")
+            .addSnapshotListener { snapshot, error in
+                if let error = error {
+                    print("Error listening to friend requests: \(error.localizedDescription)")
+                    return
+                }
+                
+                guard let documents = snapshot?.documents else {
+                    self.pendingRequests = []
+                    return
+                }
+                
+                let requests: [FriendRequest] = documents.compactMap { doc in
+                    let data = doc.data()
+                    guard let fromUserId = data["fromUserId"] as? String,
+                          let displayName = data["displayName"] as? String else {
+                        return nil
+                    }
+                    return FriendRequest(fromUserId: fromUserId, displayName: displayName)
+                }
+                
+                DispatchQueue.main.async {
+                    self.pendingRequests = requests
+                }
+            }
+    }
+    
+    func removeFriendRequestListener() {
+        friendRequestListener?.remove()
+        friendRequestListener = nil
     }
 }
 
