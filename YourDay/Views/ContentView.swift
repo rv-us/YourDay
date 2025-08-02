@@ -114,7 +114,9 @@ struct ContentView: View {
                     try modelContext.save()
                     loginViewModel.handleUserSession(localPlayerStats: newStats, modelContext: modelContext)
                 } catch {
-                    // Error saving initial PlayerStats
+                    print("ContentView: Failed to save initial PlayerStats: \(error.localizedDescription)")
+                    // Continue with the session even if save fails
+                    loginViewModel.handleUserSession(localPlayerStats: newStats, modelContext: modelContext)
                 }
             } else if loginViewModel.isAuthenticated, let stats = currentPlayerStats {
                 loginViewModel.handleUserSession(localPlayerStats: stats, modelContext: modelContext)
@@ -163,7 +165,8 @@ struct ContentView: View {
         do {
             try modelContext.save()
         } catch {
-            // Error saving context after clearing
+            print("ContentView: Failed to save context after clearing data: \(error.localizedDescription)")
+            // Continue even if save fails - the app should still function
         }
     }
 

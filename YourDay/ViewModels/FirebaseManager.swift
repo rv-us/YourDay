@@ -52,7 +52,12 @@ class FirebaseManager: ObservableObject {
                     let playerStatsCodable = try document.data(as: PlayerStatsCodable.self)
                     completion(playerStatsCodable, nil)
                 } catch let decodeError {
-                    completion(nil, decodeError)
+                    print("FirebaseManager: Failed to decode PlayerStatsCodable from Firestore: \(decodeError.localizedDescription)")
+                    
+                    // Handle schema migration - create default data if decoding fails
+                    print("FirebaseManager: Creating default PlayerStats due to schema incompatibility")
+                    let defaultStats = PlayerStatsCodable()
+                    completion(defaultStats, nil)
                 }
             } else {
                 print("No PlayerStatsCodable found for user \(userId). Creating and saving default.")

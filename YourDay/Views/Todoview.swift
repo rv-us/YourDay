@@ -12,6 +12,7 @@ struct Todoview: View {
     @State private var currentTodoTutorialStep: TodoTutorialStep = .welcome
     @State private var highlightAddButton = false
     @State private var highlightSummaryButton = false
+    @State private var highlightFilterButton = false
     @State private var previousInProgressCount = 0
 
     @Query(sort: [SortDescriptor(\TodoItem.position)]) private var items: [TodoItem]
@@ -42,12 +43,23 @@ struct Todoview: View {
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
-                Picker("Filter", selection: $selectedFilter) {
-                    Text("Today").tag(TaskListFilter.today)
-                    Text("Master List").tag(TaskListFilter.master)
+                ZStack(alignment: .center) {
+                    if highlightFilterButton {
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color.yellow.opacity(0.4))
+                            .frame(height: 40)
+                            .padding(.horizontal)
+                            .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: highlightFilterButton)
+                    }
+                    
+                    Picker("Filter", selection: $selectedFilter) {
+                        Text("Today").tag(TaskListFilter.today)
+                        Text("Master List").tag(TaskListFilter.master)
+                    }
+                    .pickerStyle(SegmentedPickerStyle())
+                    .padding()
+
                 }
-                .pickerStyle(SegmentedPickerStyle())
-                .padding()
 
                 List {
                     Section(header:
@@ -133,6 +145,13 @@ struct Todoview: View {
                             }
                             
                             Button(action: {
+                                // If we're in tutorial and user interacts with add button, progress to next step
+                                if showTodoTutorial && currentTodoTutorialStep == .explainAdd {
+                                    let nextRawValue = currentTodoTutorialStep.rawValue + 1
+                                    if let nextStep = TodoTutorialStep(rawValue: nextRawValue) {
+                                        currentTodoTutorialStep = nextStep
+                                    }
+                                }
                                 viewModel.showingNewItemView = true
                             }) {
                                 Image(systemName: "plus")
@@ -155,6 +174,13 @@ struct Todoview: View {
                             }
                             
                             Button(action: {
+                                // If we're in tutorial and user interacts with star button, progress to next step
+                                if showTodoTutorial && currentTodoTutorialStep == .explainSummary {
+                                    let nextRawValue = currentTodoTutorialStep.rawValue + 1
+                                    if let nextStep = TodoTutorialStep(rawValue: nextRawValue) {
+                                        currentTodoTutorialStep = nextStep
+                                    }
+                                }
                                 viewModel.showingDailySummary = true
                             }) {
                                 Image(systemName: "star")
@@ -178,9 +204,11 @@ struct Todoview: View {
                             hasCompletedTutorialPreviously: $hasCompletedTodoTutorial,
                             highlightAdd: $highlightAddButton,
                             highlightStar: $highlightSummaryButton,
+                            highlightFilter: $highlightFilterButton,
                             onDismiss: {
                                 highlightAddButton = false
                                 highlightSummaryButton = false
+                                highlightFilterButton = false
                             }
                         )
                     }
@@ -190,7 +218,7 @@ struct Todoview: View {
                 LastDayView(isModal: true)
             }
             .sheet(isPresented: $viewModel.showingNewItemView) {
-                NewItemview(newItemPresented: $viewModel.showingNewItemView)
+                NewItemview(newItemPresented: $viewModel.showingNewItemView, selectedOrigin: selectedFilter == .today ? .today : .master)
             }
             .alert("Sign Out", isPresented: $showSignOutAlertInTodoView) {
                 Button("OK", role: .cancel) {}
@@ -202,6 +230,24 @@ struct Todoview: View {
         .onAppear {
             if !hasCompletedTodoTutorial {
                 showTodoTutorial = true
+            }
+        }
+        .onChange(of: currentTodoTutorialStep) { _, newStep in
+            // Reset all highlights
+            highlightAddButton = false
+            highlightSummaryButton = false
+            highlightFilterButton = false
+            
+            // Set appropriate highlight based on current step
+            switch newStep {
+            case .explainFilter:
+                highlightFilterButton = true
+            case .explainAdd:
+                highlightAddButton = true
+            case .explainSummary:
+                highlightSummaryButton = true
+            default:
+                break
             }
         }
     }

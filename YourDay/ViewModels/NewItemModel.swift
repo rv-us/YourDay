@@ -17,13 +17,16 @@ class NewItemModel: ObservableObject {
     
     var originalItem: TodoItem? = nil
 
-    init(item: TodoItem? = nil) {
+    init(item: TodoItem? = nil, selectedOrigin: TaskOrigin = .today) {
         if let item = item {
             self.originalItem = item
             self.title = item.title
             self.description = item.detail
             self.donebye = item.dueDate
             self.subtasks = item.subtasks
+            self.origin = item.origin
+        } else {
+            self.origin = selectedOrigin
         }
     }
 

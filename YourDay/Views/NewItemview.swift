@@ -7,8 +7,8 @@ struct NewItemview: View {
     @StateObject var viewModel: NewItemModel
     @Binding var newItemPresented: Bool
 
-    init(newItemPresented: Binding<Bool>, editingItem: TodoItem? = nil) {
-        self._viewModel = StateObject(wrappedValue: NewItemModel(item: editingItem))
+    init(newItemPresented: Binding<Bool>, editingItem: TodoItem? = nil, selectedOrigin: TaskOrigin = .today) {
+        self._viewModel = StateObject(wrappedValue: NewItemModel(item: editingItem, selectedOrigin: selectedOrigin))
         self._newItemPresented = newItemPresented
     }
 

@@ -9,6 +9,9 @@ struct YourDayApp: App {
     @StateObject private var locationManager = LocationManager()
 
     init() {
+        // Add crash prevention before any other initialization
+        setupCrashPrevention()
+        
         FirebaseApp.configure()
         
         let appearance = UITabBarAppearance()
@@ -35,6 +38,56 @@ struct YourDayApp: App {
         UITabBar.appearance().standardAppearance = appearance
         UITabBar.appearance().scrollEdgeAppearance = appearance
         UITabBar.appearance().tintColor = selectedColor
+    }
+    
+    private func setupCrashPrevention() {
+        // Clear potentially corrupted UserDefaults data that could cause crashes
+        let dateKeys = [
+            "lastSummaryDate",
+            "lastAppOpenDateForWitheringCheck", 
+            "lastAppActiveDate"
+        ]
+        
+        for key in dateKeys {
+            if let value = UserDefaults.standard.object(forKey: key) {
+                if !isValidDateString(value, forKey: key) {
+                    print("App: Clearing invalid date data for key: \(key)")
+                    UserDefaults.standard.removeObject(forKey: key)
+                }
+            }
+        }
+        
+        // Clear tutorial states if they might be corrupted
+        let tutorialKeys = [
+            "hasCompletedTodoTutorial",
+            "hasCompletedNotesTutorial",
+            "hasCompletedNotificationsTutorial",
+            "hasCompletedGardenTutorial_v1"
+        ]
+        
+        for key in tutorialKeys {
+            if let value = UserDefaults.standard.object(forKey: key) {
+                if !(value is Bool) {
+                    print("App: Clearing invalid tutorial data for key: \(key)")
+                    UserDefaults.standard.removeObject(forKey: key)
+                }
+            }
+        }
+    }
+    
+    private func isValidDateString(_ value: Any, forKey key: String) -> Bool {
+        guard let stringValue = value as? String else { return false }
+        
+        // Check if it's a valid date string format
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        
+        if let _ = formatter.date(from: stringValue) {
+            return true
+        }
+        
+        // If it's not a valid date, it might be an old format - clear it
+        return false
     }
 
     var body: some Scene {

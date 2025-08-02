@@ -13,6 +13,7 @@ struct TodoTutorialOverlay: View {
     @Binding var hasCompletedTutorialPreviously: Bool
     @Binding var highlightAdd: Bool
     @Binding var highlightStar: Bool
+    @Binding var highlightFilter: Bool
     var onDismiss: () -> Void
     
 
@@ -20,8 +21,10 @@ struct TodoTutorialOverlay: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.75)
+            // Semi-transparent overlay that allows interaction with highlighted elements
+            Color.black.opacity(currentStep.requiresUserAction ? 0.3 : 0.75)
                 .edgesIgnoringSafeArea(.all)
+                .allowsHitTesting(!currentStep.requiresUserAction)
 
             VStack(spacing: 20) {
                 Text(currentStep.title)
@@ -58,6 +61,12 @@ struct TodoTutorialOverlay: View {
                             .cornerRadius(10)
                     }
                     .padding(.top)
+                } else {
+                    // For steps requiring user action, show a hint
+                    Text("Try interacting with the highlighted element above")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.7))
+                        .padding(.top, 10)
                 }
 
                 if currentStep != .welcome && currentStep != .finished {
@@ -94,6 +103,7 @@ struct TodoTutorialOverlay: View {
         isActive = false
         highlightAdd = false
         highlightStar = false
+        highlightFilter = false
         currentStep = .finished
         onDismiss()
     }
@@ -101,23 +111,27 @@ struct TodoTutorialOverlay: View {
 
 // Enum for tutorial steps
 enum TodoTutorialStep: Int, CaseIterable {
-    case welcome, explainAdd, explainSummary, finished
+    case welcome, explainFilter, explainAdd, explainSummary, explainMigration, finished
 
     var title: String {
         switch self {
         case .welcome: return "Welcome to YourDay"
+        case .explainFilter: return "Today vs Master List"
         case .explainAdd: return "Add a New Task"
-        case .explainSummary: return "Open Daily Summary"
+        case .explainSummary: return "Daily Summary & Rewards"
+        case .explainMigration: return "Moving Tasks Between Lists"
         case .finished: return "You're Ready!"
         }
     }
 
     var message: String {
         switch self {
-        case .welcome: return "This is your personal to-do list to stay organized."
-        case .explainAdd: return "Tap the '+' button to add a new item."
-        case .explainSummary: return "Tap the star icon to view your daily summary and rewards. Remember you will earn points at the start of everyday based on the tasks you completed the previous day. The points from tasks are determined by your garden value"
-        case .finished: return "You're all set to start using YourDay!"
+        case .welcome: return "This is your personal to-do list to stay organized and productive."
+        case .explainFilter: return "Switch between 'Today' for daily tasks and 'Master List' for ongoing projects."
+        case .explainAdd: return "Tap the '+' button to create a new task. The list selection will be pre-set based on which tab you're currently viewing."
+        case .explainSummary: return "Tap the star icon to view your daily summary and track your progress. You'll earn points each morning based on completed tasks from the previous day."
+        case .explainMigration: return "To move tasks between lists, tap on any task to edit it and change the 'Add To' setting. This helps you organize tasks as your priorities change."
+        case .finished: return "You're all set to start using YourDay! Create tasks, track progress, and watch your garden grow with your productivity."
         }
     }
 
@@ -130,8 +144,10 @@ enum TodoTutorialStep: Int, CaseIterable {
 
     var icon: String? {
         switch self {
+        case .explainFilter: return "list.bullet"
         case .explainAdd: return "plus.circle"
         case .explainSummary: return "star"
+        case .explainMigration: return "arrow.left.arrow.right"
         default: return nil
         }
     }
