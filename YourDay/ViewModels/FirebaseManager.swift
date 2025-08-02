@@ -9,6 +9,12 @@ import Foundation
 import FirebaseFirestore
 import FirebaseAuth
 
+struct UserSearchResult: Identifiable {
+    var id: String { userId }
+    let userId: String
+    let displayName: String
+}
+
 class FirebaseManager: ObservableObject {
     static let shared = FirebaseManager()
     private var db = Firestore.firestore()
@@ -200,6 +206,54 @@ class FirebaseManager: ObservableObject {
                 }
             }
         }
+    // MARK: - User Search for Friends
+    func searchUsers(byDisplayName searchTerm: String, completion: @escaping ([UserSearchResult], Error?) -> Void) {
+        guard let currentUserId = userId else {
+            completion([], NSError(domain: "", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+        
+        // Don't search if term is too short
+        guard searchTerm.count >= 2 else {
+            completion([], nil)
+            return
+        }
+        
+        let leaderboardRef = db.collection("leaderboard_entries")
+        
+        // Search for users whose display name starts with the search term
+        leaderboardRef.whereField("displayName", isGreaterThanOrEqualTo: searchTerm)
+            .whereField("displayName", isLessThan: searchTerm + "\u{f8ff}")
+            .limit(to: 10) // Limit results for performance
+            .getDocuments { snapshot, error in
+                if let error = error {
+                    completion([], error)
+                    return
+                }
+                
+                guard let documents = snapshot?.documents else {
+                    completion([], nil)
+                    return
+                }
+                
+                let searchResults: [UserSearchResult] = documents.compactMap { doc in
+                    let data = doc.data()
+                    guard let displayName = data["displayName"] as? String,
+                          let userId = doc.documentID as String?,
+                          userId != currentUserId else { // Don't show current user
+                        return nil
+                    }
+                    
+                    return UserSearchResult(
+                        userId: userId,
+                        displayName: displayName
+                    )
+                }
+                
+                completion(searchResults, nil)
+            }
+    }
+    
     // MARK: - Other Data Types (Placeholders - ensure Codable versions or mapping)
     // func saveTodoItem(_ todoItem: CodableTodoItem, completion: @escaping (Error?) -> Void) { ... }
     // func loadTodoItems(completion: @escaping ([CodableTodoItem]?, Error?) -> Void) { ... }

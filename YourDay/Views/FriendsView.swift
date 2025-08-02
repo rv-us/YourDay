@@ -8,6 +8,9 @@ struct FriendsView: View {
     @State private var pendingRequests: [FriendRequest] = []
     @State private var acceptedFriends: [FriendEntry] = []
     @State private var friendRequestListener: ListenerRegistration?
+    @State private var searchResults: [UserSearchResult] = []
+    @State private var isSearching: Bool = false
+    @State private var showSearchResults: Bool = false
 
     @EnvironmentObject var firebaseManager: FirebaseManager
 
@@ -16,23 +19,101 @@ struct FriendsView: View {
             VStack {
                 Form {
                     Section(header: Text("Add a Friend").foregroundColor(dynamicTextColor)) {
-                        TextField("Enter username", text: $searchName)
-                            .autocapitalization(.none)
-                            .foregroundColor(dynamicTextColor)
-
-                        Button(action: {
-                            firebaseManager.sendFriendRequest(toDisplayName: searchName) { error in
-                                if let error = error {
-                                    statusMessage = error.localizedDescription
-                                } else {
-                                    statusMessage = "Friend request sent to \(searchName)"
-                                    searchName = ""
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Image(systemName: "magnifyingglass")
+                                    .foregroundColor(dynamicSecondaryTextColor)
+                                
+                                TextField("Search for friends...", text: $searchName)
+                                    .autocapitalization(.none)
+                                    .foregroundColor(dynamicTextColor)
+                                    .onChange(of: searchName) { _, newValue in
+                                        performSearch(searchTerm: newValue)
+                                    }
+                                
+                                if !searchName.isEmpty {
+                                    Button(action: {
+                                        searchName = ""
+                                        searchResults = []
+                                        showSearchResults = false
+                                    }) {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .foregroundColor(dynamicSecondaryTextColor)
+                                    }
                                 }
                             }
-                        }) {
-                            Text("Send Friend Request")
-                                .foregroundColor(dynamicPrimaryColor)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(dynamicSecondaryBackgroundColor.opacity(0.3))
+                            .cornerRadius(10)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(dynamicSecondaryTextColor.opacity(0.5), lineWidth: 1)
+                            )
+                            
+                            // Search Results
+                            if showSearchResults && !searchResults.isEmpty {
+                                VStack(alignment: .leading, spacing: 0) {
+                                    ForEach(searchResults) { result in
+                                        Button(action: {
+                                            sendFriendRequest(to: result.displayName)
+                                            searchName = ""
+                                            searchResults = []
+                                            showSearchResults = false
+                                        }) {
+                                            HStack {
+                                                Image(systemName: "person.circle.fill")
+                                                    .foregroundColor(dynamicPrimaryColor)
+                                                    .font(.title2)
+                                                
+                                                VStack(alignment: .leading, spacing: 2) {
+                                                    Text(result.displayName)
+                                                        .font(.body)
+                                                        .fontWeight(.medium)
+                                                        .foregroundColor(dynamicTextColor)
+                                                    
+                                                    Text("Tap to send friend request")
+                                                        .font(.caption)
+                                                        .foregroundColor(dynamicSecondaryTextColor)
+                                                }
+                                                
+                                                Spacer()
+                                                
+                                                Image(systemName: "plus.circle")
+                                                    .foregroundColor(dynamicPrimaryColor)
+                                                    .font(.title3)
+                                            }
+                                            .padding(.horizontal, 12)
+                                            .padding(.vertical, 10)
+                                        }
+                                        .buttonStyle(PlainButtonStyle())
+                                        
+                                        if result.id != searchResults.last?.id {
+                                            Divider()
+                                                .background(dynamicSecondaryTextColor.opacity(0.3))
+                                        }
+                                    }
+                                }
+                                .background(dynamicSecondaryBackgroundColor.opacity(0.5))
+                                .cornerRadius(8)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(dynamicSecondaryTextColor.opacity(0.3), lineWidth: 1)
+                                )
+                            }
+                            
+                            if isSearching {
+                                HStack {
+                                    ProgressView()
+                                        .scaleEffect(0.8)
+                                    Text("Searching...")
+                                        .font(.caption)
+                                        .foregroundColor(dynamicSecondaryTextColor)
+                                }
+                                .padding(.top, 4)
+                            }
                         }
+                        .listRowBackground(dynamicBackgroundColor)
                     }
 
                     if let message = statusMessage {
@@ -125,6 +206,47 @@ struct FriendsView: View {
             }
         }
         .navigationViewStyle(.stack)
+    }
+    
+    private func performSearch(searchTerm: String) {
+        guard searchTerm.count >= 2 else {
+            searchResults = []
+            showSearchResults = false
+            isSearching = false
+            return
+        }
+        
+        isSearching = true
+        showSearchResults = true
+        
+        // Debounce the search to avoid too many Firebase calls
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            // Only search if the search term hasn't changed
+            guard searchTerm == searchName else { return }
+            
+            firebaseManager.searchUsers(byDisplayName: searchTerm) { results, error in
+                DispatchQueue.main.async {
+                    self.isSearching = false
+                    
+                    if let error = error {
+                        print("Search error: \(error.localizedDescription)")
+                        self.searchResults = []
+                    } else {
+                        self.searchResults = results
+                    }
+                }
+            }
+        }
+    }
+    
+    private func sendFriendRequest(to displayName: String) {
+        firebaseManager.sendFriendRequest(toDisplayName: displayName) { error in
+            if let error = error {
+                statusMessage = error.localizedDescription
+            } else {
+                statusMessage = "Friend request sent to \(displayName)"
+            }
+        }
     }
 
     func fetchRequestsAndFriends() {
