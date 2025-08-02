@@ -131,7 +131,7 @@ struct FriendsView: View {
 
                                 HStack {
                                     Button("Accept") {
-                                        firebaseManager.acceptFriendRequest(fromUserId: request.fromUserId, displayName: request.displayName) { error in
+                                        firebaseManager.acceptFriendRequest(fromUserId: request.fromUserId, displayName: "") { error in
                                             if let error = error {
                                                 statusMessage = error.localizedDescription
                                             } else {
@@ -198,10 +198,14 @@ struct FriendsView: View {
                 }
             }
             .onAppear {
-                fetchRequestsAndFriends()
+                firebaseManager.startListeningToAcceptedFriendsLive { updatedFriends in
+                    self.acceptedFriends = updatedFriends
+                }
                 setupFriendRequestListener()
             }
+
             .onDisappear {
+                firebaseManager.stopListeningToAcceptedFriends()
                 removeFriendRequestListener()
             }
         }

@@ -19,6 +19,7 @@ class FirebaseManager: ObservableObject {
     static let shared = FirebaseManager()
     private var db = Firestore.firestore()
     private var listenerRegistrations: [ListenerRegistration] = []
+    var acceptedFriendsListener: ListenerRegistration?
 
     private var userId: String? {
         Auth.auth().currentUser?.uid
@@ -334,7 +335,6 @@ class FirebaseManager: ObservableObject {
         let myRef = db.collection("users").document(currentUserId).collection("friends").document(fromUserId)
         let theirRef = db.collection("users").document(fromUserId).collection("friends").document(currentUserId)
 
-        // Locate the request first
         let requestQuery = db.collection("users").document(currentUserId)
             .collection("friend_requests")
             .whereField("fromUserId", isEqualTo: fromUserId)
@@ -346,9 +346,9 @@ class FirebaseManager: ObservableObject {
             }
 
             let requestRef = doc.reference
-
-            // Get current user's display name from leaderboard
             let leaderboardRef = self.db.collection("leaderboard_entries")
+
+            // Fetch current user's display name
             leaderboardRef.document(currentUserId).getDocument { currentUserSnapshot, currentUserError in
                 guard let currentUserData = currentUserSnapshot?.data(),
                       let currentUserDisplayName = currentUserData["displayName"] as? String else {
@@ -356,29 +356,85 @@ class FirebaseManager: ObservableObject {
                     return
                 }
 
-                // Create separate friend data for each user
-                let myFriendData: [String: Any] = [
-                    "status": "accepted",
-                    "displayName": displayName,  // The sender's name (for current user's friend list)
-                    "timestamp": FieldValue.serverTimestamp()
-                ]
+                // ✅ Fetch sender's display name fresh
+                leaderboardRef.document(fromUserId).getDocument { senderSnapshot, senderError in
+                    guard let senderData = senderSnapshot?.data(),
+                          let senderDisplayName = senderData["displayName"] as? String else {
+                        completion(NSError(domain: "", code: 400, userInfo: [NSLocalizedDescriptionKey: "Could not retrieve sender's display name."]))
+                        return
+                    }
 
-                let theirFriendData: [String: Any] = [
-                    "status": "accepted", 
-                    "displayName": currentUserDisplayName,  // Current user's name (for other user's friend list)
-                    "timestamp": FieldValue.serverTimestamp()
-                ]
+                    let myFriendData: [String: Any] = [
+                        "status": "accepted",
+                        "displayName": senderDisplayName,
+                        "timestamp": FieldValue.serverTimestamp()
+                    ]
 
-                let batch = self.db.batch()
-                batch.setData(myFriendData, forDocument: myRef)
-                batch.setData(theirFriendData, forDocument: theirRef)
-                batch.deleteDocument(requestRef)
+                    let theirFriendData: [String: Any] = [
+                        "status": "accepted",
+                        "displayName": currentUserDisplayName,
+                        "timestamp": FieldValue.serverTimestamp()
+                    ]
 
-                batch.commit(completion: completion)
+                    let batch = self.db.batch()
+                    batch.setData(myFriendData, forDocument: myRef)
+                    batch.setData(theirFriendData, forDocument: theirRef)
+                    batch.deleteDocument(requestRef)
+
+                    batch.commit(completion: completion)
+                }
             }
         }
     }
 
+    func startListeningToAcceptedFriendsLive(onUpdate: @escaping ([FriendEntry]) -> Void) {
+            guard let currentUserId = userId else {
+                onUpdate([])
+                return
+            }
+
+            acceptedFriendsListener?.remove() // Clean up old listener if any
+
+            acceptedFriendsListener = db.collection("users")
+                .document(currentUserId)
+                .collection("friends")
+                .whereField("status", isEqualTo: "accepted")
+                .addSnapshotListener { snapshot, error in
+                    guard let documents = snapshot?.documents, error == nil else {
+                        print("Error listening to friends:", error?.localizedDescription ?? "unknown")
+                        onUpdate([])
+                        return
+                    }
+
+                    let friendUIDs = documents.map { $0.documentID }
+                    if friendUIDs.isEmpty {
+                        onUpdate([])
+                        return
+                    }
+
+                    // Fetch display names from leaderboard_entries
+                    self.db.collection("leaderboard_entries")
+                        .whereField(FieldPath.documentID(), in: friendUIDs)
+                        .getDocuments { snap, err in
+                            guard let docs = snap?.documents, err == nil else {
+                                onUpdate([])
+                                return
+                            }
+
+                            let friends = docs.compactMap { doc -> FriendEntry? in
+                                guard let displayName = doc.data()["displayName"] as? String else { return nil }
+                                return FriendEntry(userId: doc.documentID, displayName: displayName)
+                            }
+
+                            onUpdate(friends)
+                        }
+                }
+        }
+
+        func stopListeningToAcceptedFriends() {
+            acceptedFriendsListener?.remove()
+            acceptedFriendsListener = nil
+        }
 
     // Fetch friend user IDs
     func fetchFriendUserIDs(completion: @escaping ([String]) -> Void) {
@@ -434,26 +490,40 @@ class FirebaseManager: ObservableObject {
             return
         }
 
-        db.collection("users").document(currentUserId)
-            .collection("friends")
-            .whereField("status", isEqualTo: "accepted")
-            .getDocuments { snapshot, error in
-                guard let documents = snapshot?.documents, error == nil else {
-                    completion([])
-                    return
-                }
-
-                let friends: [FriendEntry] = documents.compactMap { doc in
-                    let data = doc.data()
-                    let friendUserId = doc.documentID
-                    guard let displayName = data["displayName"] as? String else {
-                        return nil
-                    }
-                    return FriendEntry(userId: friendUserId, displayName: displayName)
-                }
-
-                completion(friends)
+        let friendRef = db.collection("users").document(currentUserId).collection("friends")
+        
+        friendRef.whereField("status", isEqualTo: "accepted").getDocuments { snapshot, error in
+            guard let documents = snapshot?.documents, error == nil else {
+                completion([])
+                return
             }
+
+            let friendUIDs = documents.map { $0.documentID }
+            if friendUIDs.isEmpty {
+                completion([])
+                return
+            }
+
+            // Fetch leaderboard entries in a single call using `.whereField(.in:)`
+            self.db.collection("leaderboard_entries")
+                .whereField(FieldPath.documentID(), in: friendUIDs)
+                .getDocuments { snap, err in
+                    guard let docs = snap?.documents, err == nil else {
+                        completion([])
+                        return
+                    }
+
+                    let friends: [FriendEntry] = docs.compactMap { doc in
+                        let data = doc.data()
+                        guard let displayName = data["displayName"] as? String else {
+                            return nil
+                        }
+                        return FriendEntry(userId: doc.documentID, displayName: displayName)
+                    }
+
+                    completion(friends)
+                }
+        }
     }
 
     // Remove a friend (unfriend)

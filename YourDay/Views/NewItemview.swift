@@ -142,10 +142,19 @@ struct NewItemview: View {
                     }
                     .foregroundColor(dynamicPrimaryColor)
                 }
+
                 ToolbarItem(placement: .principal) {
                     Text(viewModel.originalItem == nil ? "New Task" : "Edit Task")
                         .fontWeight(.bold)
                         .foregroundColor(dynamicTextColor)
+                }
+
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Save") {
+                        saveTask()
+                    }
+                    .foregroundColor(dynamicPrimaryColor)
+                    .disabled(viewModel.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
             .alert(isPresented: $viewModel.showAlert) {

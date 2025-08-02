@@ -58,6 +58,7 @@ struct Todoview: View {
                     }
                     .pickerStyle(SegmentedPickerStyle())
                     .padding()
+                    .tint(dynamicPrimaryColor)
 
                 }
 
