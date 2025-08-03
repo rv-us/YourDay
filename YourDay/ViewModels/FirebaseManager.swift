@@ -549,6 +549,90 @@ class FirebaseManager: ObservableObject {
             completion(error)
         }
     }
+    // Send a message
+    func sendChatMessage(_ message: ChatMessage, completion: @escaping (Error?) -> Void) {
+        do {
+            try db.collection("chat_messages").addDocument(from: message, completion: completion)
+        } catch {
+            completion(error)
+        }
+    }
+
+    // Listen for messages between two users
+    func listenToChat(with friendId: String, onUpdate: @escaping ([ChatMessage]) -> Void) -> ListenerRegistration? {
+        guard let currentUserId = Auth.auth().currentUser?.uid else { return nil }
+
+        return db.collection("chat_messages")
+            .whereFilter(Filter.orFilter([
+                Filter.andFilter([
+                    Filter.whereField("senderId", isEqualTo: currentUserId),
+                    Filter.whereField("receiverId", isEqualTo: friendId)
+                ]),
+                Filter.andFilter([
+                    Filter.whereField("senderId", isEqualTo: friendId),
+                    Filter.whereField("receiverId", isEqualTo: currentUserId)
+                ])
+            ]))
+            .order(by: "timestamp")
+            .addSnapshotListener { snapshot, error in
+                guard let documents = snapshot?.documents else {
+                    onUpdate([])
+                    return
+                }
+                let messages = documents.compactMap { try? $0.data(as: ChatMessage.self) }
+                onUpdate(messages)
+            }
+    }
+    func fetchLastMessage(with friendId: String, completion: @escaping (ChatMessage?) -> Void) {
+        guard let currentUserId = Auth.auth().currentUser?.uid else {
+            completion(nil)
+            return
+        }
+
+        db.collection("chat_messages")
+            .whereFilter(Filter.orFilter([
+                Filter.andFilter([
+                    Filter.whereField("senderId", isEqualTo: currentUserId),
+                    Filter.whereField("receiverId", isEqualTo: friendId)
+                ]),
+                Filter.andFilter([
+                    Filter.whereField("senderId", isEqualTo: friendId),
+                    Filter.whereField("receiverId", isEqualTo: currentUserId)
+                ])
+            ]))
+            .order(by: "timestamp", descending: true)
+            .limit(to: 1)
+            .getDocuments { snapshot, error in
+                let msg = snapshot?.documents.first.flatMap { try? $0.data(as: ChatMessage.self) }
+                completion(msg)
+            }
+    }
+    func fetchLastLoginDate(for userId: String, completion: @escaping (Date?) -> Void) {
+        db.collection("users")
+          .document(userId)
+          .collection("playerData")
+          .document("playerStats")
+          .getDocument { snapshot, error in
+              if let doc = snapshot, doc.exists {
+                  do {
+                      let stats = try doc.data(as: PlayerStatsCodable.self)
+//                      print("📆 [DEBUG] Last login for \(userId): \(String(describing: stats.lastLoginDate))")
+                      completion(stats.lastLoginDate)
+                  } catch {
+//                      print("❌ [ERROR] Failed to decode PlayerStatsCodable for \(userId): \(error)")
+                      completion(nil)
+                  }
+              } else {
+//                  print("⚠️ [WARNING] No playerStats document found for \(userId)")
+                  completion(nil)
+              }
+          }
+    }
+
+
+
+
+
 
     func removeAllListeners() {
         listenerRegistrations.forEach { $0.remove() }

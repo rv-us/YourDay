@@ -51,10 +51,11 @@ struct ContentView: View {
                         .tabItem { Label("Notes", systemImage: "square.and.pencil") }
                         .environmentObject(loginViewModel)
 
-                    FriendsView()
-                        .tabItem { Label("Friends", systemImage: "person.2.fill") }
+                    SocialView()
+                        .tabItem { Label("Social", systemImage: "person.2.fill") }
                         .environmentObject(loginViewModel)
                         .environmentObject(firebaseManager)
+
 
                     NotificationSettingsView(
                         todoViewModel: todoViewModel,
@@ -230,7 +231,6 @@ struct ContentView: View {
                     }
                 }
             }
-            stats.lastLoginDate = today
             lastAppOpenDateForWitheringCheckString = todayString
             
             do {
@@ -240,6 +240,8 @@ struct ContentView: View {
                 // Error saving PlayerStats
             }
         }
+        stats.lastLoginDate = Date()
+        print("🕒 [DEBUG] Saving lastLoginDate: \(String(describing: stats.lastLoginDate))")
 
         if todayString != lastSummaryDateString {
             let (points, _) = PointManager.evaluateDailyPoints(context: modelContext, tasks: allTodoItems)
