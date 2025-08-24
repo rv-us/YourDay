@@ -52,15 +52,8 @@ struct NotificationSettingsView: View {
     
     private let displayNameCharacterLimit = 20
 
-    // Define dynamic colors for better readability, assuming you have an asset catalog or extension for this
-    private var dynamicTextColor: Color { .primary }
-    private var dynamicSecondaryTextColor: Color { .secondary }
-    private var dynamicBackgroundColor: Color { Color(.systemGroupedBackground) }
-    private var dynamicPrimaryColor: Color { .blue }
-    private var dynamicSecondaryColor: Color { .green }
-    private var dynamicSecondaryBackgroundColor: Color { Color(.secondarySystemGroupedBackground) }
-    private var dynamicDestructiveColor: Color { .red }
-    private var dynamicAccentColor: Color { .purple }
+    // Use global dynamic colors for consistency
+    // Note: These are imported from Shopview.swift where they're defined
 
     var body: some View {
         NavigationView {
@@ -84,19 +77,26 @@ struct NotificationSettingsView: View {
                 }
 
                 Form {
-                    Section(header: Text("Account Information")) {
+                    Section(header: Text("Account Information")
+                        .foregroundColor(dynamicTextColor)
+                        .font(.headline)
+                    ) {
                         if loginViewModel.isGuest {
                             Text("You are currently in Guest Mode. Your data is stored locally on this device. Sign in to save your progress online.")
-                                .foregroundColor(.secondary)
+                                .foregroundColor(dynamicSecondaryTextColor)
+                                .listRowBackground(dynamicSecondaryBackgroundColor)
                         } else {
                             HStack {
                                 Text("Email:").fontWeight(.semibold)
+                                    .foregroundColor(dynamicTextColor)
                                 Spacer()
-                                Text(loginViewModel.userEmail ?? "Not available").foregroundColor(.secondary)
+                                Text(loginViewModel.userEmail ?? "Not available").foregroundColor(dynamicSecondaryTextColor)
                             }
+                            .listRowBackground(dynamicSecondaryBackgroundColor)
 
                             VStack(alignment: .leading) {
                                 Text("Display Name: (\(editableDisplayName.count)/\(displayNameCharacterLimit))").fontWeight(.semibold)
+                                    .foregroundColor(dynamicTextColor)
                                 TextField("Enter display name", text: $editableDisplayName)
                                     .textFieldStyle(.roundedBorder)
                                     .disabled(!loginViewModel.isNetworkAvailable || isSavingName)
@@ -116,11 +116,16 @@ struct NotificationSettingsView: View {
                                                 ProgressView().scaleEffect(0.8)
                                             } else {
                                                 Text("Save Name")
+                                                    .foregroundColor(.white)
                                             }
                                             Spacer()
                                         }
                                     }
                                     .padding(.top, 5)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .background(dynamicPrimaryColor)
+                                    .cornerRadius(8)
                                     .disabled(editableDisplayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
                                               editableDisplayName == (loginViewModel.userDisplayName ?? "") ||
                                               isSavingName)
@@ -131,11 +136,16 @@ struct NotificationSettingsView: View {
                                 }
                             }
                             .padding(.vertical, 5)
+                            .listRowBackground(dynamicSecondaryBackgroundColor)
                         }
                     }
 
-                    Section(header: Text("General Notification Settings")) {
+                    Section(header: Text("General Notification Settings")
+                        .foregroundColor(dynamicTextColor)
+                        .font(.headline)
+                    ) {
                         Toggle("Enable Scheduled Notifications", isOn: $notificationsEnabled)
+                            .foregroundColor(dynamicTextColor)
                             .onChange(of: notificationsEnabled) { _, newValue in
                                 UserDefaults.standard.set(newValue, forKey: notificationsEnabledKey)
                                 if !newValue {
@@ -143,8 +153,10 @@ struct NotificationSettingsView: View {
                                         .removePendingNotificationRequests(withIdentifiers: scheduledReminderIDs)
                                 }
                             }
+                            .listRowBackground(dynamicSecondaryBackgroundColor)
 
                         Toggle("Enable Location-Based Reminders", isOn: $tempLocationToggle)
+                            .foregroundColor(dynamicTextColor)
                             .onChange(of: tempLocationToggle) { _, newValue in
                                 if newValue {
                                     locationManager.requestPermissions { granted in
@@ -165,49 +177,70 @@ struct NotificationSettingsView: View {
                                     UserDefaults.standard.set(false, forKey: locationRemindersEnabledKey)
                                 }
                             }
+                            .listRowBackground(dynamicSecondaryBackgroundColor)
                     }
 
                     if notificationsEnabled {
-                        Section(header: Text("Morning Reminder")) {
+                        Section(header: Text("Morning Reminder")
+                        .foregroundColor(dynamicTextColor)
+                        .font(.headline)
+                    ) {
                             Button(action: { withAnimation { showMorningPicker.toggle() } }) {
                                 HStack {
                                     Text("Scheduled at")
+                                        .foregroundColor(dynamicTextColor)
                                     Spacer()
-                                    Text(morningTime.formatted(date: .omitted, time: .shortened)).foregroundColor(.secondary)
+                                    Text(morningTime.formatted(date: .omitted, time: .shortened)).foregroundColor(dynamicSecondaryTextColor)
                                 }
                             }
                             .buttonStyle(.plain)
+                            .listRowBackground(dynamicSecondaryBackgroundColor)
 
                             if showMorningPicker {
                                 DatePicker("", selection: $morningTime, displayedComponents: [.hourAndMinute])
                                     .datePickerStyle(.wheel)
                                     .labelsHidden()
+                                    .accentColor(dynamicPrimaryColor)
+                                    .listRowBackground(dynamicSecondaryBackgroundColor)
+                                    .colorScheme(.light)
                             }
                         }
 
-                        Section(header: Text("Night Reminder")) {
+                        Section(header: Text("Night Reminder")
+                            .foregroundColor(dynamicTextColor)
+                            .font(.headline)
+                        ) {
                             Button(action: { withAnimation { showNightPicker.toggle() } }) {
                                 HStack {
                                     Text("Scheduled at")
+                                        .foregroundColor(dynamicTextColor)
                                     Spacer()
-                                    Text(nightTime.formatted(date: .omitted, time: .shortened)).foregroundColor(.secondary)
+                                    Text(nightTime.formatted(date: .omitted, time: .shortened)).foregroundColor(dynamicSecondaryTextColor)
                                 }
                             }
                             .buttonStyle(.plain)
+                            .listRowBackground(dynamicSecondaryBackgroundColor)
 
                             if showNightPicker {
                                 DatePicker("", selection: $nightTime, displayedComponents: [.hourAndMinute])
                                     .datePickerStyle(.wheel)
                                     .labelsHidden()
+                                    .accentColor(dynamicPrimaryColor)
+                                    .listRowBackground(dynamicSecondaryBackgroundColor)
+                                    .colorScheme(.light)
                             }
                         }
 
-                        Section(header: Text("Additional Task Reminders")) {
+                        Section(header: Text("Additional Task Reminders")
+                            .foregroundColor(dynamicTextColor)
+                            .font(.headline)
+                        ) {
                             VStack(alignment: .leading) {
                                 HStack {
                                     Text("Reminders per day")
+                                        .foregroundColor(dynamicTextColor)
                                     Spacer()
-                                    Text("\(extraNotificationCount)").foregroundColor(.secondary)
+                                    Text("\(extraNotificationCount)").foregroundColor(dynamicSecondaryTextColor)
                                 }
                                 Slider(value: Binding(
                                     get: { Double(extraNotificationCount) },
@@ -215,6 +248,7 @@ struct NotificationSettingsView: View {
                                        in: 0...10, step: 1)
                             }
                             .padding(.vertical, 4)
+                            .listRowBackground(dynamicSecondaryBackgroundColor)
                         }
 
                         Section {
@@ -222,18 +256,21 @@ struct NotificationSettingsView: View {
                                 HStack {
                                     Spacer()
                                     Text("Save Reminder Settings")
+                                        .foregroundColor(.white)
                                     Spacer()
                                 }
                             }
                             .listRowBackground(isNotificationSaveButtonDisabled || !notificationsEnabled ? Color.gray.opacity(0.5) : dynamicPrimaryColor)
-                            .foregroundColor(.white)
                             .disabled(isNotificationSaveButtonDisabled || !notificationsEnabled)
                         }
                     }
 
                     // MARK: Account Management Section
                     if !loginViewModel.isGuest {
-                         Section(header: Text("Account Management")) {
+                         Section(header: Text("Account Management")
+                        .foregroundColor(dynamicTextColor)
+                        .font(.headline)
+                    ) {
                             Button(role: .destructive, action: {
                                 print("NotificationSettingsView: Delete Account button tapped.")
                                 showDeleteConfirmationAlert = true
@@ -244,6 +281,7 @@ struct NotificationSettingsView: View {
                                     Spacer()
                                 }
                             }
+                            .listRowBackground(dynamicSecondaryBackgroundColor)
                         }
                     }
 
@@ -256,13 +294,27 @@ struct NotificationSettingsView: View {
                                 Spacer()
                                 Text(loginViewModel.isGuest ? "Exit Guest Mode" : "Sign Out")
                                     .fontWeight(.medium)
-                                    .foregroundColor(loginViewModel.isGuest ? .primary : .red)
+                                    .foregroundColor(loginViewModel.isGuest ? dynamicTextColor : dynamicDestructiveColor)
                                 Spacer()
                             }
                         }
+                        .listRowBackground(dynamicSecondaryBackgroundColor)
                     }
                 }
-                .navigationTitle("Settings & Account")
+                .scrollContentBackground(.hidden)
+                .background(dynamicBackgroundColor)
+                .listStyle(PlainListStyle())
+                .navigationTitle("")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbarBackground(dynamicSecondaryBackgroundColor, for: .navigationBar)
+                .toolbarBackground(.visible, for: .navigationBar)
+                .toolbar {
+                    ToolbarItem(placement: .principal) {
+                        Text("Settings & Account")
+                            .fontWeight(.bold)
+                            .foregroundColor(dynamicTextColor)
+                    }
+                }
             }
             .alert("Location Access Denied", isPresented: $showPermissionDeniedAlert) {
                 Button("OK", role: .cancel) { }
@@ -316,6 +368,7 @@ struct NotificationSettingsView: View {
                 }
             )
         }
+        .background(dynamicBackgroundColor.edgesIgnoringSafeArea(.all))
         .navigationViewStyle(.stack)
     }
 
@@ -421,7 +474,8 @@ struct NotificationSettingsView: View {
                 morningMinute: morningMinute,
                 nightHour: nightHour,
                 nightMinute: nightMinute,
-                extraReminders: extraNotificationCount
+                extraReminders: extraNotificationCount,
+                context: modelContext
             )
 
             withAnimation { showNotificationSaveConfirmation = true }

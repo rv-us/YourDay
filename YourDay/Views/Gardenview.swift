@@ -16,35 +16,35 @@ struct VibrantLightTheme {
 }
 
 struct VibrantDarkTheme {
-    static let backgroundGradient = Gradient(colors: [Color(hex: "#0f2027"), Color(hex: "#203a43"), Color(hex: "#2c5364")])
-    static let plotBackground = Color(hex: "#5D4037") // Dark Brown
-    static let plotNeedsWater = Color(hex: "#795548") // Brown
-    static let plotGrown = Color(hex: "#388E3C") // Darker Green
-    static let primaryText = Color(hex: "#E0F2F1")
-    static let secondaryText = Color(hex: "#BDBDBD")
-    static let accent = Color(hex: "#FFC107")
-    static let waterButton = Color(hex: "#4FC3F7")
-    static let sellButton = Color(hex: "#81C784")
-    static let fertilizerButton = Color(hex: "#FFB74D")
+    static let backgroundGradient = Gradient(colors: [Color(hex: "#A8E063"), Color(hex: "#56AB2F")]) // Same as light
+    static let plotBackground = Color(hex: "#F5DEB3") // Wheat (same as light)
+    static let plotNeedsWater = Color(hex: "#D2B48C") // Tan (same as light)
+    static let plotGrown = Color(hex: "#C8E6C9") // Light Green (same as light)
+    static let primaryText = Color(hex: "#2E4600") // Same as light
+    static let secondaryText = Color(hex: "#616161") // Same as light
+    static let accent = Color(hex: "#FFA000") // Same as light
+    static let waterButton = Color(hex: "#29B6F6") // Same as light
+    static let sellButton = Color(hex: "#66BB6A") // Same as light
+    static let fertilizerButton = Color(hex: "#FFA726") // Same as light
 }
 
 // Dynamic Colors for Garden View
 let vibrantGardenBackground = LinearGradient(gradient: Gradient(colors: [
-    Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(VibrantDarkTheme.backgroundGradient.stops[0].color) : UIColor(VibrantLightTheme.backgroundGradient.stops[0].color) }),
-    Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(VibrantDarkTheme.backgroundGradient.stops[1].color) : UIColor(VibrantLightTheme.backgroundGradient.stops[1].color) })
+    Color(UIColor { _ in UIColor(VibrantLightTheme.backgroundGradient.stops[0].color) }),
+    Color(UIColor { _ in UIColor(VibrantLightTheme.backgroundGradient.stops[1].color) })
 ]), startPoint: .top, endPoint: .bottom)
 
-let vibrantPlotColor = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(VibrantDarkTheme.plotBackground) : UIColor(VibrantLightTheme.plotBackground) })
-let vibrantPlotNeedsWaterColor = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(VibrantDarkTheme.plotNeedsWater) : UIColor(VibrantLightTheme.plotNeedsWater) })
-let vibrantPlotGrownColor = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(VibrantDarkTheme.plotGrown) : UIColor(VibrantLightTheme.plotGrown) })
+let vibrantPlotColor = Color(UIColor { _ in UIColor(VibrantLightTheme.plotBackground) })
+let vibrantPlotNeedsWaterColor = Color(UIColor { _ in UIColor(VibrantLightTheme.plotNeedsWater) })
+let vibrantPlotGrownColor = Color(UIColor { _ in UIColor(VibrantLightTheme.plotGrown) })
 
-let vibrantPrimaryTextColor = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(VibrantDarkTheme.primaryText) : UIColor(VibrantLightTheme.primaryText) })
-let vibrantSecondaryTextColor = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(VibrantDarkTheme.secondaryText) : UIColor(VibrantLightTheme.secondaryText) })
+let vibrantPrimaryTextColor = Color(UIColor { _ in UIColor(VibrantLightTheme.primaryText) })
+let vibrantSecondaryTextColor = Color(UIColor { _ in UIColor(VibrantLightTheme.secondaryText) })
 
-let vibrantWaterButtonColor = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(VibrantDarkTheme.waterButton) : UIColor(VibrantLightTheme.waterButton) })
-let vibrantSellButtonColor = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(VibrantDarkTheme.sellButton) : UIColor(VibrantLightTheme.sellButton) })
-let vibrantFertilizerButtonColor = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(VibrantDarkTheme.fertilizerButton) : UIColor(VibrantLightTheme.fertilizerButton) })
-let vibrantAccentColor = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(VibrantDarkTheme.accent) : UIColor(VibrantLightTheme.accent) })
+let vibrantWaterButtonColor = Color(UIColor { _ in UIColor(VibrantLightTheme.waterButton) })
+let vibrantSellButtonColor = Color(UIColor { _ in UIColor(VibrantLightTheme.sellButton) })
+let vibrantFertilizerButtonColor = Color(UIColor { _ in UIColor(VibrantLightTheme.fertilizerButton) })
+let vibrantAccentColor = Color(UIColor { _ in UIColor(VibrantLightTheme.accent) })
 
 
 

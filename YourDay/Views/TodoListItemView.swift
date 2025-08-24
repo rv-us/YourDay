@@ -5,6 +5,7 @@ struct TodoListItemView: View {
     @Bindable var item: TodoItem
     @State private var showingEditView = false
     @Environment(\.modelContext) private var _modelContext
+    @ObservedObject var todoViewModel: TodoViewModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -15,6 +16,11 @@ struct TodoListItemView: View {
                         item.completedAt = item.isDone ? Date() : nil
                     }
                     print("Main item '\(item.title)' toggled to \(item.isDone), completedAt: \(String(describing: item.completedAt))")
+                    
+                    // Reschedule notifications to reflect current task state
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        todoViewModel.rescheduleNotificationsIfNeeded(context: _modelContext)
+                    }
                 }) {
                     Image(systemName: item.isDone ? "checkmark.circle.fill" : "circle")
                         .foregroundColor(item.isDone ? dynamicPrimaryColor : dynamicSecondaryTextColor)

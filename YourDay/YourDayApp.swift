@@ -17,16 +17,16 @@ struct YourDayApp: App {
         let appearance = UITabBarAppearance()
         appearance.configureWithOpaqueBackground()
         
-        appearance.backgroundColor = UIColor { traitCollection in
-            return traitCollection.userInterfaceStyle == .dark ? UIColor(DarkTheme.secondaryBackground) : UIColor(LightTheme.secondaryBackground)
+        appearance.backgroundColor = UIColor { _ in
+            return UIColor(LightTheme.secondaryBackground)
         }
         
-        let selectedColor = UIColor { traitCollection in
-            return traitCollection.userInterfaceStyle == .dark ? UIColor(DarkTheme.primary) : UIColor(LightTheme.primary)
+        let selectedColor = UIColor { _ in
+            return UIColor(LightTheme.primary)
         }
         
-        let unselectedColor = UIColor { traitCollection in
-            return traitCollection.userInterfaceStyle == .dark ? UIColor(DarkTheme.secondaryText) : UIColor(LightTheme.secondaryText)
+        let unselectedColor = UIColor { _ in
+            return UIColor(LightTheme.secondaryText)
         }
         
         appearance.stackedLayoutAppearance.selected.iconColor = selectedColor

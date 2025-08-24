@@ -45,21 +45,21 @@ struct DarkTheme {
     static let secondary = Color(hex: "#6D2726") // more brown???
     static let accent = Color(hex: "#5E8D3F") // highlights?? and hopefully navbar
     static let destructive = Color(hex: "#5E8D3F") // forest green for i have no clue
-    static let background = Color(hex: "#CAE4C5") // tea green background for all pages
-    static let secondaryBackground = Color(hex: "#FFF7CD") // lemon chiffon for modules (tasks/notes)
-    static let text = Color(hex: "#254222") // dark green for titles
-    static let secondaryText = Color(hex: "#254222") // dark green for titles
+    static let background = Color(hex: "#CAE4C5") // tea green background for all pages (same as light)
+    static let secondaryBackground = Color(hex: "#FFF7CD") // lemon chiffon for modules (tasks/notes) (same as light)
+    static let text = Color(hex: "#254222") // dark green for titles (same as light)
+    static let secondaryText = Color(hex: "#254222") // dark green for titles (same as light)
 }
 
 // Dynamic Colors (will be used when the new theme is applied)
-let dynamicPrimaryColor = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(DarkTheme.primary) : UIColor(LightTheme.primary) })
-let dynamicSecondaryColor = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(DarkTheme.secondary) : UIColor(LightTheme.secondary) })
-let dynamicAccentColor = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(DarkTheme.accent) : UIColor(LightTheme.accent) })
-let dynamicDestructiveColor = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(DarkTheme.destructive) : UIColor(LightTheme.destructive) })
-let dynamicBackgroundColor = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(DarkTheme.background) : UIColor(LightTheme.background) })
-let dynamicSecondaryBackgroundColor = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(DarkTheme.secondaryBackground) : UIColor(LightTheme.secondaryBackground) })
-let dynamicTextColor = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(DarkTheme.text) : UIColor(LightTheme.text) })
-let dynamicSecondaryTextColor = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(DarkTheme.secondaryText) : UIColor(LightTheme.secondaryText) })
+let dynamicPrimaryColor = Color(UIColor { _ in UIColor(LightTheme.primary) })
+let dynamicSecondaryColor = Color(UIColor { _ in UIColor(LightTheme.secondary) })
+let dynamicAccentColor = Color(UIColor { _ in UIColor(LightTheme.accent) })
+let dynamicDestructiveColor = Color(UIColor { _ in UIColor(LightTheme.destructive) })
+let dynamicBackgroundColor = Color(UIColor { _ in UIColor(LightTheme.background) })
+let dynamicSecondaryBackgroundColor = Color(UIColor { _ in UIColor(LightTheme.secondaryBackground) })
+let dynamicTextColor = Color(UIColor { _ in UIColor(LightTheme.text) })
+let dynamicSecondaryTextColor = Color(UIColor { _ in UIColor(LightTheme.secondaryText) })
 
 
 extension Color {

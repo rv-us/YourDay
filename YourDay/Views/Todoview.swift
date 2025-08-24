@@ -78,7 +78,7 @@ struct Todoview: View {
                         .listRowInsets(EdgeInsets())
                     ) {
                         ForEach(filteredItems.filter { !$0.isDone }) { item in
-                            TodoListItemView(item: item)
+                            TodoListItemView(item: item, todoViewModel: viewModel)
                                 .listRowBackground(dynamicSecondaryBackgroundColor)
                         }
                         .onMove(perform: moveItem)
@@ -107,7 +107,7 @@ struct Todoview: View {
                         .listRowInsets(EdgeInsets())
                     ) {
                         ForEach(filteredItems.filter { $0.isDone }) { item in
-                            TodoListItemView(item: item)
+                            TodoListItemView(item: item, todoViewModel: viewModel)
                                 .listRowBackground(dynamicSecondaryBackgroundColor)
                         }
                         .onDelete { indexSet in
