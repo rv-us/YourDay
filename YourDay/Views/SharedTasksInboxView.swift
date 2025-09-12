@@ -53,11 +53,9 @@ struct SharedTasksInboxView: View {
 
                         HStack(spacing: 8) {
                             if !task.isAccepted, task.receiverId == Auth.auth().currentUser?.uid {
-                                Button("Accept") {
-                                    accept(task)
-                                }
-                                .buttonStyle(.borderedProminent)
-                                .tint(dynamicPrimaryColor)
+                                Button("Accept") { accept(task) }
+                                    .buttonStyle(.borderedProminent)
+                                    .tint(dynamicPrimaryColor)
 
                                 Button("Reject") {
                                     if let id = task.id { firebaseManager.deleteSharedTask(sharedTaskId: id) { _ in } }
@@ -74,7 +72,7 @@ struct SharedTasksInboxView: View {
                     }
                     .listRowBackground(dynamicSecondaryBackgroundColor)
                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                        if task.isCompleted, let id = task.id {
+                        if let id = task.id {
                             Button(role: .destructive) {
                                 firebaseManager.deleteSharedTask(sharedTaskId: id) { _ in }
                             } label: {
@@ -84,8 +82,13 @@ struct SharedTasksInboxView: View {
                     }
                 }
             }
+            .listStyle(PlainListStyle())
+            .scrollContentBackground(.hidden)
             .background(dynamicBackgroundColor)
             .navigationTitle("Shared Tasks")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(dynamicSecondaryBackgroundColor, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .onAppear {
                 listener = firebaseManager.listenToSharedTasks(with: friend.userId) { updated in
                     tasks = updated
@@ -96,6 +99,7 @@ struct SharedTasksInboxView: View {
             }
         }
         .navigationViewStyle(.stack)
+        .background(dynamicBackgroundColor.edgesIgnoringSafeArea(.all))
     }
 
     private func accept(_ task: SharedTask) {

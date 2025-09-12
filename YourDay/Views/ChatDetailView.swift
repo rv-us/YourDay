@@ -53,6 +53,7 @@ struct ChatDetailView: View {
         return result.sorted { $0.createdAt < $1.createdAt }
     }
     @State private var showInbox = false
+    @State private var showShareProgressPicker = false
 
     var body: some View {
         VStack {
@@ -113,6 +114,14 @@ struct ChatDetailView: View {
                     presentShareComposer = true
                 } label: {
                     Image(systemName: "square.and.arrow.up")
+                }
+                .foregroundColor(dynamicPrimaryColor)
+                .padding(.leading, 4)
+
+                Button {
+                    showShareProgressPicker = true
+                } label: {
+                    Image(systemName: "arrowshape.turn.up.right")
                 }
                 .foregroundColor(dynamicPrimaryColor)
                 .padding(.leading, 4)
@@ -179,7 +188,7 @@ struct ChatDetailView: View {
                         tempOutgoingSharedTasks.append(temp)
                         // Also inject a chat message indicating a task was sent
                         if let currentId = Auth.auth().currentUser?.uid {
-                            let info = "You sent a task: \(title)"
+                            let info = "Sent task: \(title)"
                             let msg = ChatMessage(senderId: currentId, receiverId: friend.userId, content: info, timestamp: Date())
                             firebaseManager.sendChatMessage(msg) { _ in }
                         }
@@ -199,6 +208,10 @@ struct ChatDetailView: View {
         }
         .sheet(isPresented: $showInbox) {
             SharedTasksInboxView(friend: friend)
+                .environmentObject(firebaseManager)
+        }
+        .sheet(isPresented: $showShareProgressPicker) {
+            ShareProgressPickerView(friendId: friend.userId)
                 .environmentObject(firebaseManager)
         }
         .background(dynamicBackgroundColor.edgesIgnoringSafeArea(.all))

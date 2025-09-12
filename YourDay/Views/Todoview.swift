@@ -86,7 +86,11 @@ struct Todoview: View {
                             for index in indexSet {
                                 let activeItems = filteredItems.filter { !$0.isDone }
                                 if index < activeItems.count {
-                                    context.delete(activeItems[index])
+                                    let item = activeItems[index]
+                                    if let sharedId = item.sharedTaskId {
+                                        FirebaseManager.shared.deleteSharedTask(sharedTaskId: sharedId) { _ in }
+                                    }
+                                    context.delete(item)
                                 }
                             }
                         }
@@ -114,7 +118,11 @@ struct Todoview: View {
                             for index in indexSet {
                                 let doneItems = filteredItems.filter { $0.isDone }
                                 if index < doneItems.count {
-                                    context.delete(doneItems[index])
+                                    let item = doneItems[index]
+                                    if let sharedId = item.sharedTaskId {
+                                        FirebaseManager.shared.deleteSharedTask(sharedTaskId: sharedId) { _ in }
+                                    }
+                                    context.delete(item)
                                 }
                             }
                         }
