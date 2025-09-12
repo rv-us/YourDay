@@ -314,7 +314,7 @@ struct TasksCompletionProgressView: View {
             Circle()
                 .stroke(dynamicSecondaryTextColor.opacity(0.2), lineWidth: 10)
             Circle()
-                .trim(from: 0.0, to: progress)
+                .trim(from: 0.0, to: max(0.0, min(1.0, progress)))
                 .stroke(dynamicPrimaryColor, style: StrokeStyle(lineWidth: 10, lineCap: .round))
                 .rotationEffect(.degrees(-90))
                 .animation(.interpolatingSpring(stiffness: 100, damping: 10), value: progress)

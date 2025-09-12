@@ -12,9 +12,13 @@ struct NewItemview: View {
     @State private var showingAIGenerationSheet = false
     @State private var aiPromptText: String = ""
 
-    init(newItemPresented: Binding<Bool>, editingItem: TodoItem? = nil, selectedOrigin: TaskOrigin = .today) {
+    // Optional override to handle save externally (e.g., share-only mode)
+    var onSaveOverride: ((String, String, Date, [Subtask], TaskOrigin) -> Void)? = nil
+
+    init(newItemPresented: Binding<Bool>, editingItem: TodoItem? = nil, selectedOrigin: TaskOrigin = .today, onSaveOverride: ((String, String, Date, [Subtask], TaskOrigin) -> Void)? = nil) {
         self._viewModel = StateObject(wrappedValue: NewItemModel(item: editingItem, selectedOrigin: selectedOrigin))
         self._newItemPresented = newItemPresented
+        self.onSaveOverride = onSaveOverride
     }
 
     var body: some View {
@@ -249,6 +253,12 @@ struct NewItemview: View {
             return
         }
 
+        if let override = onSaveOverride {
+            override(viewModel.title, viewModel.description, viewModel.donebye, viewModel.subtasks, viewModel.origin)
+            dismiss()
+            return
+        }
+
         if let existing = viewModel.originalItem {
             existing.title = viewModel.title
             existing.detail = viewModel.description
@@ -266,6 +276,7 @@ struct NewItemview: View {
             )
             context.insert(newItem)
             print("Created new task '\(newItem.title)'")
+            NotificationCenter.default.post(name: Notification.Name("NewItemSavedNotification"), object: nil, userInfo: ["item": newItem])
         }
 
         dismiss()

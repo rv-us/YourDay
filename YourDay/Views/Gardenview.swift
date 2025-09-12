@@ -863,7 +863,8 @@ struct GeneralNotificationView: View {
         .background(dynamicSecondaryBackgroundColor.opacity(0.9))
         .cornerRadius(10)
         .shadow(radius: 5)
-        .opacity(opacity).scaleEffect(scale)
+        .opacity(opacity.isFinite ? max(0, min(1, opacity)) : 1.0)
+        .scaleEffect(scale.isFinite ? scale : 1.0)
         .onAppear { withAnimation(.interpolatingSpring(stiffness: 170, damping: 15).delay(0.1)) { opacity = 1.0; scale = 1.0 } }
     }
 }
@@ -962,7 +963,8 @@ struct PlantPlotView: View {
         .onChange(of: feedbackItem?.id) {
             if let newFeedback = feedbackItem {
                 localFeedbackText = newFeedback.text; localFeedbackColor = newFeedback.color
-                localFeedbackYOffset = newFeedback.yOffset; localFeedbackOpacity = newFeedback.opacity
+                localFeedbackYOffset = newFeedback.yOffset.isFinite ? newFeedback.yOffset : 0
+                localFeedbackOpacity = newFeedback.opacity.isFinite ? max(0, min(1, newFeedback.opacity)) : 1.0
                 withAnimation(.easeOut(duration: 0.3)) { localFeedbackYOffset = -30 }
                 withAnimation(.easeOut(duration: 1.0).delay(0.2)) { localFeedbackOpacity = 0.0 }
             }

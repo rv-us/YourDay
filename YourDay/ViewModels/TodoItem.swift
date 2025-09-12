@@ -23,8 +23,10 @@ class TodoItem {
     var completedAt: Date? = nil
     var origin: TaskOrigin = TaskOrigin.today
     var position: Int = 0
+    var sharedTaskId: String? = nil
+    var isSharedPending: Bool = false
 
-    init(title: String, detail: String, dueDate: Date, isDone: Bool = false, subtasks: [Subtask] = [], position: Int = 0, origin: TaskOrigin = TaskOrigin.today) {
+    init(title: String, detail: String, dueDate: Date, isDone: Bool = false, subtasks: [Subtask] = [], position: Int = 0, origin: TaskOrigin = TaskOrigin.today, sharedTaskId: String? = nil, isSharedPending: Bool = false) {
         self.title = title
         self.detail = detail
         self.dueDate = dueDate
@@ -32,6 +34,8 @@ class TodoItem {
         self.subtasks = subtasks
         self.position = position
         self.origin = origin
+        self.sharedTaskId = sharedTaskId
+        self.isSharedPending = isSharedPending
     }
 }
 

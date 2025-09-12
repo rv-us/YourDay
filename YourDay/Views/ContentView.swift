@@ -38,10 +38,11 @@ struct ContentView: View {
         Group {
             if loginViewModel.isAuthenticated || loginViewModel.isGuest {
                 TabView {
-                    Todoview()
+                                        Todoview()
                         .tabItem { Label("Tasks", systemImage: "checkmark.circle") }
                         .environmentObject(loginViewModel)
-                    
+                        .environmentObject(firebaseManager)
+                        
                     GardenView()
                         .tabItem { Label("Garden", systemImage: "leaf.fill") }
                         .environmentObject(loginViewModel)

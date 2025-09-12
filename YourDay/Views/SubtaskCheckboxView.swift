@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SubtaskCheckboxView: View {
     @Binding var subtask: Subtask
+    var onToggle: ((Bool) -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 10) {
@@ -9,13 +10,13 @@ struct SubtaskCheckboxView: View {
                 subtask.isDone.toggle()
                 subtask.completedAt = subtask.isDone ? Date() : nil
                 print("Subtask '\(subtask.title)' toggled to \(subtask.isDone), completedAt: \(String(describing: subtask.completedAt))")
+                onToggle?(subtask.isDone)
                 
                 // Reschedule notifications to reflect current task state
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                     // Get the TodoViewModel from the environment or create a new one
-                    let todoViewModel = TodoViewModel()
-                    // We need to get the ModelContext from the parent view
-                    // For now, we'll rely on the main task completion to trigger rescheduling
+                    let _ = TodoViewModel()
+                    // Parent handles rescheduling on main item toggle
                 }
             }) {
                 Image(systemName: subtask.isDone ? "checkmark.circle.fill" : "circle")

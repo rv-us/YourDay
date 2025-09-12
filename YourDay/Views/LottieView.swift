@@ -22,7 +22,7 @@ struct LottieView: UIViewRepresentable {
         animationView.animation = LottieAnimation.named(name)
         animationView.contentMode = .scaleAspectFill
         animationView.loopMode = loopMode
-        animationView.animationSpeed = animationSpeed
+        animationView.animationSpeed = animationSpeed.isFinite ? max(0.1, min(3.0, animationSpeed)) : 1.0
         animationView.backgroundBehavior = .pauseAndRestore
         animationView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(animationView)

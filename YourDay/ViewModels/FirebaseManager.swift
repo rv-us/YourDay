@@ -629,10 +629,133 @@ class FirebaseManager: ObservableObject {
           }
     }
 
+    // MARK: - Shared Tasks
 
+    func sendSharedTask(to receiverId: String, title: String, detail: String, dueDate: Date, subtasks: [SharedSubtask] = [], completion: @escaping (Error?, String?) -> Void) {
+        guard let currentUserId = Auth.auth().currentUser?.uid else {
+            completion(NSError(domain: "", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]), nil)
+            return
+        }
+        let docRef = db.collection("shared_tasks").document()
+        let payload: [String: Any] = [
+            "senderId": currentUserId,
+            "receiverId": receiverId,
+            "title": title,
+            "detail": detail,
+            "dueDate": Timestamp(date: dueDate),
+            "isAccepted": false,
+            "isCompleted": false,
+            "createdAt": FieldValue.serverTimestamp(),
+            "completedAt": NSNull(),
+            "subtasks": subtasks.map { [
+                "id": $0.id,
+                "title": $0.title,
+                "isDone": $0.isDone
+            ] }
+        ]
+        docRef.setData(payload) { error in
+            if error == nil {
+                // Placeholder push code
+                print("[PlaceholderPush] Sent shared task notification to userId=\(receiverId) title=\(title)")
+            }
+            completion(error, docRef.documentID)
+        }
+    }
 
+    func updateSharedSubtasks(sharedTaskId: String, subtasks: [SharedSubtask], completion: @escaping (Error?) -> Void) {
+        let serializable = subtasks.map { [
+            "id": $0.id,
+            "title": $0.title,
+            "isDone": $0.isDone
+        ] }
+        db.collection("shared_tasks").document(sharedTaskId).updateData([
+            "subtasks": serializable
+        ], completion: completion)
+    }
 
+    func listenToSharedTasks(with friendId: String, onUpdate: @escaping ([SharedTask]) -> Void) -> ListenerRegistration? {
+        guard let currentUserId = Auth.auth().currentUser?.uid else { return nil }
+        return db.collection("shared_tasks")
+            .whereFilter(Filter.orFilter([
+                Filter.andFilter([
+                    Filter.whereField("senderId", isEqualTo: currentUserId),
+                    Filter.whereField("receiverId", isEqualTo: friendId)
+                ]),
+                Filter.andFilter([
+                    Filter.whereField("senderId", isEqualTo: friendId),
+                    Filter.whereField("receiverId", isEqualTo: currentUserId)
+                ])
+            ]))
+            .addSnapshotListener { snapshot, error in
+                guard let documents = snapshot?.documents else {
+                    if let error = error { print("listenToSharedTasks error: \(error.localizedDescription)") }
+                    onUpdate([])
+                    return
+                }
+                var tasks = documents.compactMap { try? $0.data(as: SharedTask.self) }
+                tasks.sort { $0.createdAt < $1.createdAt }
+                onUpdate(tasks)
+            }
+    }
 
+    func listenToSharedTask(taskId: String, onUpdate: @escaping (SharedTask?) -> Void) -> ListenerRegistration {
+        return db.collection("shared_tasks").document(taskId)
+            .addSnapshotListener { snapshot, error in
+                guard let doc = snapshot, doc.exists else {
+                    onUpdate(nil)
+                    return
+                }
+                let task = try? doc.data(as: SharedTask.self)
+                onUpdate(task)
+            }
+    }
+
+    func acceptSharedTask(_ task: SharedTask, completion: @escaping (Error?) -> Void) {
+        guard let taskId = task.id else {
+            completion(NSError(domain: "", code: 400, userInfo: [NSLocalizedDescriptionKey: "Missing shared task id"]))
+            return
+        }
+        db.collection("shared_tasks").document(taskId).updateData([
+            "isAccepted": true
+        ]) { error in
+            completion(error)
+        }
+    }
+
+    func updateSharedTaskProgress(sharedTaskId: String, isCompleted: Bool, completion: @escaping (Error?) -> Void) {
+        var data: [String: Any] = [
+            "isCompleted": isCompleted
+        ]
+        if isCompleted {
+            data["completedAt"] = FieldValue.serverTimestamp()
+        } else {
+            data["completedAt"] = NSNull()
+        }
+        db.collection("shared_tasks").document(sharedTaskId).updateData(data) { error in
+            completion(error)
+        }
+    }
+
+    func nudgeSharedTask(sharedTaskId: String, to receiverId: String, message: String? = nil, completion: @escaping (Error?) -> Void) {
+        // Placeholder push notification: In production, trigger FCM push to receiverId about this sharedTaskId
+        // This might call a HTTPS endpoint or rely on a Cloud Function.
+        print("[PlaceholderPush] Nudge sent for sharedTaskId=\(sharedTaskId) to userId=\(receiverId) message=\(message ?? "")")
+        completion(nil)
+    }
+
+    func rejectSharedTask(sharedTaskId: String, completion: @escaping (Error?) -> Void) {
+        db.collection("shared_tasks").document(sharedTaskId).updateData([
+            "isAccepted": false,
+            "isCompleted": false,
+            "completedAt": NSNull()
+        ]) { error in
+            completion(error)
+        }
+    }
+
+    func deleteSharedTask(sharedTaskId: String, completion: @escaping (Error?) -> Void) {
+        db.collection("shared_tasks").document(sharedTaskId).delete(completion: completion)
+    }
 
     func removeAllListeners() {
         listenerRegistrations.forEach { $0.remove() }

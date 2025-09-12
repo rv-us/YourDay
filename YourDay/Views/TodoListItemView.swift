@@ -6,6 +6,7 @@ struct TodoListItemView: View {
     @State private var showingEditView = false
     @Environment(\.modelContext) private var _modelContext
     @ObservedObject var todoViewModel: TodoViewModel
+    @EnvironmentObject var firebaseManager: FirebaseManager
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -16,6 +17,15 @@ struct TodoListItemView: View {
                         item.completedAt = item.isDone ? Date() : nil
                     }
                     print("Main item '\(item.title)' toggled to \(item.isDone), completedAt: \(String(describing: item.completedAt))")
+                    
+                    // Sync shared task progress if linked
+                    if let sharedId = item.sharedTaskId {
+                        firebaseManager.updateSharedTaskProgress(sharedTaskId: sharedId, isCompleted: item.isDone) { error in
+                            if let error = error {
+                                print("Failed to sync shared task progress: \(error.localizedDescription)")
+                            }
+                        }
+                    }
                     
                     // Reschedule notifications to reflect current task state
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
@@ -37,11 +47,22 @@ struct TodoListItemView: View {
                 .contentShape(Rectangle())
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(item.title)
-                        .font(.body)
-                        .lineLimit(1)
-                        .strikethrough(item.isDone, color: dynamicSecondaryTextColor)
-                        .foregroundColor(item.isDone ? dynamicSecondaryTextColor : dynamicTextColor)
+                    HStack(spacing: 6) {
+                        Text(item.title)
+                            .font(.body)
+                            .lineLimit(1)
+                            .strikethrough(item.isDone, color: dynamicSecondaryTextColor)
+                            .foregroundColor(item.isDone ? dynamicSecondaryTextColor : dynamicTextColor)
+                        if item.isSharedPending {
+                            Text("Pending")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundColor(dynamicSecondaryTextColor)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(dynamicSecondaryBackgroundColor)
+                                .cornerRadius(6)
+                        }
+                    }
 
                     if !item.detail.isEmpty {
                         Text(item.detail)
@@ -62,7 +83,16 @@ struct TodoListItemView: View {
             if !$item.subtasks.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     ForEach($item.subtasks) { $subtask in
-                        SubtaskCheckboxView(subtask: $subtask)
+                        SubtaskCheckboxView(subtask: $subtask, onToggle: { _ in
+                            if let sharedId = item.sharedTaskId {
+                                let sharedSubtasks = item.subtasks.enumerated().map { idx, st in
+                                    SharedSubtask(id: "sub_\(idx)", title: st.title, isDone: st.isDone)
+                                }
+                                firebaseManager.updateSharedSubtasks(sharedTaskId: sharedId, subtasks: sharedSubtasks) { error in
+                                    if let error = error { print("Failed to sync shared subtasks: \(error.localizedDescription)") }
+                                }
+                            }
+                        })
                             .strikethrough(subtask.isDone, color: dynamicSecondaryTextColor.opacity(0.7))
                             .foregroundColor(subtask.isDone ? dynamicSecondaryTextColor.opacity(0.7) : dynamicTextColor)
                     }
