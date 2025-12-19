@@ -673,37 +673,6 @@ class FirebaseManager: ObservableObject {
         ], completion: completion)
     }
 
-    // Share progress of a local task with a friend (friend appears as sender; current user as receiver)
-    func shareProgress(to friendId: String, title: String, detail: String, dueDate: Date, subtasks: [SharedSubtask], isCompleted: Bool, completion: @escaping (Error?, String?) -> Void) {
-        guard let currentUserId = Auth.auth().currentUser?.uid else {
-            completion(NSError(domain: "", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]), nil)
-            return
-        }
-        let docRef = db.collection("shared_tasks").document()
-        let payload: [String: Any] = [
-            "senderId": friendId,                          // friend is treated as sender
-            "receiverId": currentUserId,                   // current user is receiver (the one doing the task)
-            "title": title,
-            "detail": detail,
-            "dueDate": Timestamp(date: dueDate),
-            "isAccepted": true,                            // auto-accepted since it's progress sharing
-            "isCompleted": isCompleted,
-            "createdAt": Timestamp(date: Date()),
-            "completedAt": isCompleted ? Timestamp(date: Date()) : NSNull(),
-            "subtasks": subtasks.map { [
-                "id": $0.id,
-                "title": $0.title,
-                "isDone": $0.isDone
-            ] }
-        ]
-        docRef.setData(payload) { error in
-            if error == nil {
-                print("[PlaceholderPush] Progress shared to userId=\(friendId) for task=\(title)")
-            }
-            completion(error, docRef.documentID)
-        }
-    }
-
     func listenToSharedTasks(with friendId: String, onUpdate: @escaping ([SharedTask]) -> Void) -> ListenerRegistration? {
         guard let currentUserId = Auth.auth().currentUser?.uid else { return nil }
         return db.collection("shared_tasks")
@@ -786,6 +755,37 @@ class FirebaseManager: ObservableObject {
 
     func deleteSharedTask(sharedTaskId: String, completion: @escaping (Error?) -> Void) {
         db.collection("shared_tasks").document(sharedTaskId).delete(completion: completion)
+    }
+    
+    // Share progress of an already completed/in-progress task
+    func shareProgress(to receiverId: String, title: String, detail: String, dueDate: Date, subtasks: [SharedSubtask] = [], isCompleted: Bool, completion: @escaping (Error?, String?) -> Void) {
+        guard let currentUserId = Auth.auth().currentUser?.uid else {
+            completion(NSError(domain: "", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]), nil)
+            return
+        }
+        let docRef = db.collection("shared_tasks").document()
+        let payload: [String: Any] = [
+            "senderId": currentUserId,
+            "receiverId": receiverId,
+            "title": title,
+            "detail": detail,
+            "dueDate": Timestamp(date: dueDate),
+            "isAccepted": true, // Progress shares are automatically accepted
+            "isCompleted": isCompleted,
+            "createdAt": FieldValue.serverTimestamp(),
+            "completedAt": isCompleted ? FieldValue.serverTimestamp() : NSNull(),
+            "subtasks": subtasks.map { [
+                "id": $0.id,
+                "title": $0.title,
+                "isDone": $0.isDone
+            ] }
+        ]
+        docRef.setData(payload) { error in
+            if error == nil {
+                print("[Progress] Shared progress to userId=\(receiverId) title=\(title) completed=\(isCompleted)")
+            }
+            completion(error, docRef.documentID)
+        }
     }
 
     func removeAllListeners() {

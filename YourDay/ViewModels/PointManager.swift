@@ -16,6 +16,7 @@ struct TaskPointResult: Identifiable {
     let subtaskPoints: [(title: String, earned: Double)]
     let totalPoints: Double
     let mainTaskCompletedOnTargetDay: Bool
+    let origin: TaskOrigin
 }
 
 class PointManager {
@@ -78,6 +79,7 @@ class PointManager {
                 subtaskPoints: subtaskPointsValues,
                 mainTaskCompleted: result.mainTaskCompletedOnTargetDay,
                 taskMaxPossiblePoints: result.basePoints,
+                origin: result.origin,
                 dayCompletionSnapshot_CompletedCount: completedMainTasksForYesterday,
                 dayCompletionSnapshot_TotalTasksCount: totalTasksWhenEvaluated,
                 // Add new XP and level info
@@ -143,7 +145,8 @@ class PointManager {
                     basePoints: maxPointsPerSingleTask,
                     subtaskPoints: subtaskBreakdown,
                     totalPoints: earnedForTask,
-                    mainTaskCompletedOnTargetDay: isMainTaskCompletedOnTargetDay
+                    mainTaskCompletedOnTargetDay: isMainTaskCompletedOnTargetDay,
+                    origin: task.origin
                 ))
             }
         }

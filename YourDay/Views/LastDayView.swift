@@ -97,7 +97,8 @@ struct LastDayView: View {
             return TaskPointResult(
                 title: summary.taskTitle, date: summary.date,
                 basePoints: summary.taskMaxPossiblePoints, subtaskPoints: subtasks,
-                totalPoints: summary.totalPoints, mainTaskCompletedOnTargetDay: summary.mainTaskCompleted
+                totalPoints: summary.totalPoints, mainTaskCompletedOnTargetDay: summary.mainTaskCompleted,
+                origin: summary.origin
             )
         }
     }
@@ -267,10 +268,24 @@ struct TaskSummaryRow: View {
             HStack {
                 Image(systemName: taskResult.mainTaskCompletedOnTargetDay ? "checkmark.circle.fill" : "circle.dashed")
                     .foregroundColor(taskResult.mainTaskCompletedOnTargetDay ? dynamicSecondaryColor : dynamicAccentColor)
-                Text(taskResult.title)
-                    .font(.headline)
-                    .fontWeight(.medium)
-                    .foregroundColor(dynamicTextColor)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(taskResult.title)
+                        .font(.headline)
+                        .fontWeight(.medium)
+                        .foregroundColor(dynamicTextColor)
+                    Text(taskResult.origin == .today ? "Today" : "Master List")
+                        .font(.caption2)
+                        .fontWeight(.medium)
+                        .foregroundColor(taskResult.origin == .today ? dynamicPrimaryColor : dynamicAccentColor)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(
+                            taskResult.origin == .today ? 
+                                dynamicPrimaryColor.opacity(0.15) : 
+                                dynamicAccentColor.opacity(0.15)
+                        )
+                        .cornerRadius(4)
+                }
                 Spacer()
                 Text("+\(Int(taskResult.totalPoints)) / \(Int(taskResult.basePoints))")
                     .font(.caption)

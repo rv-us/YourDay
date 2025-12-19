@@ -15,6 +15,7 @@ struct AddNotesView: View {
     @State private var isSelecting = false
     @State private var generatedTasks: [TodoItem] = []
     @State private var showingConfirmGeneratedTasks = false
+    @State private var isGenerating = false
 
     @AppStorage("hasCompletedNotesTutorial") private var hasCompletedNotesTutorial = false
     @State private var showNotesTutorial = false
@@ -75,15 +76,24 @@ struct AddNotesView: View {
                     .padding(.bottom, 8)
 
                     Button(action: generateTasksFromSelectedNotes) {
-                        Text("Generate Tasks")
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(selectedNotes.isEmpty ? dynamicSecondaryTextColor.opacity(0.5) : dynamicPrimaryColor)
-                            .foregroundColor(.white)
-                            .cornerRadius(10)
-                            .padding(.horizontal)
+                        HStack {
+                            if isGenerating {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                    .scaleEffect(0.8)
+                                Text("Generating...")
+                            } else {
+                                Text("Generate Tasks")
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background((selectedNotes.isEmpty || isGenerating) ? dynamicSecondaryTextColor.opacity(0.5) : dynamicPrimaryColor)
+                        .foregroundColor(.white)
+                        .cornerRadius(10)
+                        .padding(.horizontal)
                     }
-                    .disabled(selectedNotes.isEmpty)
+                    .disabled(selectedNotes.isEmpty || isGenerating)
                 }
             }
             .padding(.top, 20)
@@ -167,6 +177,8 @@ struct AddNotesView: View {
 
     func generateTasksFromSelectedNotes() {
         let combinedText = selectedNotes.map { $0.content }.joined(separator: "\n\n")
+        isGenerating = true
+        
         Task {
             do {
                 let prompt = """
@@ -193,11 +205,15 @@ struct AddNotesView: View {
                 """
 
                 let vertex = VertexAI.vertexAI()
-                let model = vertex.generativeModel(modelName: "gemini-1.5-flash")
+                // Use latest Gemini 2.5 Flash model
+                let model = vertex.generativeModel(modelName: "gemini-2.5-flash")
 
                 let userMessage = try ModelContent(role: "user", parts: [TextPart(prompt)])
                 let response = try await model.generateContent([userMessage])
                 print(response)
+                
+                isGenerating = false
+                
                 if let text = response.text {
                     let tasks = parseGeminiResponse(text, origin: generatedTaskOrigin) // ✅ updated call
                     generatedTasks = tasks
@@ -213,6 +229,7 @@ struct AddNotesView: View {
                 }
             } catch {
                 print("❌ Failed to generate tasks: \(error.localizedDescription)")
+                isGenerating = false
             }
         }
     }

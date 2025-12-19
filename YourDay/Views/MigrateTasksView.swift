@@ -36,7 +36,7 @@ struct MigrateTasksView: View {
                 List {
                     ForEach(tasksToReview) { task in
                         HStack {
-                            VStack(alignment: .leading) {
+                            VStack(alignment: .leading, spacing: 6) {
                                 Text(task.title)
                                     .font(.headline)
                                     .strikethrough(task.isDone && !task.subtasks.contains(where: {!$0.isDone}), color: dynamicSecondaryTextColor)
@@ -48,9 +48,25 @@ struct MigrateTasksView: View {
                                         .foregroundColor(dynamicSecondaryTextColor)
                                         .lineLimit(1)
                                 }
-                                Text("Original due: \(task.dueDate, style: .date)")
-                                    .font(.caption2)
-                                    .foregroundColor(dynamicAccentColor)
+                                
+                                HStack(spacing: 8) {
+                                    Text("Original due: \(task.dueDate, style: .date)")
+                                        .font(.caption2)
+                                        .foregroundColor(dynamicAccentColor)
+                                    
+                                    Text(task.origin == .today ? "Today" : "Master List")
+                                        .font(.caption2)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(task.origin == .today ? dynamicPrimaryColor : dynamicAccentColor)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(
+                                            task.origin == .today ? 
+                                                dynamicPrimaryColor.opacity(0.15) : 
+                                                dynamicAccentColor.opacity(0.15)
+                                        )
+                                        .cornerRadius(4)
+                                }
                                 
                                 let pendingSubtasks = task.subtasks.filter { !$0.isDone }.count
                                 if pendingSubtasks > 0 {

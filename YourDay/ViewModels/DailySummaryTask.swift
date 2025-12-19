@@ -17,6 +17,7 @@ class DailySummaryTask {
     var subtaskPoints: [Double]
     var mainTaskCompleted: Bool
     var taskMaxPossiblePoints: Double
+    var origin: TaskOrigin
 
     // Daily completion snapshot
     var dayCompletionSnapshot_CompletedCount: Int
@@ -38,6 +39,7 @@ class DailySummaryTask {
         subtaskPoints: [Double],
         mainTaskCompleted: Bool,
         taskMaxPossiblePoints: Double,
+        origin: TaskOrigin,
         dayCompletionSnapshot_CompletedCount: Int,
         dayCompletionSnapshot_TotalTasksCount: Int,
         // New parameters for XP/Level
@@ -56,6 +58,7 @@ class DailySummaryTask {
         self.subtaskPoints = subtaskPoints
         self.mainTaskCompleted = mainTaskCompleted
         self.taskMaxPossiblePoints = taskMaxPossiblePoints
+        self.origin = origin
         self.dayCompletionSnapshot_CompletedCount = dayCompletionSnapshot_CompletedCount
         self.dayCompletionSnapshot_TotalTasksCount = dayCompletionSnapshot_TotalTasksCount
         self.levelBeforeXP = levelBeforeXP
