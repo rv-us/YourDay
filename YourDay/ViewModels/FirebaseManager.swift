@@ -840,4 +840,165 @@ class FirebaseManager: ObservableObject {
         listenerRegistrations.removeAll()
         print("All Firestore listeners removed.")
     }
+    
+    // MARK: - Backlog Items
+    
+    func saveBacklogItem(_ item: BacklogItem, completion: @escaping (Error?) -> Void) {
+        guard let userId = userId else {
+            completion(NSError(domain: "FirebaseManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+        
+        let docRef = db.collection("users").document(userId).collection("backlog").document()
+        do {
+            var itemToSave = item
+            if item.id == nil {
+                // Create a new item
+                try docRef.setData(from: itemToSave) { error in
+                    completion(error)
+                }
+            } else {
+                // Update existing item
+                try db.collection("users").document(userId).collection("backlog").document(item.id!).setData(from: itemToSave) { error in
+                    completion(error)
+                }
+            }
+        } catch {
+            completion(error)
+        }
+    }
+    
+    func fetchBacklogItems(completion: @escaping ([BacklogItem]?, Error?) -> Void) {
+        guard let userId = userId else {
+            completion(nil, NSError(domain: "FirebaseManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+        
+        db.collection("users").document(userId).collection("backlog")
+            .order(by: "createdAt", descending: true)
+            .getDocuments { snapshot, error in
+                if let error = error {
+                    completion(nil, error)
+                    return
+                }
+                
+                let items = snapshot?.documents.compactMap { doc -> BacklogItem? in
+                    try? doc.data(as: BacklogItem.self)
+                } ?? []
+                
+                completion(items, nil)
+            }
+    }
+    
+    func deleteBacklogItem(_ itemId: String, completion: @escaping (Error?) -> Void) {
+        guard let userId = userId else {
+            completion(NSError(domain: "FirebaseManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+        
+        db.collection("users").document(userId).collection("backlog").document(itemId).delete(completion: completion)
+    }
+    
+    // MARK: - Schedule Preferences
+    
+    func saveSchedulePreference(_ preference: UserSchedulePreference, completion: @escaping (Error?) -> Void) {
+        guard let userId = userId else {
+            completion(NSError(domain: "FirebaseManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+        
+        let docRef = db.collection("users").document(userId).collection("schedulePreferences").document("preferences")
+        do {
+            try docRef.setData(from: preference) { error in
+                completion(error)
+            }
+        } catch {
+            completion(error)
+        }
+    }
+    
+    func fetchSchedulePreference(completion: @escaping (UserSchedulePreference?, Error?) -> Void) {
+        guard let userId = userId else {
+            completion(nil, NSError(domain: "FirebaseManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+        
+        db.collection("users").document(userId).collection("schedulePreferences").document("preferences")
+            .getDocument { document, error in
+                if let error = error {
+                    completion(nil, error)
+                    return
+                }
+                
+                if let document = document, document.exists {
+                    do {
+                        let preference = try document.data(as: UserSchedulePreference.self)
+                        completion(preference, nil)
+                    } catch {
+                        // Create default preference if decoding fails
+                        let defaultPreference = UserSchedulePreference(userId: userId)
+                        completion(defaultPreference, nil)
+                    }
+                } else {
+                    // Create default preference if doesn't exist
+                    let defaultPreference = UserSchedulePreference(userId: userId)
+                    completion(defaultPreference, nil)
+                }
+            }
+    }
+    
+    func updateSchedulePreference(_ updates: [String: Any], completion: @escaping (Error?) -> Void) {
+        guard let userId = userId else {
+            completion(NSError(domain: "FirebaseManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+        
+        let docRef = db.collection("users").document(userId).collection("schedulePreferences").document("preferences")
+        
+        // Use setData with merge: true to create document if it doesn't exist, or update if it does
+        docRef.setData(updates, merge: true) { error in
+            completion(error)
+        }
+    }
+    
+    // MARK: - Scheduling Messages
+    
+    func saveSchedulingMessage(_ message: SchedulingMessage, completion: @escaping (Error?) -> Void) {
+        guard let userId = userId else {
+            completion(NSError(domain: "FirebaseManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+        
+        let docRef = db.collection("users").document(userId).collection("schedulingMessages").document()
+        do {
+            try docRef.setData(from: message) { error in
+                completion(error)
+            }
+        } catch {
+            completion(error)
+        }
+    }
+    
+    func fetchSchedulingHistory(limit: Int = 50, completion: @escaping ([SchedulingMessage]?, Error?) -> Void) {
+        guard let userId = userId else {
+            completion(nil, NSError(domain: "FirebaseManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+        
+        db.collection("users").document(userId).collection("schedulingMessages")
+            .order(by: "timestamp", descending: false)
+            .limit(to: limit)
+            .getDocuments { snapshot, error in
+                if let error = error {
+                    completion(nil, error)
+                    return
+                }
+                
+                let messages = snapshot?.documents.compactMap { doc -> SchedulingMessage? in
+                    try? doc.data(as: SchedulingMessage.self)
+                } ?? []
+                
+                completion(messages, nil)
+            }
+    }
 }
