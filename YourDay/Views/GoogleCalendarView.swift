@@ -345,7 +345,7 @@ struct GoogleCalendarView: View {
             return
         }
         
-        let calendarScope = "https://www.googleapis.com/auth/calendar.readonly"
+        let calendarScope = "https://www.googleapis.com/auth/calendar"
         GIDSignIn.sharedInstance.signIn(withPresenting: presentingViewController, hint: nil, additionalScopes: [calendarScope]) { [self] signInResult, error in
             if signInResult != nil {
                 isAuthenticated = true
