@@ -24,6 +24,7 @@ struct Todoview: View {
 
     @State private var showSignOutAlertInTodoView = false
     @State private var signOutAlertMessageInTodoView = ""
+    @State private var showGoogleCalendarView = false
 
     enum TaskListFilter {
         case today
@@ -201,6 +202,18 @@ struct Todoview: View {
                                     .contentShape(Rectangle())
                             }
                         }
+                        
+                        Button(action: {
+                            showGoogleCalendarView = true
+                        }) {
+                            Image(systemName: "calendar")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 22, height: 22)
+                                .foregroundColor(dynamicPrimaryColor)
+                                .frame(width: 44, height: 44)
+                                .contentShape(Rectangle())
+                        }
                     }
                 }
             }
@@ -228,6 +241,10 @@ struct Todoview: View {
             }
             .sheet(isPresented: $viewModel.showingNewItemView) {
                 NewItemview(newItemPresented: $viewModel.showingNewItemView, selectedOrigin: selectedFilter == .today ? .today : .master)
+            }
+            .sheet(isPresented: $showGoogleCalendarView) {
+                GoogleCalendarView()
+                    .environment(\.modelContext, context)
             }
             .alert("Sign Out", isPresented: $showSignOutAlertInTodoView) {
                 Button("OK", role: .cancel) {}
