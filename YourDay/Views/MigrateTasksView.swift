@@ -4,6 +4,7 @@ import SwiftData
 struct MigrateTasksView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var firebaseManager: FirebaseManager
 
     @Query private var allTodoItems: [TodoItem]
     @State private var selectedTasksToMigrate: Set<PersistentIdentifier> = []
@@ -162,8 +163,29 @@ struct MigrateTasksView: View {
                 taskInReview.isDone = false
                 taskInReview.completedAt = nil
                 print("Migrating task: \(taskInReview.title) to today. Subtask statuses preserved.")
+                
+                // Sync migration to Firebase if shared
+                if let sharedId = taskInReview.sharedTaskId {
+                    firebaseManager.syncLocalTaskToSharedTask(localTask: taskInReview) { error in
+                        if let error = error {
+                            print("Failed to sync migrated task: \(error)")
+                        }
+                    }
+                }
             } else if taskInReview.origin == .today {
                     print("Deleting unselected TODAY task: \(taskInReview.title)")
+                    
+                    // Mark as discarded in Firebase if shared
+                    if let sharedId = taskInReview.sharedTaskId {
+                        firebaseManager.markSharedTaskDiscarded(sharedTaskId: sharedId) { error in
+                            if let error = error {
+                                print("Failed to mark shared task as discarded: \(error.localizedDescription)")
+                            } else {
+                                print("✅ Marked shared task as discarded in Firebase")
+                            }
+                        }
+                    }
+                    
                     modelContext.delete(taskInReview)
                 } else {
                     print("Keeping unselected MASTER task: \(taskInReview.title)")
@@ -180,6 +202,18 @@ struct MigrateTasksView: View {
     private func deleteAllReviewedTasks() {
         for task in tasksToReview {
             print("Deleting task via 'Discard All': \(task.title)")
+            
+            // Mark as discarded in Firebase if shared
+            if let sharedId = task.sharedTaskId {
+                firebaseManager.markSharedTaskDiscarded(sharedTaskId: sharedId) { error in
+                    if let error = error {
+                        print("Failed to mark shared task '\(task.title)' as discarded: \(error.localizedDescription)")
+                    } else {
+                        print("✅ Marked shared task '\(task.title)' as discarded in Firebase")
+                    }
+                }
+            }
+            
             modelContext.delete(task)
         }
         do {

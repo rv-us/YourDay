@@ -89,7 +89,12 @@ struct Todoview: View {
                                 if index < activeItems.count {
                                     let item = activeItems[index]
                                     if let sharedId = item.sharedTaskId {
-                                        FirebaseManager.shared.deleteSharedTask(sharedTaskId: sharedId) { _ in }
+                                        // Mark as discarded instead of deleting, so other person sees it was cancelled
+                                        FirebaseManager.shared.markSharedTaskDiscarded(sharedTaskId: sharedId) { error in
+                                            if let error = error {
+                                                print("Failed to mark shared task as discarded: \(error)")
+                                            }
+                                        }
                                     }
                                     context.delete(item)
                                 }
@@ -121,7 +126,12 @@ struct Todoview: View {
                                 if index < doneItems.count {
                                     let item = doneItems[index]
                                     if let sharedId = item.sharedTaskId {
-                                        FirebaseManager.shared.deleteSharedTask(sharedTaskId: sharedId) { _ in }
+                                        // Keep completed status synced before deletion
+                                        FirebaseManager.shared.deleteSharedTask(sharedTaskId: sharedId) { error in
+                                            if let error = error {
+                                                print("Failed to delete shared task: \(error)")
+                                            }
+                                        }
                                     }
                                     context.delete(item)
                                 }

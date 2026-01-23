@@ -757,6 +757,53 @@ class FirebaseManager: ObservableObject {
         db.collection("shared_tasks").document(sharedTaskId).delete(completion: completion)
     }
     
+    // Mark shared task as rejected/discarded (softer than delete, preserves history)
+    func markSharedTaskDiscarded(sharedTaskId: String, completion: @escaping (Error?) -> Void) {
+        db.collection("shared_tasks").document(sharedTaskId).updateData([
+            "isAccepted": false,
+            "isCompleted": false
+        ]) { error in
+            completion(error)
+        }
+    }
+    
+    // Sync local task changes to Firebase SharedTask
+    func syncLocalTaskToSharedTask(localTask: TodoItem, completion: @escaping (Error?) -> Void) {
+        guard let sharedId = localTask.sharedTaskId else {
+            completion(nil) // Not a shared task, nothing to sync
+            return
+        }
+        
+        let sharedSubtasks = localTask.subtasks.map { SharedSubtask(id: UUID().uuidString, title: $0.title, isDone: $0.isDone) }
+        
+        var data: [String: Any] = [
+            "title": localTask.title,
+            "detail": localTask.detail,
+            "dueDate": Timestamp(date: localTask.dueDate),
+            "isCompleted": localTask.isDone,
+            "subtasks": sharedSubtasks.map { [
+                "id": $0.id,
+                "title": $0.title,
+                "isDone": $0.isDone
+            ] }
+        ]
+        
+        if localTask.isDone {
+            data["completedAt"] = Timestamp(date: localTask.completedAt ?? Date())
+        } else {
+            data["completedAt"] = NSNull()
+        }
+        
+        db.collection("shared_tasks").document(sharedId).updateData(data) { error in
+            if let error = error {
+                print("Failed to sync local task '\(localTask.title)' to Firebase: \(error.localizedDescription)")
+            } else {
+                print("✅ Synced local task '\(localTask.title)' to Firebase SharedTask")
+            }
+            completion(error)
+        }
+    }
+    
     // Share progress of an already completed/in-progress task
     func shareProgress(to receiverId: String, title: String, detail: String, dueDate: Date, subtasks: [SharedSubtask] = [], isCompleted: Bool, completion: @escaping (Error?, String?) -> Void) {
         guard let currentUserId = Auth.auth().currentUser?.uid else {
