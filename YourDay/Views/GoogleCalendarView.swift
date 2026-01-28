@@ -597,7 +597,9 @@ struct CurrentTimeIndicator: View {
         let timeInterval = now.timeIntervalSince(startOfDay)
         let hoursFromStart = timeInterval / 3600.0
         
-        return CGFloat(hoursFromStart) * hourHeight
+        // Keep the current-time indicator aligned with the event blocks' vertical offset,
+        // but shift it slightly upward for visual alignment.
+        return CGFloat(hoursFromStart) * hourHeight + 15
     }
     
     var body: some View {
@@ -637,16 +639,14 @@ struct EventBlockView: View {
         // Calculate exact position: each hour = hourHeight points
         // 8:00 AM = 8 hours = 8 * hourHeight
         // 8:30 AM = 8.5 hours = 8.5 * hourHeight (halfway between 8 and 9)
-        return CGFloat(hoursFromStart) * hourHeight
+        // Add 20 points offset to shift all events down
+        return CGFloat(hoursFromStart) * hourHeight + 20
     }
     
     private var height: CGFloat {
         let duration = eventEnd.timeIntervalSince(eventStart)
         let hours = duration / 3600.0
-        // Height is exactly proportional to duration
-        // 1 hour = 1 * hourHeight (50 points)
-        // 1.5 hours = 1.5 * hourHeight (75 points)
-        // 2 hours = 2 * hourHeight (100 points)
+        // Height is proportional to duration using the grid's hour height.
         return CGFloat(hours) * hourHeight
     }
     
@@ -668,23 +668,25 @@ struct EventBlockView: View {
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(event.summary)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundColor(.white)
-                .lineLimit(1)
+        ZStack(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: 6)
+                .fill(dynamicPrimaryColor)
             
-            Text(timeRangeString)
-                .font(.system(size: 11))
-                .foregroundColor(.white.opacity(0.85))
-                .lineLimit(1)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(event.summary)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                
+                Text(timeRangeString)
+                    .font(.system(size: 11))
+                    .foregroundColor(.white.opacity(0.85))
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 6)
-        .padding(.vertical, 4)
-        .background(dynamicPrimaryColor)
-        .cornerRadius(6)
-        .frame(width: eventWidth, height: height, alignment: .top)
+        .frame(width: eventWidth, height: height, alignment: .topLeading)
         .position(x: xOffset + eventWidth / 2, y: topOffset + height / 2)
     }
 }

@@ -165,7 +165,7 @@ struct MigrateTasksView: View {
                 print("Migrating task: \(taskInReview.title) to today. Subtask statuses preserved.")
                 
                 // Sync migration to Firebase if shared
-                if let sharedId = taskInReview.sharedTaskId {
+                if taskInReview.sharedTaskId != nil {
                     firebaseManager.syncLocalTaskToSharedTask(localTask: taskInReview) { error in
                         if let error = error {
                             print("Failed to sync migrated task: \(error)")

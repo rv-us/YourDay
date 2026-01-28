@@ -99,6 +99,7 @@ struct ContentView: View {
                     NavigationView {
                         MigrateTasksView()
                             .environment(\.modelContext, modelContext)
+                            .environmentObject(firebaseManager)
                     }
                 }
                 .alert("Plant Care Notice", isPresented: $showWitheringAlert) {
