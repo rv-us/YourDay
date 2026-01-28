@@ -57,6 +57,10 @@ struct GoogleCalendarView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var loginViewModel = LoginViewModel()
     
+    /// When `true`, this view is meant to be embedded inside another screen (e.g. `Todoview`)
+    /// and should not create its own `NavigationView` or "Done" button.
+    let embedded: Bool
+    
     @State private var events: [GoogleCalendarEvent] = []
     @State private var monthEvents: [GoogleCalendarEvent] = [] // For calendar dots
     @State private var isLoading = false
@@ -223,116 +227,126 @@ struct GoogleCalendarView: View {
         }
     }
     
-    var body: some View {
-        NavigationView {
-            VStack(spacing: 0) {
-                // Week Calendar View with Slider
-                VStack(spacing: 12) {
-                    monthHeader
-                    weekdayHeader
-                    weekSlider
-                }
-                .padding(.vertical, 12)
-                .background(dynamicSecondaryBackgroundColor)
-                
-                Divider()
-                
-                // Timeline View
-                if isLoading {
-                    Spacer()
-                    ProgressView("Loading events...")
-                        .progressViewStyle(CircularProgressViewStyle(tint: dynamicPrimaryColor))
-                    Spacer()
-                } else if let error = errorMessage {
-                    Spacer()
-                    VStack(spacing: 16) {
-                        Image(systemName: "exclamationmark.triangle")
-                            .font(.largeTitle)
-                            .foregroundColor(dynamicDestructiveColor)
-                        Text(error)
-                            .foregroundColor(dynamicTextColor)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal)
-                        
-                        if !isAuthenticated {
-                            Button(action: authenticateWithGoogle) {
-                                HStack {
-                                    Image(systemName: "person.circle.fill")
-                                    Text("Sign in with Google")
-                                }
+    private var calendarContent: some View {
+        VStack(spacing: 0) {
+            // Week Calendar View with Slider
+            VStack(spacing: 12) {
+                monthHeader
+                weekdayHeader
+                weekSlider
+            }
+            .padding(.vertical, 12)
+            .background(dynamicSecondaryBackgroundColor)
+            
+            Divider()
+            
+            // Timeline View
+            if isLoading {
+                Spacer()
+                ProgressView("Loading events...")
+                    .progressViewStyle(CircularProgressViewStyle(tint: dynamicPrimaryColor))
+                Spacer()
+            } else if let error = errorMessage {
+                Spacer()
+                VStack(spacing: 16) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.largeTitle)
+                        .foregroundColor(dynamicDestructiveColor)
+                    Text(error)
+                        .foregroundColor(dynamicTextColor)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                    
+                    if !isAuthenticated {
+                        Button(action: authenticateWithGoogle) {
+                            HStack {
+                                Image(systemName: "person.circle.fill")
+                                Text("Sign in with Google")
+                            }
+                            .padding()
+                            .background(dynamicPrimaryColor)
+                            .foregroundColor(.white)
+                            .cornerRadius(10)
+                        }
+                    } else {
+                        Button(action: fetchEvents) {
+                            Text("Retry")
                                 .padding()
                                 .background(dynamicPrimaryColor)
                                 .foregroundColor(.white)
                                 .cornerRadius(10)
-                            }
-                        } else {
-                            Button(action: fetchEvents) {
-                                Text("Retry")
-                                    .padding()
-                                    .background(dynamicPrimaryColor)
-                                    .foregroundColor(.white)
-                                    .cornerRadius(10)
-                            }
                         }
                     }
-                    Spacer()
-                } else {
-                    ScrollView {
-                        TimelineView(events: todayEvents, selectedDate: selectedDate)
-                            .frame(minHeight: UIScreen.main.bounds.height)
-                    }
                 }
-            }
-            .background(dynamicBackgroundColor.edgesIgnoringSafeArea(.all))
-            .navigationTitle("")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(dynamicSecondaryBackgroundColor, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    Text(selectedDate, style: .date)
-                        .fontWeight(.bold)
-                        .foregroundColor(dynamicTextColor)
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") {
-                        dismiss()
-                    }
-                    .foregroundColor(dynamicPrimaryColor)
-                }
-            }
-            .sheet(isPresented: $showingMonthPicker) {
-                MonthYearPicker(selectedDate: $currentMonth)
-                    .onChange(of: currentMonth) { _, newDate in
-                        showingMonthPicker = false
-                        // Switch to the selected date
-                        selectedDate = newDate
-                        let weeks = weeksInRange
-                        currentWeekIndex = selectedWeekIndex(in: weeks)
-                        fetchMonthEvents()
-                        fetchEvents()
-                    }
-            }
-            .onAppear {
-                checkAuthentication()
-                if isAuthenticated {
-                    fetchMonthEvents()
-                    fetchEvents()
-                }
-            }
-            .onChange(of: currentMonth) { _, _ in
-                fetchMonthEvents()
-            }
-            .onChange(of: selectedDate) { _, newDate in
-                // Update week index when selectedDate changes programmatically
-                let weeks = weeksInRange
-                let newWeekIndex = selectedWeekIndex(in: weeks)
-                if newWeekIndex != currentWeekIndex && newWeekIndex < weeks.count {
-                    currentWeekIndex = newWeekIndex
+                Spacer()
+            } else {
+                ScrollView {
+                    TimelineView(events: todayEvents, selectedDate: selectedDate)
+                        .frame(minHeight: UIScreen.main.bounds.height)
                 }
             }
         }
-        .navigationViewStyle(.stack)
+        .background(dynamicBackgroundColor.edgesIgnoringSafeArea(.all))
+        .sheet(isPresented: $showingMonthPicker) {
+            MonthYearPicker(selectedDate: $currentMonth)
+                .onChange(of: currentMonth) { _, newDate in
+                    showingMonthPicker = false
+                    // Switch to the selected date
+                    selectedDate = newDate
+                    let weeks = weeksInRange
+                    currentWeekIndex = selectedWeekIndex(in: weeks)
+                    fetchMonthEvents()
+                    fetchEvents()
+                }
+        }
+        .onAppear {
+            checkAuthentication()
+            if isAuthenticated {
+                fetchMonthEvents()
+                fetchEvents()
+            }
+        }
+        .onChange(of: currentMonth) { _, _ in
+            fetchMonthEvents()
+        }
+        .onChange(of: selectedDate) { _, newDate in
+            // Update week index when selectedDate changes programmatically
+            let weeks = weeksInRange
+            let newWeekIndex = selectedWeekIndex(in: weeks)
+            if newWeekIndex != currentWeekIndex && newWeekIndex < weeks.count {
+                currentWeekIndex = newWeekIndex
+            }
+        }
+    }
+    
+    var body: some View {
+        Group {
+            if embedded {
+                calendarContent
+            } else {
+                NavigationView {
+                    calendarContent
+                        .navigationTitle("")
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbarBackground(dynamicSecondaryBackgroundColor, for: .navigationBar)
+                        .toolbarBackground(.visible, for: .navigationBar)
+                        .toolbar {
+                            ToolbarItem(placement: .principal) {
+                                Text(selectedDate, style: .date)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(dynamicTextColor)
+                            }
+                            ToolbarItem(placement: .navigationBarTrailing) {
+                                Button("Done") {
+                                    dismiss()
+                                }
+                                .foregroundColor(dynamicPrimaryColor)
+                            }
+                        }
+                }
+                .navigationViewStyle(.stack)
+            }
+        }
     }
     
     // MARK: - Helper Methods
