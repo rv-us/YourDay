@@ -24,11 +24,25 @@ struct GoogleCalendarEvent: Identifiable, Codable {
         let dateTime: String?
         let timeZone: String?
         
+        // NOTE: This is accessed a lot (e.g., while building UI). Cache the ISO formatters.
+        // ISO8601DateFormatter is safe to reuse; DateFormatter is not guaranteed thread-safe,
+        // so we keep the date-only formatter local (date-only events are typically fewer).
+        private static let isoWithFractionalSeconds: ISO8601DateFormatter = {
+            let f = ISO8601DateFormatter()
+            f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            return f
+        }()
+        
+        private static let isoWithoutFractionalSeconds: ISO8601DateFormatter = {
+            let f = ISO8601DateFormatter()
+            f.formatOptions = [.withInternetDateTime]
+            return f
+        }()
+        
         var startDate: Date? {
             if let dateTime = dateTime {
-                let formatter = ISO8601DateFormatter()
-                formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-                return formatter.date(from: dateTime) ?? ISO8601DateFormatter().date(from: dateTime)
+                return Self.isoWithFractionalSeconds.date(from: dateTime)
+                    ?? Self.isoWithoutFractionalSeconds.date(from: dateTime)
             } else if let date = date {
                 let formatter = DateFormatter()
                 formatter.dateFormat = "yyyy-MM-dd"
@@ -53,8 +67,27 @@ struct GoogleCalendarView: View {
     @State private var showingMonthPicker = false
     @State private var currentWeekIndex: Int = 0
     
+    // Fast lookup cache for “does this day have events?” in the week slider.
+    // Store start-of-day Dates so lookups are O(1) instead of scanning all events per cell.
+    @State private var monthEventDays: Set<Date> = []
+    
+    private let weekColumns: [GridItem] = Array(repeating: GridItem(.flexible()), count: 7)
+    
     private let calendar = Calendar.current
     private let daysInWeek = ["M", "T", "W", "T", "F", "S", "S"]
+    
+    // Lightweight formatters (used on main thread for display / query building).
+    private static let monthYearFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "MMMM yyyy"
+        return f
+    }()
+    
+    private static let queryISOFormatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
     
     // Generate weeks for the current month (and surrounding weeks for smooth scrolling)
     private var weeksInRange: [Date] {
@@ -115,73 +148,89 @@ struct GoogleCalendarView: View {
         }
     }
     
+    // MARK: - Week Slider Subviews (helps compiler + improves readability)
+    
+    private var monthHeader: some View {
+        HStack {
+            Spacer()
+            Button(action: { showingMonthPicker = true }) {
+                Text(monthYearString(from: currentMonth))
+                    .font(.headline)
+                    .foregroundColor(dynamicPrimaryColor)
+            }
+        }
+        .padding(.horizontal)
+    }
+    
+    private var weekdayHeader: some View {
+        HStack {
+            ForEach(daysInWeek, id: \.self) { day in
+                Text(day)
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .frame(maxWidth: .infinity)
+                    .foregroundColor(dynamicSecondaryTextColor)
+            }
+        }
+        .padding(.horizontal)
+    }
+    
+    private func weekPageView(weekStart: Date, index: Int) -> some View {
+        let weekDays = generateWeekDaysFromStart(weekStart)
+        return LazyVGrid(columns: weekColumns, spacing: 8) {
+            ForEach(weekDays, id: \.self) { date in
+                let isSelected = calendar.isDate(date, inSameDayAs: selectedDate)
+                let isToday = calendar.isDateInToday(date)
+                let hasEvents = hasEventsOn(date: date)
+                
+                CalendarDayButton(
+                    date: date,
+                    isSelected: isSelected,
+                    isToday: isToday,
+                    hasEvents: hasEvents
+                ) {
+                    selectedDate = date
+                    currentMonth = date
+                    fetchEvents()
+                }
+            }
+        }
+        .padding(.horizontal)
+        .tag(index)
+    }
+    
+    private var weekSlider: some View {
+        let weeks = weeksInRange
+        return TabView(selection: $currentWeekIndex) {
+            ForEach(weeks.indices, id: \.self) { index in
+                weekPageView(weekStart: weeks[index], index: index)
+            }
+        }
+        .tabViewStyle(.page(indexDisplayMode: .never))
+        .frame(height: 80)
+        .onChange(of: currentWeekIndex) { _, newValue in
+            // Avoid rebuilding the entire week range on every swipe (causes jank).
+            // Only “recenter” the range when the user approaches the ends.
+            guard newValue < weeks.count else { return }
+            let edgeThreshold = 1
+            if newValue <= edgeThreshold || newValue >= weeks.count - 1 - edgeThreshold {
+                currentMonth = weeks[newValue]
+            }
+        }
+        .onAppear {
+            // Set initial week index to the week containing selectedDate
+            currentWeekIndex = selectedWeekIndex(in: weeks)
+        }
+    }
+    
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
                 // Week Calendar View with Slider
                 VStack(spacing: 12) {
-                    HStack {
-                        Spacer()
-                        
-                        Button(action: {
-                            showingMonthPicker = true
-                        }) {
-                            Text(monthYearString(from: currentMonth))
-                                .font(.headline)
-                                .foregroundColor(dynamicPrimaryColor)
-                        }
-                    }
-                    .padding(.horizontal)
-                    
-                    // Weekday headers
-                    HStack {
-                        ForEach(daysInWeek, id: \.self) { day in
-                            Text(day)
-                                .font(.caption)
-                                .fontWeight(.semibold)
-                                .frame(maxWidth: .infinity)
-                                .foregroundColor(dynamicSecondaryTextColor)
-                        }
-                    }
-                    .padding(.horizontal)
-                    
-                    // Swipeable week slider
-                    TabView(selection: $currentWeekIndex) {
-                        ForEach(Array(weeksInRange.enumerated()), id: \.offset) { index, weekStart in
-                            let weekDays = generateWeekDaysFromStart(weekStart)
-                            let columns = Array(repeating: GridItem(.flexible()), count: 7)
-                            
-                            LazyVGrid(columns: columns, spacing: 8) {
-                                ForEach(weekDays, id: \.self) { date in
-                                    CalendarDayButton(
-                                        date: date,
-                                        isSelected: calendar.isDate(date, inSameDayAs: selectedDate),
-                                        isToday: calendar.isDateInToday(date),
-                                        hasEvents: hasEventsOn(date: date)
-                                    ) {
-                                        selectedDate = date
-                                        currentMonth = date
-                                        fetchEvents()
-                                    }
-                                }
-                            }
-                            .padding(.horizontal)
-                            .tag(index)
-                        }
-                    }
-                    .tabViewStyle(.page(indexDisplayMode: .never))
-                    .frame(height: 80)
-                    .onChange(of: currentWeekIndex) { oldValue, newValue in
-                        // Update currentMonth when swiping to a new week
-                        if newValue < weeksInRange.count {
-                            let weekStart = weeksInRange[newValue]
-                            currentMonth = weekStart
-                        }
-                    }
-                    .onAppear {
-                        // Set initial week index to the week containing selectedDate
-                        currentWeekIndex = selectedWeekIndex(in: weeksInRange)
-                    }
+                    monthHeader
+                    weekdayHeader
+                    weekSlider
                 }
                 .padding(.vertical, 12)
                 .background(dynamicSecondaryBackgroundColor)
@@ -289,9 +338,7 @@ struct GoogleCalendarView: View {
     // MARK: - Helper Methods
     
     private func monthYearString(from date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMMM yyyy"
-        return formatter.string(from: date)
+        Self.monthYearFormatter.string(from: date)
     }
     
     private func getWeekStart(for date: Date) -> Date {
@@ -316,14 +363,11 @@ struct GoogleCalendarView: View {
     }
     
     private func hasEventsOn(date: Date) -> Bool {
-        monthEvents.contains { event in
-            guard let eventDate = event.start.startDate else { return false }
-            return calendar.isDate(eventDate, inSameDayAs: date)
-        }
+        monthEventDays.contains(calendar.startOfDay(for: date))
     }
     
     private func checkAuthentication() {
-        if let user = GIDSignIn.sharedInstance.currentUser {
+        if GIDSignIn.sharedInstance.currentUser != nil {
             isAuthenticated = true
         } else {
             isAuthenticated = false
@@ -375,13 +419,26 @@ struct GoogleCalendarView: View {
     private func fetchMonthEvents() {
         guard let user = GIDSignIn.sharedInstance.currentUser else { return }
         
-        let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: currentMonth))!
-        let endOfMonth = calendar.date(byAdding: .month, value: 1, to: startOfMonth)!
+        // Fetch events for the entire visible week-slider range (not just the calendar month).
+        // This keeps the dot indicators correct while avoiding repeated refetches during swipes.
+        let weeks = weeksInRange
+        let rangeStart = calendar.startOfDay(for: weeks.first ?? currentMonth)
+        let rangeEnd = calendar.date(byAdding: .day, value: 7, to: (weeks.last ?? currentMonth))!
         
         user.refreshTokensIfNeeded { user, error in
             if let user = user {
-                self.performFetchEventsInRange(start: startOfMonth, end: endOfMonth, user: user) { fetchedEvents in
+                self.performFetchEventsInRange(start: rangeStart, end: rangeEnd, user: user) { fetchedEvents in
                     self.monthEvents = fetchedEvents
+                    
+                    // Rebuild fast lookup cache for week slider dots (avoids `.onChange` needing Equatable).
+                    var days: Set<Date> = []
+                    days.reserveCapacity(fetchedEvents.count)
+                    for event in fetchedEvents {
+                        if let d = event.start.startDate {
+                            days.insert(self.calendar.startOfDay(for: d))
+                        }
+                    }
+                    self.monthEventDays = days
                 }
             }
         }
@@ -396,13 +453,11 @@ struct GoogleCalendarView: View {
     
     private func performFetchEventsInRange(start: Date, end: Date, user: GIDGoogleUser, completion: @escaping ([GoogleCalendarEvent]) -> Void) {
         let accessToken = user.accessToken.tokenString
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
         
         var urlComponents = URLComponents(string: "https://www.googleapis.com/calendar/v3/calendars/primary/events")!
         urlComponents.queryItems = [
-            URLQueryItem(name: "timeMin", value: formatter.string(from: start)),
-            URLQueryItem(name: "timeMax", value: formatter.string(from: end)),
+            URLQueryItem(name: "timeMin", value: Self.queryISOFormatter.string(from: start)),
+            URLQueryItem(name: "timeMax", value: Self.queryISOFormatter.string(from: end)),
             URLQueryItem(name: "singleEvents", value: "true"),
             URLQueryItem(name: "orderBy", value: "startTime")
         ]
