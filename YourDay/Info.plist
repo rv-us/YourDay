@@ -21,5 +21,7 @@
 			</array>
 		</dict>
 	</array>
+	<key>NSCalendarsUsageDescription</key>
+	<string>YourDay needs access to your calendar to sync your tasks and help you stay organized.</string>
 </dict>
 </plist>
