@@ -28,8 +28,9 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         case .notDetermined:
             locationManager.requestWhenInUseAuthorization()
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                completion(CLLocationManager.authorizationStatus() == .authorizedAlways ||
-                           CLLocationManager.authorizationStatus() == .authorizedWhenInUse)
+                let authStatus = self.locationManager.authorizationStatus
+                completion(authStatus == .authorizedAlways ||
+                           authStatus == .authorizedWhenInUse)
             }
         case .authorizedAlways, .authorizedWhenInUse:
             completion(true)

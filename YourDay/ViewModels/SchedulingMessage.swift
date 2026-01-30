@@ -32,3 +32,4 @@ struct SchedulingMessage: Identifiable, Codable {
         self.sessionContext = sessionContext
     }
 }
+

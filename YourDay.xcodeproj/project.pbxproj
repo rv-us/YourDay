@@ -7,7 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		C94CCFEB2DE3ED0000249A99 /* GoogleGenerativeAI in Frameworks */ = {isa = PBXBuildFile; productRef = C94CCFEA2DE3ED0000249A99 /* GoogleGenerativeAI */; };
 		C9A89A1A2DBF16EE00D2C382 /* FirebaseVertexAI in Frameworks */ = {isa = PBXBuildFile; productRef = C9A89A192DBF16EE00D2C382 /* FirebaseVertexAI */; };
+		C9BF6B8D2DE6EF75007D4B0F /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = C9BF6B8C2DE6EF75007D4B0F /* Lottie */; };
 		C9FE7D0C2DDB10F4005E5576 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = C9FE7D0B2DDB10F4005E5576 /* FirebaseAuth */; };
 		C9FE7D0E2DDB10F4005E5576 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = C9FE7D0D2DDB10F4005E5576 /* FirebaseFirestore */; };
 		C9FE7D102DDB10F4005E5576 /* FirebaseFirestoreCombine-Community in Frameworks */ = {isa = PBXBuildFile; productRef = C9FE7D0F2DDB10F4005E5576 /* FirebaseFirestoreCombine-Community */; };
@@ -78,8 +80,10 @@
 				C9A89A1A2DBF16EE00D2C382 /* FirebaseVertexAI in Frameworks */,
 				C9FE7D102DDB10F4005E5576 /* FirebaseFirestoreCombine-Community in Frameworks */,
 				C9FE7D1F2DDB1C1C005E5576 /* GoogleSignInSwift in Frameworks */,
+				C94CCFEB2DE3ED0000249A99 /* GoogleGenerativeAI in Frameworks */,
 				C9FE7D0C2DDB10F4005E5576 /* FirebaseAuth in Frameworks */,
 				C9FE7D0E2DDB10F4005E5576 /* FirebaseFirestore in Frameworks */,
+				C9BF6B8D2DE6EF75007D4B0F /* Lottie in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -146,6 +150,8 @@
 				C9FE7D0F2DDB10F4005E5576 /* FirebaseFirestoreCombine-Community */,
 				C9FE7D1C2DDB1C1C005E5576 /* GoogleSignIn */,
 				C9FE7D1E2DDB1C1C005E5576 /* GoogleSignInSwift */,
+				C94CCFEA2DE3ED0000249A99 /* GoogleGenerativeAI */,
+				C9BF6B8C2DE6EF75007D4B0F /* Lottie */,
 			);
 			productName = YourDay;
 			productReference = C99DF2352DA61BEB003048F2 /* YourDay.app */;
@@ -232,6 +238,8 @@
 			packageReferences = (
 				C9A89A182DBF16EE00D2C382 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
 				C9FE7D1B2DDB1C1C005E5576 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
+				C94CCFE92DE3ED0000249A99 /* XCRemoteSwiftPackageReference "deprecated-generative-ai-swift" */,
+				C9BF6B8B2DE6EF75007D4B0F /* XCRemoteSwiftPackageReference "lottie-spm" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = C99DF2362DA61BEB003048F2 /* Products */;
@@ -430,7 +438,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"YourDay/Preview Content\"";
-				DEVELOPMENT_TEAM = FV9MZ8YNJK;
+				DEVELOPMENT_TEAM = BJNXGHGLGT;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -452,7 +460,7 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.7;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "YourDay-dev.YourDay";
+				PRODUCT_BUNDLE_IDENTIFIER = "YourDay-dev.YourDay-YourDay-dev.YourDay-YourDay-dev.YourDay";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
@@ -472,7 +480,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"YourDay/Preview Content\"";
-				DEVELOPMENT_TEAM = FV9MZ8YNJK;
+				DEVELOPMENT_TEAM = BJNXGHGLGT;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -494,7 +502,7 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.7;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "YourDay-dev.YourDay";
+				PRODUCT_BUNDLE_IDENTIFIER = "YourDay-dev.YourDay-YourDay-dev.YourDay-YourDay-dev.YourDay";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
@@ -637,12 +645,28 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		C94CCFE92DE3ED0000249A99 /* XCRemoteSwiftPackageReference "deprecated-generative-ai-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google-gemini/deprecated-generative-ai-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.5.6;
+			};
+		};
 		C9A89A182DBF16EE00D2C382 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
 			requirement = {
 				kind = upToNextMajorVersion;
 				minimumVersion = 11.12.0;
+			};
+		};
+		C9BF6B8B2DE6EF75007D4B0F /* XCRemoteSwiftPackageReference "lottie-spm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/airbnb/lottie-spm.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 4.5.2;
 			};
 		};
 		C9FE7D1B2DDB1C1C005E5576 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
@@ -656,10 +680,20 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		C94CCFEA2DE3ED0000249A99 /* GoogleGenerativeAI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C94CCFE92DE3ED0000249A99 /* XCRemoteSwiftPackageReference "deprecated-generative-ai-swift" */;
+			productName = GoogleGenerativeAI;
+		};
 		C9A89A192DBF16EE00D2C382 /* FirebaseVertexAI */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = C9A89A182DBF16EE00D2C382 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseVertexAI;
+		};
+		C9BF6B8C2DE6EF75007D4B0F /* Lottie */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C9BF6B8B2DE6EF75007D4B0F /* XCRemoteSwiftPackageReference "lottie-spm" */;
+			productName = Lottie;
 		};
 		C9FE7D0B2DDB10F4005E5576 /* FirebaseAuth */ = {
 			isa = XCSwiftPackageProductDependency;

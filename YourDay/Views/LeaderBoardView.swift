@@ -21,7 +21,7 @@ struct LeaderboardView: View {
                 }
                 .pickerStyle(SegmentedPickerStyle())
                 .padding(.horizontal)
-                .onChange(of: showFriendsOnly) { isFriends in
+                .onChange(of: showFriendsOnly) { oldValue, isFriends in
                     if isFriends {
                         viewModel.fetchLeaderboardFriendsOnly()
                     } else {

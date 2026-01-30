@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import FirebaseCore
+import GoogleSignIn
 import UIKit
 
 
@@ -13,6 +14,15 @@ struct YourDayApp: App {
         setupCrashPrevention()
         
         FirebaseApp.configure()
+        
+        // Configure Google Sign-In early to enable token persistence
+        if let clientID = FirebaseApp.app()?.options.clientID {
+            let config = GIDConfiguration(clientID: clientID)
+            GIDSignIn.sharedInstance.configuration = config
+        }
+        
+        // Initialize GoogleCalendarManager to restore sign-in state
+        _ = GoogleCalendarManager.shared
         
         let appearance = UITabBarAppearance()
         appearance.configureWithOpaqueBackground()

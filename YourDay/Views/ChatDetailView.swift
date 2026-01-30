@@ -82,7 +82,7 @@ struct ChatDetailView: View {
                     }
                     .padding()
                 }
-                .onChange(of: messages.count) { _ in
+                .onChange(of: messages.count) { oldValue, newValue in
                     if let last = messages.last?.id {
                         withAnimation {
                             proxy.scrollTo(last, anchor: .bottom)
@@ -156,7 +156,7 @@ struct ChatDetailView: View {
             }
 
             firebaseManager.fetchLastLoginDate(for: friend.userId) { date in
-                if let date = date {
+                if date != nil {
 //                    print("✅ [DEBUG] ChatDetailView got last login date: \(date)")
                 }
             }

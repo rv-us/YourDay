@@ -130,7 +130,7 @@ struct AddNotesView: View {
                     }
                 }
             }
-            .onChange(of: selectedNotes) { newSelection in
+            .onChange(of: selectedNotes) { oldValue, newSelection in
                 if currentNotesTutorialStep == .selectNote && !newSelection.isEmpty {
                     currentNotesTutorialStep = .generateTasks
                 }
@@ -208,7 +208,7 @@ struct AddNotesView: View {
                 // Use latest Gemini 2.5 Flash model
                 let model = vertex.generativeModel(modelName: "gemini-2.5-flash")
 
-                let userMessage = try ModelContent(role: "user", parts: [TextPart(prompt)])
+                let userMessage = ModelContent(role: "user", parts: [TextPart(prompt)])
                 let response = try await model.generateContent([userMessage])
                 print(response)
                 

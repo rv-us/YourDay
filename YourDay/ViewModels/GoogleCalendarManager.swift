@@ -13,7 +13,40 @@ import FirebaseCore
 class GoogleCalendarManager {
     static let shared = GoogleCalendarManager()
     
-    private init() {}
+    private init() {
+        // Restore sign-in state on initialization
+        restoreSignInState()
+    }
+    
+    // MARK: - Sign-In State Management
+    
+    /// Restores Google Sign-In state if user was previously signed in
+    private func restoreSignInState() {
+        // Configure Google Sign-In if not already configured
+        if GIDSignIn.sharedInstance.configuration == nil {
+            guard let clientID = FirebaseApp.app()?.options.clientID else {
+                print("GoogleCalendarManager: Firebase client ID not found")
+                return
+            }
+            let config = GIDConfiguration(clientID: clientID)
+            GIDSignIn.sharedInstance.configuration = config
+        }
+        
+        // Restore previous sign-in session
+        // The Google Sign-In SDK automatically persists tokens, so we just need to restore the session
+        GIDSignIn.sharedInstance.restorePreviousSignIn { user, error in
+            if let error = error {
+                print("GoogleCalendarManager: Failed to restore previous sign-in: \(error.localizedDescription)")
+            } else if let user = user {
+                print("GoogleCalendarManager: Successfully restored sign-in for user: \(user.profile?.email ?? "unknown")")
+            }
+        }
+    }
+    
+    /// Checks if user is currently signed in (with or without calendar scope)
+    func isSignedIn() -> Bool {
+        return GIDSignIn.sharedInstance.currentUser != nil
+    }
     
     // MARK: - Permission Management
     
@@ -24,13 +57,29 @@ class GoogleCalendarManager {
     }
     
     func requestCalendarWritePermission(completion: @escaping (Bool, Error?) -> Void) {
+        // First, try to restore previous sign-in if not already signed in
+        if GIDSignIn.sharedInstance.currentUser == nil {
+            restoreSignInState()
+            
+            // Wait a moment for restore to complete, then check again
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                self.continueRequestingCalendarPermission(completion: completion)
+            }
+            return
+        }
+        
+        continueRequestingCalendarPermission(completion: completion)
+    }
+    
+    private func continueRequestingCalendarPermission(completion: @escaping (Bool, Error?) -> Void) {
         guard let user = GIDSignIn.sharedInstance.currentUser else {
-            completion(false, NSError(domain: "GoogleCalendarManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not signed in"]))
+            completion(false, NSError(domain: "GoogleCalendarManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not signed in. Please sign in with Google first."]))
             return
         }
         
         let calendarScope = "https://www.googleapis.com/auth/calendar"
         
+        // Check if permission already granted
         if checkCalendarWritePermission() {
             completion(true, nil)
             return
@@ -41,6 +90,7 @@ class GoogleCalendarManager {
             return
         }
         
+        // Request additional scope
         user.addScopes([calendarScope], presenting: presentingViewController) { result, error in
             if let error = error {
                 completion(false, error)
@@ -48,6 +98,7 @@ class GoogleCalendarManager {
             }
             
             if result != nil {
+                // Refresh tokens to ensure we have the new scope
                 user.refreshTokensIfNeeded { refreshedUser, refreshError in
                     if refreshError != nil {
                         completion(false, refreshError)
@@ -183,3 +234,4 @@ class GoogleCalendarManager {
         return currentViewController
     }
 }
+

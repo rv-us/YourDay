@@ -27,6 +27,7 @@ struct SmartSchedulingTestView: View {
     @State private var selectedDate = Date()
     @State private var showingDatePicker = false
     @State private var scheduledTasks: Set<String> = [] // Track scheduled task titles
+    @State private var planningDate: Date? = nil // Fixed date for current agent session
     
     var body: some View {
         NavigationView {
@@ -66,6 +67,11 @@ struct SmartSchedulingTestView: View {
                     .onChange(of: selectedDate) { _, _ in
                         showingDatePicker = false
                         fetchCalendarForDate()
+                        // Only update planning date if agent is not running
+                        // This ensures the planning date stays fixed during agent operations
+                        if !isAgentRunning {
+                            planningDate = nil
+                        }
                     }
             }
             .onAppear {
@@ -120,12 +126,15 @@ struct SmartSchedulingTestView: View {
                 .background(dynamicSecondaryBackgroundColor)
                 .cornerRadius(12)
                 
+                // Day Context Section (expandable)
+                DayContextSection(schedulingViewModel: schedulingViewModel)
+
                 // Schedule Preferences Section
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Schedule Preferences")
                         .font(.headline)
                         .foregroundColor(dynamicTextColor)
-                    
+
                     if let preference = schedulingViewModel.schedulePreference {
                         VStack(alignment: .leading, spacing: 8) {
                             if let wakeTime = preference.preferredWakeTime {
@@ -136,7 +145,7 @@ struct SmartSchedulingTestView: View {
                                         .foregroundColor(dynamicSecondaryTextColor)
                                 }
                             }
-                            
+
                             if let lunchTime = preference.lunchTime {
                                 HStack {
                                     Text("Lunch Time:")
@@ -145,15 +154,31 @@ struct SmartSchedulingTestView: View {
                                         .foregroundColor(dynamicSecondaryTextColor)
                                 }
                             }
-                            
+
                             if !preference.recurringCommitments.isEmpty {
                                 Text("Recurring Commitments:")
                                     .font(.subheadline)
                                     .padding(.top, 4)
-                                
+
                                 ForEach(preference.recurringCommitments.indices, id: \.self) { index in
                                     let commitment = preference.recurringCommitments[index]
                                     Text("• \(commitment.eventName): \(commitment.daysOfWeek.joined(separator: ", ")) at \(commitment.time)")
+                                        .font(.caption)
+                                        .foregroundColor(dynamicSecondaryTextColor)
+                                }
+                            }
+
+                            // Show acceptance stats if available
+                            if let stats = preference.acceptanceStats {
+                                Divider()
+                                Text("Learning Stats:")
+                                    .font(.subheadline)
+                                    .padding(.top, 4)
+                                Text("Accepted: \(stats.totalAccepted) | Declined: \(stats.totalDeclined) | Modified: \(stats.totalModified)")
+                                    .font(.caption)
+                                    .foregroundColor(dynamicSecondaryTextColor)
+                                if let avgDuration = stats.averageAcceptedDuration {
+                                    Text("Avg session duration: \(avgDuration) min")
                                         .font(.caption)
                                         .foregroundColor(dynamicSecondaryTextColor)
                                 }
@@ -326,24 +351,41 @@ struct SmartSchedulingTestView: View {
                                 }
                             }
                             
+                            // Display status message if available
+                            if let statusMessage = schedulingViewModel.statusMessage {
+                                HStack {
+                                    Text(statusMessage)
+                                        .italic()
+                                        .padding()
+                                        .background(dynamicSecondaryBackgroundColor)
+                                        .cornerRadius(12)
+                                        .foregroundColor(dynamicSecondaryTextColor)
+                                    Spacer()
+                                }
+                                .id("status")
+                            }
+                            
                             // Show current proposal as a message if available
-                            if let proposal = schedulingViewModel.currentProposal {
+                            if schedulingViewModel.currentProposal != nil {
                                 HStack {
                                     ProposalMessageCard(
-                                        proposal: proposal,
+                                        proposal: Binding(
+                                            get: { schedulingViewModel.currentProposal ?? ProposedSession(tasks: [], workingSessionTime: "", startTime: nil, endTime: nil, reason: nil) },
+                                            set: { schedulingViewModel.currentProposal = $0 }
+                                        ),
                                         schedulingViewModel: schedulingViewModel,
                                         backlogViewModel: backlogViewModel,
-                        onAccept: { taskTitles in
-                            // Mark tasks as processed (scheduled or skipped)
-                            if !taskTitles.isEmpty {
-                                for taskTitle in taskTitles {
-                                    scheduledTasks.insert(taskTitle)
-                                }
-                            }
-                            // Clear proposal and propose next session
-                            schedulingViewModel.currentProposal = nil
-                            proposeNextSession()
-                        }
+                                        onAccept: { taskTitles in
+                                            // Mark tasks as processed (scheduled or skipped)
+                                            if !taskTitles.isEmpty {
+                                                for taskTitle in taskTitles {
+                                                    scheduledTasks.insert(taskTitle)
+                                                }
+                                            }
+                                            // Clear proposal and propose next session
+                                            schedulingViewModel.currentProposal = nil
+                                            proposeNextSession()
+                                        }
                                     )
                                     Spacer()
                                 }
@@ -374,26 +416,12 @@ struct SmartSchedulingTestView: View {
                                                 let reason = schedulingViewModel.declineReason
                                                 schedulingViewModel.declineReason = ""
                                                 
+                                                // sendMessage() will handle proposing a new session automatically
                                                 schedulingViewModel.sendMessage(reason, backlogItems: backlogViewModel.backlogItems) { error in
                                                     if let error = error {
                                                         print("Error sending decline reason: \(error.localizedDescription)")
-                                                    } else {
-                                        // Propose another time for the same tasks (don't mark as scheduled)
-                                        // Only propose again if proposal still exists (wasn't skipped)
-                                        if let currentProposal = schedulingViewModel.currentProposal {
-                                            let remainingTasks = backlogViewModel.backlogItems.filter { item in
-                                                currentProposal.tasks.contains(item.title) || !scheduledTasks.contains(item.title)
-                                            }
-                                            schedulingViewModel.proposeWorkingSession(backlogItems: remainingTasks, for: selectedDate) { error in
-                                                if let error = error {
-                                                    print("Error proposing new session: \(error.localizedDescription)")
-                                                }
-                                            }
-                                        } else {
-                                            // Proposal was cleared (likely skipped), move to next task
-                                            proposeNextSession()
-                                        }
                                                     }
+                                                    // Note: sendMessage() already handles proposing a new session, so no need to do it here
                                                 }
                                             }
                                             .foregroundColor(dynamicPrimaryColor)
@@ -416,14 +444,24 @@ struct SmartSchedulingTestView: View {
                         }
                         .padding()
                     }
-                    .onChange(of: schedulingViewModel.messages.count) { _ in
+                    .onChange(of: schedulingViewModel.messages.count) { oldValue, newValue in
                         if let last = schedulingViewModel.messages.last?.id {
                             withAnimation {
                                 proxy.scrollTo(last, anchor: .bottom)
                             }
                         }
                     }
-                    .onChange(of: schedulingViewModel.currentProposal != nil) { hasProposal in
+                    .onChange(of: schedulingViewModel.statusMessage) { oldValue, newValue in
+                        if newValue != nil {
+                            // Scroll to show status message when it appears
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                withAnimation {
+                                    proxy.scrollTo("status", anchor: .bottom)
+                                }
+                            }
+                        }
+                    }
+                    .onChange(of: schedulingViewModel.currentProposal != nil) { oldValue, hasProposal in
                         if hasProposal {
                             // Scroll to bottom when proposal appears
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
@@ -459,6 +497,9 @@ struct SmartSchedulingTestView: View {
         isAgentRunning = true
         scheduledTasks.removeAll()
         
+        // Store the selected date at agent start - this will remain fixed during agent operations
+        planningDate = selectedDate
+        
         // Reset chat to start fresh
         schedulingViewModel.resetChat()
         
@@ -473,11 +514,15 @@ struct SmartSchedulingTestView: View {
         // Switch to chat tab
         selectedTab = 1
         
-        // Propose first working session
+        // Propose first working session using the fixed planning date
         proposeNextSession()
     }
     
     private func proposeNextSession() {
+        // Use the fixed planning date if agent is running, otherwise use selectedDate
+        // This ensures the date stays consistent throughout the agent session
+        let dateToUse = planningDate ?? selectedDate
+        
         // Get unscheduled tasks
         let unscheduledTasks = backlogViewModel.backlogItems.filter { item in
             !scheduledTasks.contains(item.title)
@@ -486,6 +531,7 @@ struct SmartSchedulingTestView: View {
         guard !unscheduledTasks.isEmpty else {
             // All tasks scheduled or skipped
             isAgentRunning = false
+            planningDate = nil // Clear planning date when agent stops
             let completionMessage = SchedulingMessage(
                 userId: Auth.auth().currentUser?.uid ?? "",
                 role: .assistant,
@@ -496,13 +542,14 @@ struct SmartSchedulingTestView: View {
             return
         }
         
-        // Propose a working session for the selected date
+        // Propose a working session for the planning date (fixed during agent run)
         // The proposeWorkingSession method will automatically refresh calendar before proposing
-        schedulingViewModel.proposeWorkingSession(backlogItems: unscheduledTasks, for: selectedDate) { error in
+        schedulingViewModel.proposeWorkingSession(backlogItems: unscheduledTasks, for: dateToUse) { error in
             if let error = error {
                 print("Error proposing session: \(error.localizedDescription)")
                 DispatchQueue.main.async {
                     self.isAgentRunning = false
+                    self.planningDate = nil // Clear planning date on error
                 }
             }
         }
@@ -586,19 +633,46 @@ struct BacklogItemRow: View {
 struct AddBacklogItemSheet: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var backlogViewModel: BacklogViewModel
-    
+
     @State private var title = ""
     @State private var description = ""
     @State private var priority = 0
-    
+    @State private var estimatedDuration: Int? = nil
+    @State private var category = ""
+    @State private var tagsText = ""
+
+    private let categoryOptions = ["", "work", "personal", "health", "errands", "learning", "creative"]
+
     var body: some View {
         NavigationView {
             Form {
-                Section(header: Text("Backlog Item")) {
+                Section(header: Text("Basic Info")) {
                     TextField("Title", text: $title)
                     TextField("Description", text: $description)
-                    
+                }
+
+                Section(header: Text("Scheduling Metadata")) {
                     Stepper("Priority: \(priority)", value: $priority, in: 0...10)
+
+                    HStack {
+                        Text("Est. Duration")
+                        Spacer()
+                        TextField("min", value: $estimatedDuration, format: .number)
+                            .keyboardType(.numberPad)
+                            .frame(width: 60)
+                            .multilineTextAlignment(.trailing)
+                        Text("min")
+                            .foregroundColor(dynamicSecondaryTextColor)
+                    }
+
+                    Picker("Category", selection: $category) {
+                        ForEach(categoryOptions, id: \.self) { cat in
+                            Text(cat.isEmpty ? "None" : cat.capitalized).tag(cat)
+                        }
+                    }
+
+                    TextField("Tags (comma separated)", text: $tagsText)
+                        .font(.subheadline)
                 }
             }
             .navigationTitle("Add Backlog Item")
@@ -608,13 +682,18 @@ struct AddBacklogItemSheet: View {
                         dismiss()
                     }
                 }
-                
+
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Save") {
+                        let tags = tagsText.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+
                         backlogViewModel.addBacklogItem(
                             title: title,
                             description: description,
-                            priority: priority
+                            priority: priority,
+                            estimatedDuration: estimatedDuration,
+                            category: category.isEmpty ? nil : category,
+                            tags: tags.isEmpty ? nil : tags
                         ) { error in
                             if let error = error {
                                 print("Error adding backlog item: \(error.localizedDescription)")
@@ -629,3 +708,4 @@ struct AddBacklogItemSheet: View {
         }
     }
 }
+

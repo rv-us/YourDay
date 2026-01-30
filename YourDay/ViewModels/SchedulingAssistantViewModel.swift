@@ -11,6 +11,7 @@ import FirebaseVertexAI
 import FirebaseAuth
 import GoogleSignIn
 
+@MainActor
 class SchedulingAssistantViewModel: ObservableObject {
     @Published var messages: [SchedulingMessage] = []
     @Published var isLoading = false
@@ -20,15 +21,31 @@ class SchedulingAssistantViewModel: ObservableObject {
     @Published var currentProposal: ProposedSession?
     @Published var showingDeclineReasonInput = false
     @Published var declineReason = ""
-    
+    @Published var dayContexts: [String: DayContext] = [:]
+    @Published var scheduleNotes: [ScheduleNote] = []
+    @Published var recentInteractions: [ProposalInteraction] = []
+    @Published var statusMessage: String? // Status message for current agent operation
+
     private let firebaseManager = FirebaseManager.shared
     private let calendarManager = GoogleCalendarManager.shared
-    
+
     private var conversationContext: String = ""
     private var declineReasons: [String] = [] // Store reasons for declined proposals
     
+    // MARK: - Status Message Helpers
+    
+    func showStatus(_ message: String) {
+        statusMessage = message
+    }
+    
+    func clearStatus() {
+        statusMessage = nil
+    }
+    
     func initialize(userId: String, loadHistory: Bool = true) {
         fetchSchedulePreference()
+        fetchDayContexts()
+        fetchRecentInteractions()
         if loadHistory {
             fetchSchedulingHistory()
         }
@@ -83,6 +100,7 @@ class SchedulingAssistantViewModel: ObservableObject {
         }
         
         isFetchingCalendar = true
+        showStatus("Fetching calendar events...")
         
         // Fetch events for the specified date
         let calendar = Calendar.current
@@ -126,6 +144,9 @@ class SchedulingAssistantViewModel: ObservableObject {
             }
             
             if let error = error {
+                DispatchQueue.main.async {
+                    self.clearStatus()
+                }
                 print("Error fetching calendar events: \(error.localizedDescription)")
                 return
             }
@@ -136,9 +157,13 @@ class SchedulingAssistantViewModel: ObservableObject {
                 let response = try JSONDecoder().decode(GoogleCalendarResponse.self, from: data)
                 DispatchQueue.main.async {
                     self.calendarEvents = response.items
+                    self.clearStatus()
                     print("📅 Fetched \(response.items.count) calendar events for date")
                 }
             } catch {
+                DispatchQueue.main.async {
+                    self.clearStatus()
+                }
                 print("Error decoding calendar events: \(error.localizedDescription)")
             }
         }.resume()
@@ -162,17 +187,162 @@ class SchedulingAssistantViewModel: ObservableObject {
     }
     
     func updateSchedulePreference(_ updates: [String: Any]) {
-        guard let userId = Auth.auth().currentUser?.uid else { return }
-        
+        guard Auth.auth().currentUser?.uid != nil else { return }
+
         firebaseManager.updateSchedulePreference(updates) { [weak self] error in
             if let error = error {
                 print("Error updating schedule preference: \(error.localizedDescription)")
                 return
             }
-            
+
             // Refresh preference
             self?.fetchSchedulePreference()
         }
+    }
+
+    // MARK: - Day Contexts
+
+    func fetchDayContexts() {
+        firebaseManager.fetchDayContexts { [weak self] contexts, error in
+            guard let self = self else { return }
+
+            DispatchQueue.main.async {
+                if let contexts = contexts {
+                    self.dayContexts = contexts
+                }
+            }
+        }
+    }
+
+    func saveDayContext(_ context: DayContext) {
+        firebaseManager.saveDayContext(context) { [weak self] error in
+            if let error = error {
+                print("Error saving day context: \(error.localizedDescription)")
+                return
+            }
+            self?.fetchDayContexts()
+        }
+    }
+
+    // MARK: - Schedule Notes
+
+    func fetchScheduleNotes(for date: Date) {
+        firebaseManager.fetchScheduleNotes(for: date) { [weak self] notes, error in
+            guard let self = self else { return }
+
+            DispatchQueue.main.async {
+                if let notes = notes {
+                    self.scheduleNotes = notes
+                }
+            }
+        }
+    }
+
+    func saveScheduleNote(_ note: ScheduleNote) {
+        firebaseManager.saveScheduleNote(note) { [weak self] error, _ in
+            if let error = error {
+                print("Error saving schedule note: \(error.localizedDescription)")
+                return
+            }
+            // Refresh notes for the note's date
+            self?.fetchScheduleNotes(for: note.date)
+        }
+    }
+
+    // MARK: - Proposal Interactions
+
+    func fetchRecentInteractions() {
+        firebaseManager.fetchRecentInteractions(limit: 20) { [weak self] interactions, error in
+            guard let self = self else { return }
+
+            DispatchQueue.main.async {
+                if let interactions = interactions {
+                    self.recentInteractions = interactions
+                }
+            }
+        }
+    }
+
+    func recordInteraction(_ interaction: ProposalInteraction) {
+        firebaseManager.saveProposalInteraction(interaction) { [weak self] error in
+            if let error = error {
+                print("Error saving proposal interaction: \(error.localizedDescription)")
+                return
+            }
+            self?.fetchRecentInteractions()
+            self?.updateAcceptanceStatsFromInteraction(interaction)
+        }
+    }
+
+    private func updateAcceptanceStatsFromInteraction(_ interaction: ProposalInteraction) {
+        var stats = schedulePreference?.acceptanceStats ?? AcceptanceStats()
+
+        switch interaction.action {
+        case .accepted:
+            stats.totalAccepted += 1
+            // Track preferred hour from accepted proposal
+            if let hour = extractHourFromTimeString(interaction.proposedTime) {
+                stats.preferredHours[hour, default: 0] += 1
+            }
+            stats.preferredDurations[interaction.proposedDuration, default: 0] += 1
+        case .acceptedWithChanges:
+            stats.totalModified += 1
+            // Track modified time/duration as preferred
+            if let modifiedTime = interaction.modifiedTime, let hour = extractHourFromTimeString(modifiedTime) {
+                stats.preferredHours[hour, default: 0] += 1
+            }
+            if let modifiedDuration = interaction.modifiedDuration {
+                stats.preferredDurations[modifiedDuration, default: 0] += 1
+            }
+        case .declined:
+            stats.totalDeclined += 1
+        case .skipped:
+            stats.totalSkipped += 1
+        }
+
+        // Calculate average accepted duration
+        let acceptedDurations = recentInteractions.filter { $0.action == .accepted || $0.action == .acceptedWithChanges }
+        if !acceptedDurations.isEmpty {
+            let totalDuration = acceptedDurations.reduce(0) { sum, interaction in
+                sum + (interaction.modifiedDuration ?? interaction.proposedDuration)
+            }
+            stats.averageAcceptedDuration = totalDuration / acceptedDurations.count
+        }
+
+        firebaseManager.updateAcceptanceStats(stats) { error in
+            if let error = error {
+                print("Error updating acceptance stats: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func extractHourFromTimeString(_ timeStr: String) -> Int? {
+        // Parse time strings like "2:00 PM" or "14:00"
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+
+        // Try "h:mm a" format first
+        formatter.dateFormat = "h:mm a"
+        if let date = formatter.date(from: timeStr.trimmingCharacters(in: .whitespaces)) {
+            return Calendar.current.component(.hour, from: date)
+        }
+
+        // Try "HH:mm" format
+        formatter.dateFormat = "HH:mm"
+        if let date = formatter.date(from: timeStr.trimmingCharacters(in: .whitespaces)) {
+            return Calendar.current.component(.hour, from: date)
+        }
+
+        // Try to extract from range like "2:00 PM - 3:30 PM"
+        let components = timeStr.components(separatedBy: " - ")
+        if let firstTime = components.first {
+            formatter.dateFormat = "h:mm a"
+            if let date = formatter.date(from: firstTime.trimmingCharacters(in: .whitespaces)) {
+                return Calendar.current.component(.hour, from: date)
+            }
+        }
+
+        return nil
     }
     
     // MARK: - Chat History
@@ -199,18 +369,23 @@ class SchedulingAssistantViewModel: ObservableObject {
         let calendar = Calendar.current
         let startOfDay = calendar.startOfDay(for: date)
         let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
-        
+
+        // Get day-specific context
+        let dayOfWeek = getDayOfWeekString(from: date)
+        let dayContext = dayContexts[dayOfWeek]
+
         // Sort events by start time
         let sortedEvents = calendarEvents.sorted { event1, event2 in
             guard let date1 = event1.start.startDate, let date2 = event2.start.startDate else { return false }
             return date1 < date2
         }
-        
+
         var timeSlots: [String] = []
         var currentTime = startOfDay
-        
-        // Add wake time if set
-        if let wakeTimeStr = schedulePreference?.preferredWakeTime,
+
+        // Add wake time if set (day-specific overrides global)
+        let effectiveWakeTime = dayContext?.wakeTime ?? schedulePreference?.preferredWakeTime
+        if let wakeTimeStr = effectiveWakeTime,
            let wakeTime = parseTimeString(wakeTimeStr) {
             let wakeDate = calendar.date(bySettingHour: wakeTime.hour, minute: wakeTime.minute, second: 0, of: date) ?? startOfDay
             if wakeDate > currentTime {
@@ -220,18 +395,33 @@ class SchedulingAssistantViewModel: ObservableObject {
                 currentTime = wakeDate
             }
         }
-        
+
+        // Add blocked blocks from day context
+        if let blockedBlocks = dayContext?.blockedBlocks {
+            for block in blockedBlocks {
+                if let blockStart = parseTimeString(block.startTime),
+                   let blockEnd = parseTimeString(block.endTime) {
+                    let blockStartDate = calendar.date(bySettingHour: blockStart.hour, minute: blockStart.minute, second: 0, of: date) ?? date
+                    let blockEndDate = calendar.date(bySettingHour: blockEnd.hour, minute: blockEnd.minute, second: 0, of: date) ?? date
+                    let formatter = DateFormatter()
+                    formatter.timeStyle = .short
+                    let label = block.label ?? "blocked"
+                    timeSlots.append("\(formatter.string(from: blockStartDate)) to \(formatter.string(from: blockEndDate)): \(label) (blocked)")
+                }
+            }
+        }
+
         // Process events
         for event in sortedEvents {
             guard let eventStart = event.start.startDate, eventStart >= startOfDay && eventStart < endOfDay else { continue }
-            
+
             // Add free time before event
             if eventStart > currentTime {
                 let formatter = DateFormatter()
                 formatter.timeStyle = .short
                 timeSlots.append("\(formatter.string(from: currentTime)) to \(formatter.string(from: eventStart)): nothing")
             }
-            
+
             // Add event
             let formatter = DateFormatter()
             formatter.timeStyle = .short
@@ -243,9 +433,10 @@ class SchedulingAssistantViewModel: ObservableObject {
                 currentTime = eventStart
             }
         }
-        
-        // Add lunch time if set
-        if let lunchTimeStr = schedulePreference?.lunchTime,
+
+        // Add lunch time if set (day-specific overrides global)
+        let effectiveLunchTime = dayContext?.lunchTime ?? schedulePreference?.lunchTime
+        if let lunchTimeStr = effectiveLunchTime,
            let lunchTime = parseTimeString(lunchTimeStr) {
             let lunchDate = calendar.date(bySettingHour: lunchTime.hour, minute: lunchTime.minute, second: 0, of: date) ?? date
             if lunchDate > currentTime && lunchDate < endOfDay {
@@ -257,15 +448,30 @@ class SchedulingAssistantViewModel: ObservableObject {
                 currentTime = lunchEnd
             }
         }
-        
+
+        // Add schedule notes for this date
+        for note in scheduleNotes {
+            if note.isBlocking, let timeRange = note.timeRange {
+                let formatter = DateFormatter()
+                formatter.timeStyle = .short
+                timeSlots.append("\(timeRange): \(note.note) (user note - blocked)")
+            }
+        }
+
         // Add remaining free time
         if currentTime < endOfDay {
             let formatter = DateFormatter()
             formatter.timeStyle = .short
             timeSlots.append("\(formatter.string(from: currentTime)) to \(formatter.string(from: endOfDay)): nothing")
         }
-        
+
         return timeSlots.joined(separator: "\n")
+    }
+
+    private func getDayOfWeekString(from date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEEE"
+        return formatter.string(from: date).lowercased()
     }
     
     private func parseTimeString(_ timeStr: String) -> (hour: Int, minute: Int)? {
@@ -296,43 +502,67 @@ class SchedulingAssistantViewModel: ObservableObject {
     }
     
     // MARK: - AI Integration
-    
+
     func proposeWorkingSession(backlogItems: [UnifiedBacklogItem], for date: Date = Date(), completion: @escaping (Error?) -> Void) {
-        guard let userId = Auth.auth().currentUser?.uid else {
+        guard Auth.auth().currentUser?.uid != nil else {
             completion(NSError(domain: "SchedulingAssistantViewModel", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
             return
         }
-        
+
         selectedDate = date
         isLoading = true
         errorMessage = nil
-        
+
+        // Fetch schedule notes for this date
+        fetchScheduleNotes(for: date)
+
         // Always refresh calendar events before proposing to get the latest schedule
         fetchCalendarEvents(for: date)
-        
+
         // Wait a moment for calendar events to be fetched, then proceed
         // Use a completion-based approach to ensure calendar is fetched
         self.ensureCalendarFetched(for: date) {
+            // Show status message for analyzing
+            self.showStatus("Analyzing your schedule and backlog...")
+            
+            // Update status after a brief moment
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                self.showStatus("Finding the best time slot...")
+            }
             // Build context for AI with fresh calendar data
-            let backlogText = backlogItems.map { "- \($0.title): \($0.description)" }.joined(separator: "\n")
+            let backlogText = self.formatBacklogItemsWithMetadata(backlogItems)
             let timeSlots = self.formatCalendarAsTimeSlots(for: date)
             let recurringCommitmentsText = self.schedulePreference?.recurringCommitments.map { commitment in
                 "- \(commitment.eventName): \(commitment.daysOfWeek.joined(separator: ", ")) at \(commitment.time)"
             }.joined(separator: "\n") ?? "None"
-            
+
             let declineReasonsText = self.declineReasons.isEmpty ? "None" : self.declineReasons.joined(separator: "; ")
-            
+
             let dateFormatter = DateFormatter()
             dateFormatter.dateStyle = .full
             let dateString = dateFormatter.string(from: date)
-            
+
+            // Get day-specific context
+            let dayOfWeek = self.getDayOfWeekString(from: date)
+            let dayContext = self.dayContexts[dayOfWeek]
+            let dayContextText = self.formatDayContext(dayContext, dayOfWeek: dayOfWeek)
+
+            // Get schedule notes for this date
+            let scheduleNotesText = self.formatScheduleNotes()
+
+            // Get recent interactions for learning
+            let interactionHistoryText = self.formatRecentInteractions(for: dayOfWeek)
+
+            // Get acceptance stats
+            let acceptanceStatsText = self.formatAcceptanceStats()
+
             // Get current time for context
             let now = Date()
             let timeFormatter = DateFormatter()
             timeFormatter.timeStyle = .medium
             timeFormatter.dateStyle = .none
             let currentTimeString = timeFormatter.string(from: now)
-            
+
             // Check if the selected date is today
             let calendar = Calendar.current
             let isToday = calendar.isDate(date, inSameDayAs: now)
@@ -355,68 +585,90 @@ class SchedulingAssistantViewModel: ObservableObject {
                 WARNING: The target date (\(dateString)) is in the past. Only propose times if absolutely necessary.
                 """
             }
-            
+
             let prompt = """
-            You are a scheduling assistant. Based on the user's backlog items and their calendar for \(dateString), propose a working session.
-            
+            You are a scheduling assistant. Based on the user's backlog items and their calendar for \(dateString) (\(dayOfWeek.capitalized)), propose a working session.
+
             \(currentTimeContext)
-            
+
             IMPORTANT: The calendar below shows the CURRENT state including any events that were just created. Make sure your proposed time does NOT conflict with any existing events.
-            
-            User's Backlog Items:
+
+            User's Backlog Items (with priority and estimated duration):
             \(backlogText.isEmpty ? "None" : backlogText)
-            
+
             Calendar Time Slots for \(dateString) (CURRENT - includes all scheduled events):
             \(timeSlots)
-            
+
+            Day-Specific Context for \(dayOfWeek.capitalized):
+            \(dayContextText)
+
+            Schedule Notes for This Date:
+            \(scheduleNotesText)
+
             User's Schedule Preferences:
             - Preferred wake time: \(self.schedulePreference?.preferredWakeTime ?? "Not set")
             - Lunch time: \(self.schedulePreference?.lunchTime ?? "Not set")
             - Recurring commitments: \(recurringCommitmentsText)
-            
+
             Learned Schedule Constraints (reasons why user can't work even when calendar is free):
             \(self.formatScheduleConstraints())
-            
+
             Previous Decline Reasons (learn from these):
             \(declineReasonsText)
-            
+
+            User's Interaction History (what they've accepted/declined before on \(dayOfWeek.capitalized)):
+            \(interactionHistoryText)
+
+            User's Preference Statistics:
+            \(acceptanceStatsText)
+
             Instructions:
-            1. Analyze the backlog items and identify tasks that can be grouped together into one working session (e.g., similar tasks, quick tasks, related work)
-            2. You can propose either:
-               - A SINGLE task if it requires focused attention
-               - MULTIPLE tasks (2-4 tasks) if they can be efficiently done together in one session
+            1. Analyze the backlog items and identify tasks that can be grouped together into one working session:
+               - BATCH quick tasks (<15 min each) together into one session
+               - GROUP tasks by category when they're related
+               - Keep SINGLE focus tasks that need dedicated attention separate
+            2. Consider task priorities (higher number = higher priority) and estimated durations
             3. Find an available time slot that fits the user's schedule - CHECK THE CALENDAR CAREFULLY to avoid conflicts
-            4. Consider their wake time, lunch time, and any decline reasons
-            5. \(isToday ? "CRITICAL: The proposed time MUST be after the current time (\(currentTimeString)). Do NOT propose any time in the past." : "Propose a time that works for the target date.")
-            6. Return ONLY a JSON object with this exact format:
+            4. Consider their wake time, lunch time, day-specific context, schedule notes, and any decline reasons
+            5. LEARN from their interaction history - propose times and durations similar to what they've accepted before
+            6. \(isToday ? "CRITICAL: The proposed time MUST be after the current time (\(currentTimeString)). Do NOT propose any time in the past." : "Propose a time that works for the target date.")
+            7. IMPORTANT: If the user has indicated they don't want to do tasks today (e.g., in previous decline reasons mentioning "not today", "skip today"), DO NOT propose those tasks. Instead, only propose tasks they haven't declined for today.
+            8. Return ONLY a JSON object with this exact format:
             {
                 "tasks": ["Task 1", "Task 2", "Task 3"] or ["Single Task"],
+                "taskDetails": [{"title": "Task 1", "estimatedDuration": 15, "priority": 5}],
                 "workingSessionTime": "2:00 PM - 3:30 PM",
+                "groupingType": "quickTaskBatch" or "relatedTasks" or "singleFocus",
                 "reason": "Brief reason why this time works and why these tasks are grouped together"
             }
-            
+
             Do NOT include any other text, only the JSON.
             """
-            
+
             Task {
                 do {
+                    DispatchQueue.main.async {
+                        self.showStatus("Proposing working session...")
+                    }
+                    
                     let vertex = VertexAI.vertexAI()
                     let model = vertex.generativeModel(modelName: "gemini-2.5-flash")
-                    
-                    let userMessage = try ModelContent(role: "user", parts: [TextPart(prompt)])
+
+                    let userMessage = ModelContent(role: "user", parts: [TextPart(prompt)])
                     let response = try await model.generateContent([userMessage])
-                    
+
                     DispatchQueue.main.async {
                         self.isLoading = false
-                        
+                        self.clearStatus()
+
                         guard let text = response.text else {
                             self.errorMessage = "AI returned no text"
                             completion(NSError(domain: "SchedulingAssistantViewModel", code: -1, userInfo: [NSLocalizedDescriptionKey: "AI returned no text"]))
                             return
                         }
-                        
+
                         // Parse JSON response
-                        if let proposal = self.parseProposal(from: text) {
+                        if let proposal = self.parseProposal(from: text, backlogItems: backlogItems) {
                             self.currentProposal = proposal
                             completion(nil)
                         } else {
@@ -427,12 +679,133 @@ class SchedulingAssistantViewModel: ObservableObject {
                 } catch {
                     DispatchQueue.main.async {
                         self.isLoading = false
+                        self.clearStatus()
                         self.errorMessage = "Failed to generate response: \(error.localizedDescription)"
                         completion(error)
                     }
                 }
             }
         }
+    }
+
+    // MARK: - Formatting Helpers
+
+    private func formatBacklogItemsWithMetadata(_ items: [UnifiedBacklogItem]) -> String {
+        return items.map { item in
+            var line = "- \(item.title)"
+            if let priority = item.priority, priority > 0 {
+                line += " [Priority: \(priority)]"
+            }
+            if let duration = item.estimatedDuration {
+                line += " [Est: \(duration) min]"
+            }
+            if let category = item.category {
+                line += " [Category: \(category)]"
+            }
+            if !item.description.isEmpty {
+                line += " - \(item.description)"
+            }
+            return line
+        }.joined(separator: "\n")
+    }
+
+    private func formatDayContext(_ context: DayContext?, dayOfWeek: String) -> String {
+        guard let context = context else {
+            return "No specific settings for \(dayOfWeek.capitalized)"
+        }
+
+        var lines: [String] = []
+
+        if let wakeTime = context.wakeTime {
+            lines.append("- Wake time: \(wakeTime)")
+        }
+        if let lunchTime = context.lunchTime {
+            lines.append("- Lunch time: \(lunchTime)")
+        }
+        if !context.generalActivities.isEmpty {
+            lines.append("- Activities: \(context.generalActivities.joined(separator: ", "))")
+        }
+        if !context.preferredWorkBlocks.isEmpty {
+            let blocks = context.preferredWorkBlocks.map { "\($0.startTime)-\($0.endTime)" }.joined(separator: ", ")
+            lines.append("- Preferred work times: \(blocks)")
+        }
+        if !context.blockedBlocks.isEmpty {
+            let blocks = context.blockedBlocks.map { block in
+                let label = block.label ?? "blocked"
+                return "\(block.startTime)-\(block.endTime) (\(label))"
+            }.joined(separator: ", ")
+            lines.append("- Blocked times: \(blocks)")
+        }
+
+        return lines.isEmpty ? "No specific settings for \(dayOfWeek.capitalized)" : lines.joined(separator: "\n")
+    }
+
+    private func formatScheduleNotes() -> String {
+        guard !scheduleNotes.isEmpty else {
+            return "None"
+        }
+
+        return scheduleNotes.map { note in
+            var line = "- \(note.note)"
+            if let timeRange = note.timeRange {
+                line += " (\(timeRange))"
+            }
+            if note.isBlocking {
+                line += " [BLOCKING - avoid this time]"
+            }
+            return line
+        }.joined(separator: "\n")
+    }
+
+    private func formatRecentInteractions(for dayOfWeek: String) -> String {
+        let relevantInteractions = recentInteractions.filter { $0.dayOfWeek.lowercased() == dayOfWeek.lowercased() }
+
+        guard !relevantInteractions.isEmpty else {
+            return "No previous interactions on \(dayOfWeek.capitalized)"
+        }
+
+        return relevantInteractions.prefix(5).map { interaction in
+            var line = "- \(interaction.action.rawValue.capitalized)"
+            line += " at \(interaction.proposedTime)"
+            line += " (\(interaction.proposedDuration) min)"
+            if let modifiedTime = interaction.modifiedTime {
+                line += " -> modified to \(modifiedTime)"
+            }
+            if let modifiedDuration = interaction.modifiedDuration {
+                line += " (\(modifiedDuration) min)"
+            }
+            if let reason = interaction.declineReason {
+                line += " - Reason: \(reason)"
+            }
+            return line
+        }.joined(separator: "\n")
+    }
+
+    private func formatAcceptanceStats() -> String {
+        guard let stats = schedulePreference?.acceptanceStats else {
+            return "No statistics yet"
+        }
+
+        var lines: [String] = []
+        lines.append("- Total accepted: \(stats.totalAccepted), declined: \(stats.totalDeclined), modified: \(stats.totalModified), skipped: \(stats.totalSkipped)")
+
+        if let avgDuration = stats.averageAcceptedDuration {
+            lines.append("- Average accepted session duration: \(avgDuration) min")
+        }
+
+        // Find top preferred hours
+        let sortedHours = stats.preferredHours.sorted { $0.value > $1.value }
+        if !sortedHours.isEmpty {
+            let topHours = sortedHours.prefix(3).map { hour, count in
+                let formatter = DateFormatter()
+                formatter.dateFormat = "h a"
+                let date = Calendar.current.date(bySettingHour: hour, minute: 0, second: 0, of: Date()) ?? Date()
+                return formatter.string(from: date)
+            }.joined(separator: ", ")
+            lines.append("- Preferred hours: \(topHours)")
+        }
+
+        return lines.joined(separator: "\n")
     }
     
     func sendMessage(_ content: String, backlogItems: [UnifiedBacklogItem], completion: @escaping (Error?) -> Void) {
@@ -465,6 +838,9 @@ class SchedulingAssistantViewModel: ObservableObject {
             learnedPatterns["decline_reason_\(Date().timeIntervalSince1970)"] = content
             updateSchedulePreference(["learnedPatterns": learnedPatterns])
             
+            // Clear current proposal before proposing a new one to ensure UI updates properly
+            currentProposal = nil
+            
             // Propose another time
             proposeWorkingSession(backlogItems: backlogItems, completion: completion)
             return
@@ -472,6 +848,43 @@ class SchedulingAssistantViewModel: ObservableObject {
         
         isLoading = true
         errorMessage = nil
+        
+        // Check for "not today" intent
+        if detectNotTodayIntent(content) {
+            // If user doesn't want to do tasks today, skip current proposal tasks
+            if let proposal = currentProposal {
+                let tasksToSkip = proposal.tasks
+                skipTask(tasks: tasksToSkip) {
+                    // Move to next session
+                    if let userId = Auth.auth().currentUser?.uid {
+                        let message = SchedulingMessage(
+                            userId: userId,
+                            role: .assistant,
+                            content: "Got it! I'll skip those tasks for today. Let me propose the next session."
+                        )
+                        self.messages.append(message)
+                        self.firebaseManager.saveSchedulingMessage(message) { _ in }
+                    }
+                    completion(nil)
+                }
+                return
+            } else {
+                // No current proposal, but user said "not today" - acknowledge and complete
+                if let userId = Auth.auth().currentUser?.uid {
+                    let message = SchedulingMessage(
+                        userId: userId,
+                        role: .assistant,
+                        content: "Understood! I'll keep that in mind for today."
+                    )
+                    self.messages.append(message)
+                    self.firebaseManager.saveSchedulingMessage(message) { _ in }
+                }
+                completion(nil)
+                return
+            }
+        }
+        
+        showStatus("Thinking...")
         
         // Regular chat message - use simpler prompt
         let prompt = """
@@ -481,6 +894,7 @@ class SchedulingAssistantViewModel: ObservableObject {
         \(conversationContext)
         
         Respond helpfully and naturally. If the user is explaining why they can't do something, acknowledge it and learn from it.
+        If the user indicates they don't want to do tasks today (e.g., "not today", "skip today"), acknowledge and move on.
         """
         
         Task {
@@ -488,11 +902,12 @@ class SchedulingAssistantViewModel: ObservableObject {
                 let vertex = VertexAI.vertexAI()
                 let model = vertex.generativeModel(modelName: "gemini-2.5-flash")
                 
-                let aiMessage = try ModelContent(role: "user", parts: [TextPart(prompt)])
+                let aiMessage = ModelContent(role: "user", parts: [TextPart(prompt)])
                 let response = try await model.generateContent([aiMessage])
                 
                 DispatchQueue.main.async {
                     self.isLoading = false
+                    self.clearStatus()
                     
                     guard let text = response.text else {
                         self.errorMessage = "AI returned no text"
@@ -519,6 +934,7 @@ class SchedulingAssistantViewModel: ObservableObject {
             } catch {
                 DispatchQueue.main.async {
                     self.isLoading = false
+                    self.clearStatus()
                     self.errorMessage = "Failed to generate response: \(error.localizedDescription)"
                     completion(error)
                 }
@@ -527,10 +943,10 @@ class SchedulingAssistantViewModel: ObservableObject {
     }
     
     // MARK: - Proposal Parsing
-    
-    private func parseProposal(from text: String) -> ProposedSession? {
-        // Try to extract JSON from the response - handle multiline JSON
-        let jsonPattern = "\\{[\\s\\S]*?\\}"
+
+    private func parseProposal(from text: String, backlogItems: [UnifiedBacklogItem] = []) -> ProposedSession? {
+        // Try to extract JSON from the response - handle multiline JSON with nested objects
+        let jsonPattern = "\\{(?:[^{}]|\\{[^{}]*\\}|\\[[^\\[\\]]*\\])*\\}"
         if let regex = try? NSRegularExpression(pattern: jsonPattern, options: []),
            let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
            let range = Range(match.range, in: text) {
@@ -538,7 +954,7 @@ class SchedulingAssistantViewModel: ObservableObject {
             if let data = jsonString.data(using: .utf8),
                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let workingSessionTime = json["workingSessionTime"] as? String {
-                
+
                 // Handle both single task and multiple tasks
                 var tasks: [String] = []
                 if let taskArray = json["tasks"] as? [String] {
@@ -549,18 +965,53 @@ class SchedulingAssistantViewModel: ObservableObject {
                 } else {
                     return nil
                 }
-                
+
                 // Parse time range
                 let timeComponents = workingSessionTime.components(separatedBy: " - ")
                 let startTime = parseTimeRange(timeComponents.first ?? "")
                 let endTime = timeComponents.count > 1 ? parseTimeRange(timeComponents[1]) : nil
-                
+
+                // Parse task details if present
+                var taskDetails: [ProposedTaskDetail]? = nil
+                if let detailsArray = json["taskDetails"] as? [[String: Any]] {
+                    taskDetails = detailsArray.compactMap { detail in
+                        guard let title = detail["title"] as? String else { return nil }
+                        return ProposedTaskDetail(
+                            title: title,
+                            estimatedDuration: detail["estimatedDuration"] as? Int,
+                            priority: detail["priority"] as? Int ?? 0
+                        )
+                    }
+                } else {
+                    // Build task details from backlog items if not provided by AI
+                    taskDetails = tasks.compactMap { taskTitle in
+                        if let item = backlogItems.first(where: { $0.title == taskTitle }) {
+                            return ProposedTaskDetail(
+                                title: taskTitle,
+                                estimatedDuration: item.estimatedDuration,
+                                priority: item.priority ?? 0
+                            )
+                        }
+                        return ProposedTaskDetail(title: taskTitle, estimatedDuration: nil, priority: 0)
+                    }
+                }
+
+                // Parse grouping type
+                var groupingType: TaskGroupingType? = nil
+                if let groupingStr = json["groupingType"] as? String {
+                    groupingType = TaskGroupingType(rawValue: groupingStr)
+                }
+
                 return ProposedSession(
                     tasks: tasks,
                     workingSessionTime: workingSessionTime,
                     startTime: startTime,
                     endTime: endTime,
-                    reason: json["reason"] as? String
+                    reason: json["reason"] as? String,
+                    taskDetails: taskDetails,
+                    adjustedStartTime: nil,
+                    adjustedDuration: nil,
+                    groupingType: groupingType
                 )
             }
         }
@@ -585,28 +1036,33 @@ class SchedulingAssistantViewModel: ObservableObject {
     }
     
     // MARK: - Proposal Actions
-    
+
     func acceptProposal(backlogItems: [UnifiedBacklogItem], onComplete: @escaping ([String]) -> Void) {
         guard let proposal = currentProposal else { return }
-        
+
+        // Determine if this is an acceptance with modifications
+        let hasModifications = proposal.hasModifications
+        let effectiveStart = proposal.effectiveStartTime ?? proposal.startTime
+        let effectiveEnd = proposal.effectiveEndTime ?? proposal.endTime
+
         // Create calendar event for the working session
-        if let startTime = proposal.startTime {
+        if let startTime = effectiveStart {
             // Adjust startTime to selected date
             let calendar = Calendar.current
             let selectedDateStart = calendar.startOfDay(for: selectedDate)
             let timeComponents = calendar.dateComponents([.hour, .minute], from: startTime)
             let adjustedStartTime = calendar.date(bySettingHour: timeComponents.hour ?? 0, minute: timeComponents.minute ?? 0, second: 0, of: selectedDateStart) ?? startTime
-            
-            let endTime = proposal.endTime ?? Calendar.current.date(byAdding: .hour, value: 1, to: adjustedStartTime) ?? adjustedStartTime
+
+            let endTime = effectiveEnd ?? Calendar.current.date(byAdding: .hour, value: 1, to: adjustedStartTime) ?? adjustedStartTime
             let adjustedEndTime = calendar.date(bySettingHour: calendar.component(.hour, from: endTime), minute: calendar.component(.minute, from: endTime), second: 0, of: selectedDateStart) ?? endTime
-            
+
             // Create event title with all tasks
-            let tasksTitle = proposal.tasks.count == 1 
+            let tasksTitle = proposal.tasks.count == 1
                 ? proposal.tasks.first ?? "Working Session"
                 : "Working Session: \(proposal.tasks.count) tasks"
             let tasksDescription = proposal.tasks.joined(separator: "\n• ")
             let fullDescription = "Tasks:\n• \(tasksDescription)\n\n\(proposal.reason ?? "")"
-            
+
             calendarManager.createCalendarEvent(
                 title: tasksTitle,
                 start: adjustedStartTime,
@@ -614,33 +1070,51 @@ class SchedulingAssistantViewModel: ObservableObject {
                 description: fullDescription
             ) { [weak self] eventId, error in
                 guard let self = self else { return }
-                
+
                 if let error = error {
                     print("Error creating calendar event: \(error.localizedDescription)")
                     onComplete(proposal.tasks)
                 } else {
                     print("✅ Created working session calendar event")
+
+                    // Record interaction for learning
+                    let duration = Int(adjustedEndTime.timeIntervalSince(adjustedStartTime) / 60)
+                    let interaction = ProposalInteraction(
+                        proposedTasks: proposal.tasks,
+                        proposedTime: proposal.workingSessionTime,
+                        proposedDuration: proposal.effectiveDuration ?? duration,
+                        action: hasModifications ? .acceptedWithChanges : .accepted,
+                        modifiedTime: hasModifications ? proposal.effectiveTimeString : nil,
+                        modifiedDuration: proposal.adjustedDuration,
+                        declineReason: nil,
+                        dayOfWeek: self.getDayOfWeekString(from: self.selectedDate)
+                    )
+                    self.recordInteraction(interaction)
+
                     self.currentProposal = nil
-                    
+
                     // Refresh calendar events to get the newly created event
                     // Wait a moment for Google Calendar to sync
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                         self.fetchCalendarEvents(for: self.selectedDate)
-                        
+
                         // Wait a bit more for the fetch to complete, then call onComplete
                         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                             // Save acceptance message
                             if let userId = Auth.auth().currentUser?.uid {
                                 let tasksList = proposal.tasks.joined(separator: ", ")
+                                let timeStr = hasModifications ? proposal.effectiveTimeString : proposal.workingSessionTime
                                 let message = SchedulingMessage(
                                     userId: userId,
                                     role: .user,
-                                    content: "Accepted: \(tasksList) at \(proposal.workingSessionTime)"
+                                    content: hasModifications
+                                        ? "Accepted with changes: \(tasksList) at \(timeStr)"
+                                        : "Accepted: \(tasksList) at \(timeStr)"
                                 )
                                 self.messages.append(message)
                                 self.firebaseManager.saveSchedulingMessage(message) { _ in }
                             }
-                            
+
                             onComplete(proposal.tasks)
                         }
                     }
@@ -652,13 +1126,47 @@ class SchedulingAssistantViewModel: ObservableObject {
             onComplete(proposal.tasks)
         }
     }
-    
-    func declineProposal() {
+
+    func declineProposal(reason: String? = nil) {
+        guard let proposal = currentProposal else { return }
+
+        // Record interaction for learning
+        let duration = proposal.effectiveDuration ?? 60
+        let interaction = ProposalInteraction(
+            proposedTasks: proposal.tasks,
+            proposedTime: proposal.workingSessionTime,
+            proposedDuration: duration,
+            action: .declined,
+            modifiedTime: nil,
+            modifiedDuration: nil,
+            declineReason: reason,
+            dayOfWeek: getDayOfWeekString(from: selectedDate)
+        )
+        recordInteraction(interaction)
+
         showingDeclineReasonInput = true
     }
-    
+
     func skipTask(tasks: [String], onComplete: @escaping () -> Void) {
-        // User skipped task - clear proposal and move to next task
+        guard let proposal = currentProposal else {
+            onComplete()
+            return
+        }
+
+        // Record interaction for learning
+        let duration = proposal.effectiveDuration ?? 60
+        let interaction = ProposalInteraction(
+            proposedTasks: tasks,
+            proposedTime: proposal.workingSessionTime,
+            proposedDuration: duration,
+            action: .skipped,
+            modifiedTime: nil,
+            modifiedDuration: nil,
+            declineReason: nil,
+            dayOfWeek: getDayOfWeekString(from: selectedDate)
+        )
+        recordInteraction(interaction)
+
         // Save skip message
         if let userId = Auth.auth().currentUser?.uid {
             let tasksList = tasks.joined(separator: ", ")
@@ -670,33 +1178,59 @@ class SchedulingAssistantViewModel: ObservableObject {
             messages.append(message)
             firebaseManager.saveSchedulingMessage(message) { _ in }
         }
-        
+
         currentProposal = nil
         onComplete()
     }
     
-    // MARK: - Preference Learning
+    // MARK: - Not Today Detection
     
+    private func detectNotTodayIntent(_ message: String) -> Bool {
+        let lowercased = message.lowercased()
+        let notTodayPhrases = [
+            "not today",
+            "skip today",
+            "don't want to do it today",
+            "don't want to today",
+            "not doing it today",
+            "skip it today",
+            "not today please",
+            "maybe tomorrow",
+            "not right now",
+            "later",
+            "not now"
+        ]
+        
+        return notTodayPhrases.contains { lowercased.contains($0) }
+    }
+    
+    // MARK: - Preference Learning
+
     private func analyzeAndUpdatePreferences(userMessage: String, assistantResponse: String) {
-        // Use AI to extract any schedule constraints or preferences from user message
+        // Use AI to extract any schedule constraints, preferences, or one-off notes from user message
         let analysisPrompt = """
-        Analyze the following user message where they explain why they can't do a working session at a proposed time.
+        Analyze the following user message for scheduling information.
         The user's calendar might show the time as free, but they have personal preferences or constraints.
-        
+
         User message: "\(userMessage)"
-        
-        Extract ANY schedule constraints, preferences, or reasons why they can't work at certain times:
-        - Time-specific constraints (e.g., "I'm eating lunch", "I normally get up at 9 am", "I have gym at 6 pm")
-        - General preferences (e.g., "I don't work after 8 pm", "I prefer mornings", "I'm not productive in the afternoon")
-        - Recurring commitments that aren't on their calendar (e.g., "I have class every Monday")
-        - Any other schedule-related information
-        
+
+        Extract ANY of the following:
+        1. Schedule constraints (recurring patterns):
+           - Time-specific constraints (e.g., "I'm eating lunch", "I normally get up at 9 am", "I have gym at 6 pm")
+           - General preferences (e.g., "I don't work after 8 pm", "I prefer mornings")
+           - Recurring commitments that aren't on their calendar (e.g., "I have class every Monday")
+
+        2. One-off schedule notes (specific date events mentioned):
+           - Meeting with someone on a specific date/day (e.g., "I have lunch with Sarah Tuesday at 2pm")
+           - Appointments on specific days (e.g., "dentist appointment Friday morning")
+           - Any specific date commitment that should block scheduling
+
         Respond in JSON format:
         {
             "scheduleConstraints": [
                 {
-                    "reason": "Brief description of why they can't work (e.g., 'I'm eating lunch', 'I normally get up at 9 am')",
-                    "timeRange": "Time range if specific (e.g., '12:00-13:00', 'before 09:00', 'after 20:00') or null",
+                    "reason": "Brief description",
+                    "timeRange": "Time range if specific (e.g., '12:00-13:00') or null",
                     "context": "Additional context if needed or null"
                 }
             ],
@@ -705,10 +1239,16 @@ class SchedulingAssistantViewModel: ObservableObject {
                 "daysOfWeek": ["MO", "WE"],
                 "time": "10:00",
                 "frequency": "WEEKLY"
+            } or null,
+            "scheduleNote": {
+                "note": "lunch with Sarah",
+                "dayOfWeek": "tuesday",
+                "timeRange": "14:00-15:00",
+                "isBlocking": true
             } or null
         }
-        
-        If no constraints found, return empty array for scheduleConstraints.
+
+        If no constraints or notes found, return empty arrays and null values.
         """
         
         Task {
@@ -716,7 +1256,7 @@ class SchedulingAssistantViewModel: ObservableObject {
                 let vertex = VertexAI.vertexAI()
                 let model = vertex.generativeModel(modelName: "gemini-2.5-flash")
                 
-                let analysisMessage = try ModelContent(role: "user", parts: [TextPart(analysisPrompt)])
+                let analysisMessage = ModelContent(role: "user", parts: [TextPart(analysisPrompt)])
                 let response = try await model.generateContent([analysisMessage])
                 
                 guard let text = response.text else { return }
@@ -725,7 +1265,7 @@ class SchedulingAssistantViewModel: ObservableObject {
                 if let data = text.data(using: .utf8),
                    let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
                     
-                    var updates: [String: Any] = [:]
+                    let updates: [String: Any] = [:]
                     var constraintsToAdd: [ScheduleConstraint] = []
                     
                     // Extract schedule constraints
@@ -763,19 +1303,61 @@ class SchedulingAssistantViewModel: ObservableObject {
                         }
                     }
                     
+                    // Handle schedule note extraction (one-off events from chat)
+                    if let noteDict = json["scheduleNote"] as? [String: Any],
+                       let noteText = noteDict["note"] as? String,
+                       let dayOfWeekStr = noteDict["dayOfWeek"] as? String {
+
+                        // Calculate the date for the mentioned day of week
+                        let noteDate = self.getNextDateForDayOfWeek(dayOfWeekStr)
+                        let timeRange = noteDict["timeRange"] as? String
+                        let isBlocking = noteDict["isBlocking"] as? Bool ?? true
+
+                        let scheduleNote = ScheduleNote(
+                            date: noteDate,
+                            note: noteText,
+                            timeRange: timeRange,
+                            isBlocking: isBlocking
+                        )
+
+                        // Save the schedule note
+                        self.firebaseManager.saveScheduleNote(scheduleNote) { error, noteId in
+                            if let error = error {
+                                print("Error saving schedule note: \(error.localizedDescription)")
+                            } else {
+                                print("✅ Saved schedule note: \(noteText)")
+                                // Refresh notes
+                                self.fetchScheduleNotes(for: noteDate)
+
+                                // Send confirmation message to user
+                                if let userId = Auth.auth().currentUser?.uid {
+                                    let confirmationMessage = SchedulingMessage(
+                                        userId: userId,
+                                        role: .assistant,
+                                        content: "Got it! I'll avoid scheduling during your \(noteText) on \(dayOfWeekStr.capitalized)\(timeRange != nil ? " at \(timeRange!)" : "")."
+                                    )
+                                    DispatchQueue.main.async {
+                                        self.messages.append(confirmationMessage)
+                                    }
+                                    self.firebaseManager.saveSchedulingMessage(confirmationMessage) { _ in }
+                                }
+                            }
+                        }
+                    }
+
                     // Update preferences with new constraints
                     if !constraintsToAdd.isEmpty || commitmentToAdd != nil {
                         firebaseManager.fetchSchedulePreference { [weak self] preference, _ in
-                            guard let self = self, var pref = preference else { return }
-                            
+                            guard let self = self, let pref = preference else { return }
+
                             var constraints = pref.scheduleConstraints
                             constraints.append(contentsOf: constraintsToAdd)
-                            
+
                             var commitments = pref.recurringCommitments
                             if let commitment = commitmentToAdd {
                                 commitments.append(commitment)
                             }
-                            
+
                             // Build update dictionary
                             var prefDict: [String: Any] = [
                                 "scheduleConstraints": constraints.map { constraint in
@@ -799,11 +1381,11 @@ class SchedulingAssistantViewModel: ObservableObject {
                                     ]
                                 }
                             ]
-                            
+
                             if !updates.isEmpty {
                                 prefDict.merge(updates) { _, new in new }
                             }
-                            
+
                             self.updateSchedulePreference(prefDict)
                         }
                     } else if !updates.isEmpty {
@@ -815,6 +1397,29 @@ class SchedulingAssistantViewModel: ObservableObject {
                 print("Error analyzing preferences: \(error.localizedDescription)")
             }
         }
+    }
+
+    private func getNextDateForDayOfWeek(_ dayOfWeekStr: String) -> Date {
+        let calendar = Calendar.current
+        let today = Date()
+
+        let dayMapping: [String: Int] = [
+            "sunday": 1, "monday": 2, "tuesday": 3, "wednesday": 4,
+            "thursday": 5, "friday": 6, "saturday": 7
+        ]
+
+        guard let targetWeekday = dayMapping[dayOfWeekStr.lowercased()] else {
+            return today
+        }
+
+        let currentWeekday = calendar.component(.weekday, from: today)
+        var daysToAdd = targetWeekday - currentWeekday
+
+        if daysToAdd <= 0 {
+            daysToAdd += 7
+        }
+
+        return calendar.date(byAdding: .day, value: daysToAdd, to: today) ?? today
     }
     
     // MARK: - Calendar Event Creation

@@ -20,10 +20,12 @@ struct UnifiedBacklogItem: Identifiable {
     let title: String
     let description: String
     let source: BacklogItemSource
-    let priority: Int
+    let priority: Int?
     let estimatedDuration: Int?
+    let category: String?
+    let tags: [String]?
     let createdAt: Date
-    
+
     init(from backlogItem: BacklogItem) {
         self.id = backlogItem.id ?? UUID().uuidString
         self.title = backlogItem.title
@@ -31,9 +33,11 @@ struct UnifiedBacklogItem: Identifiable {
         self.source = .firebase(backlogItem)
         self.priority = backlogItem.priority
         self.estimatedDuration = backlogItem.estimatedDuration
+        self.category = backlogItem.category
+        self.tags = backlogItem.tags
         self.createdAt = backlogItem.createdAt
     }
-    
+
     init(from todoItem: TodoItem) {
         self.id = todoItem.persistentModelID.hashValue.description
         self.title = todoItem.title
@@ -41,6 +45,8 @@ struct UnifiedBacklogItem: Identifiable {
         self.source = .todoItem(todoItem)
         self.priority = 0 // TodoItems don't have priority yet
         self.estimatedDuration = nil
+        self.category = nil
+        self.tags = nil
         self.createdAt = todoItem.dueDate // Use dueDate as fallback
     }
 }
@@ -83,8 +89,10 @@ class BacklogViewModel: ObservableObject {
                 
                 // Sort by priority (higher first) then by creation date
                 unifiedItems.sort { item1, item2 in
-                    if item1.priority != item2.priority {
-                        return item1.priority > item2.priority
+                    let priority1 = item1.priority ?? 0
+                    let priority2 = item2.priority ?? 0
+                    if priority1 != priority2 {
+                        return priority1 > priority2
                     }
                     return item1.createdAt > item2.createdAt
                 }
@@ -95,27 +103,29 @@ class BacklogViewModel: ObservableObject {
         }
     }
     
-    func addBacklogItem(title: String, description: String, priority: Int = 0, estimatedDuration: Int? = nil, completion: @escaping (Error?) -> Void) {
+    func addBacklogItem(title: String, description: String, priority: Int = 0, estimatedDuration: Int? = nil, category: String? = nil, tags: [String]? = nil, completion: @escaping (Error?) -> Void) {
         guard let userId = Auth.auth().currentUser?.uid else {
             completion(NSError(domain: "BacklogViewModel", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
             return
         }
-        
+
         let newItem = BacklogItem(
             title: title,
             description: description,
             createdAt: Date(),
             userId: userId,
             priority: priority,
-            estimatedDuration: estimatedDuration
+            estimatedDuration: estimatedDuration,
+            category: category,
+            tags: tags
         )
-        
+
         firebaseManager.saveBacklogItem(newItem) { [weak self] error in
             if let error = error {
                 completion(error)
                 return
             }
-            
+
             // Refresh backlog items
             self?.fetchBacklogItems(todoItems: [])
             completion(nil)
@@ -154,3 +164,4 @@ class BacklogViewModel: ObservableObject {
         return false
     }
 }
+

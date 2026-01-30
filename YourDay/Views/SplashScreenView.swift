@@ -18,7 +18,7 @@ struct SplashScreenView: View {
             } else {
                 LottieView(name: "splash_screen", play: $playAnimation)
                     .ignoresSafeArea()
-                    .onChange(of: playAnimation) { finished in
+                    .onChange(of: playAnimation) { oldValue, finished in
                         if !finished {
                             withAnimation {
                                 showMainView = true

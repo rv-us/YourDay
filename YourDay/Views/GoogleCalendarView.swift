@@ -323,6 +323,17 @@ struct GoogleCalendarView: View {
         Group {
             if embedded {
                 calendarContent
+                    .navigationTitle("Calendar")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbarBackground(dynamicSecondaryBackgroundColor, for: .navigationBar)
+                    .toolbarBackground(.visible, for: .navigationBar)
+                    .toolbar {
+                        ToolbarItem(placement: .principal) {
+                            Text(selectedDate, style: .date)
+                                .fontWeight(.bold)
+                                .foregroundColor(dynamicTextColor)
+                        }
+                    }
             } else {
                 NavigationView {
                     calendarContent
@@ -381,11 +392,47 @@ struct GoogleCalendarView: View {
     }
     
     private func checkAuthentication() {
-        if GIDSignIn.sharedInstance.currentUser != nil {
-            isAuthenticated = true
+        // First, try to restore previous sign-in session
+        if GIDSignIn.sharedInstance.currentUser == nil {
+            // Ensure configuration is set
+            if GIDSignIn.sharedInstance.configuration == nil {
+                guard let clientID = FirebaseApp.app()?.options.clientID else {
+                    isAuthenticated = false
+                    errorMessage = "Google Sign-In not configured"
+                    return
+                }
+                let config = GIDConfiguration(clientID: clientID)
+                GIDSignIn.sharedInstance.configuration = config
+            }
+            
+            // Try to restore previous sign-in
+            GIDSignIn.sharedInstance.restorePreviousSignIn { user, error in
+                DispatchQueue.main.async {
+                    if let user = user {
+                        self.isAuthenticated = true
+                        self.errorMessage = nil
+                        // Check if calendar scope is already granted
+                        let calendarScope = "https://www.googleapis.com/auth/calendar"
+                        if user.grantedScopes?.contains(calendarScope) == true {
+                            self.fetchMonthEvents()
+                            self.fetchEvents()
+                        }
+                    } else {
+                        self.isAuthenticated = false
+                        self.errorMessage = "Please sign in with Google to view your calendar"
+                    }
+                }
+            }
         } else {
-            isAuthenticated = false
-            errorMessage = "Please sign in with Google to view your calendar"
+            // User is already signed in
+            isAuthenticated = true
+            errorMessage = nil
+            // Check if calendar scope is granted
+            let calendarScope = "https://www.googleapis.com/auth/calendar"
+            if GIDSignIn.sharedInstance.currentUser?.grantedScopes?.contains(calendarScope) == true {
+                fetchMonthEvents()
+                fetchEvents()
+            }
         }
     }
     
@@ -398,18 +445,62 @@ struct GoogleCalendarView: View {
         let config = GIDConfiguration(clientID: clientID)
         GIDSignIn.sharedInstance.configuration = config
         
+        // If user is already signed in, just request calendar scope
+        if let currentUser = GIDSignIn.sharedInstance.currentUser {
+            let calendarScope = "https://www.googleapis.com/auth/calendar"
+            if currentUser.grantedScopes?.contains(calendarScope) == true {
+                // Already has permission
+                isAuthenticated = true
+                errorMessage = nil
+                fetchMonthEvents()
+                fetchEvents()
+                return
+            }
+            
+            // Request additional scope
+            guard let presentingViewController = getRootViewController() else {
+                errorMessage = "Could not present sign-in"
+                return
+            }
+            
+            currentUser.addScopes([calendarScope], presenting: presentingViewController) { result, error in
+                DispatchQueue.main.async {
+                    if let error = error {
+                        self.errorMessage = "Failed to grant calendar permission: \(error.localizedDescription)"
+                        return
+                    }
+                    
+                    if result != nil {
+                        self.isAuthenticated = true
+                        self.errorMessage = nil
+                        self.fetchMonthEvents()
+                        self.fetchEvents()
+                    }
+                }
+            }
+            return
+        }
+        
+        // User not signed in, perform full sign-in with calendar scope
         guard let presentingViewController = getRootViewController() else {
             errorMessage = "Could not present sign-in"
             return
         }
         
         let calendarScope = "https://www.googleapis.com/auth/calendar"
-        GIDSignIn.sharedInstance.signIn(withPresenting: presentingViewController, hint: nil, additionalScopes: [calendarScope]) { [self] signInResult, error in
-            if signInResult != nil {
-                isAuthenticated = true
-                errorMessage = nil
-                fetchMonthEvents()
-                fetchEvents()
+        GIDSignIn.sharedInstance.signIn(withPresenting: presentingViewController, hint: nil, additionalScopes: [calendarScope]) { signInResult, error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    self.errorMessage = "Sign-in failed: \(error.localizedDescription)"
+                    return
+                }
+                
+                if signInResult != nil {
+                    self.isAuthenticated = true
+                    self.errorMessage = nil
+                    self.fetchMonthEvents()
+                    self.fetchEvents()
+                }
             }
         }
     }

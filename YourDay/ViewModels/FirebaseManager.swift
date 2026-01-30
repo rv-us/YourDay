@@ -118,7 +118,7 @@ class FirebaseManager: ObservableObject {
             let entries = querySnapshot?.documents.compactMap { document -> LeaderboardEntry? in
                 do {
                     // Manually add the document ID to the entry if it's not stored as a field
-                    var entry = try document.data(as: LeaderboardEntry.self)
+                    let entry = try document.data(as: LeaderboardEntry.self)
                     // If LeaderboardEntry's 'id' field is meant to be the documentID (userID)
                     // and it's not explicitly stored as a field in Firestore,
                     // you can assign it here:
@@ -851,7 +851,7 @@ class FirebaseManager: ObservableObject {
         
         let docRef = db.collection("users").document(userId).collection("backlog").document()
         do {
-            var itemToSave = item
+            let itemToSave = item
             if item.id == nil {
                 // Create a new item
                 try docRef.setData(from: itemToSave) { error in
@@ -984,7 +984,7 @@ class FirebaseManager: ObservableObject {
             completion(nil, NSError(domain: "FirebaseManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
             return
         }
-        
+
         db.collection("users").document(userId).collection("schedulingMessages")
             .order(by: "timestamp", descending: false)
             .limit(to: limit)
@@ -993,12 +993,234 @@ class FirebaseManager: ObservableObject {
                     completion(nil, error)
                     return
                 }
-                
+
                 let messages = snapshot?.documents.compactMap { doc -> SchedulingMessage? in
                     try? doc.data(as: SchedulingMessage.self)
                 } ?? []
-                
+
                 completion(messages, nil)
             }
+    }
+
+    // MARK: - Day Contexts
+
+    func saveDayContext(_ dayContext: DayContext, completion: @escaping (Error?) -> Void) {
+        guard let userId = userId else {
+            completion(NSError(domain: "FirebaseManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+
+        let docRef = db.collection("users").document(userId).collection("dayContexts").document(dayContext.dayOfWeek.lowercased())
+        do {
+            try docRef.setData(from: dayContext) { error in
+                completion(error)
+            }
+        } catch {
+            completion(error)
+        }
+    }
+
+    func fetchDayContexts(completion: @escaping ([String: DayContext]?, Error?) -> Void) {
+        guard let userId = userId else {
+            completion(nil, NSError(domain: "FirebaseManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+
+        db.collection("users").document(userId).collection("dayContexts")
+            .getDocuments { snapshot, error in
+                if let error = error {
+                    completion(nil, error)
+                    return
+                }
+
+                var contexts: [String: DayContext] = [:]
+                for doc in snapshot?.documents ?? [] {
+                    if let context = try? doc.data(as: DayContext.self) {
+                        contexts[doc.documentID] = context
+                    }
+                }
+                completion(contexts, nil)
+            }
+    }
+
+    func fetchDayContext(for dayOfWeek: String, completion: @escaping (DayContext?, Error?) -> Void) {
+        guard let userId = userId else {
+            completion(nil, NSError(domain: "FirebaseManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+
+        db.collection("users").document(userId).collection("dayContexts").document(dayOfWeek.lowercased())
+            .getDocument { document, error in
+                if let error = error {
+                    completion(nil, error)
+                    return
+                }
+
+                if let document = document, document.exists {
+                    let context = try? document.data(as: DayContext.self)
+                    completion(context, nil)
+                } else {
+                    completion(nil, nil)
+                }
+            }
+    }
+
+    // MARK: - Schedule Notes
+
+    func saveScheduleNote(_ note: ScheduleNote, completion: @escaping (Error?, String?) -> Void) {
+        guard let userId = userId else {
+            completion(NSError(domain: "FirebaseManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]), nil)
+            return
+        }
+
+        let docRef = db.collection("users").document(userId).collection("scheduleNotes").document()
+        do {
+            try docRef.setData(from: note) { error in
+                completion(error, docRef.documentID)
+            }
+        } catch {
+            completion(error, nil)
+        }
+    }
+
+    func fetchScheduleNotes(for date: Date, completion: @escaping ([ScheduleNote]?, Error?) -> Void) {
+        guard let userId = userId else {
+            completion(nil, NSError(domain: "FirebaseManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+
+        // Get start and end of day for the given date
+        let calendar = Calendar.current
+        let startOfDay = calendar.startOfDay(for: date)
+        let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
+
+        db.collection("users").document(userId).collection("scheduleNotes")
+            .whereField("date", isGreaterThanOrEqualTo: Timestamp(date: startOfDay))
+            .whereField("date", isLessThan: Timestamp(date: endOfDay))
+            .getDocuments { snapshot, error in
+                if let error = error {
+                    completion(nil, error)
+                    return
+                }
+
+                let notes = snapshot?.documents.compactMap { doc -> ScheduleNote? in
+                    try? doc.data(as: ScheduleNote.self)
+                } ?? []
+
+                completion(notes, nil)
+            }
+    }
+
+    func deleteScheduleNote(_ noteId: String, completion: @escaping (Error?) -> Void) {
+        guard let userId = userId else {
+            completion(NSError(domain: "FirebaseManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+
+        db.collection("users").document(userId).collection("scheduleNotes").document(noteId).delete(completion: completion)
+    }
+
+    // MARK: - Proposal Interactions
+
+    func saveProposalInteraction(_ interaction: ProposalInteraction, completion: @escaping (Error?) -> Void) {
+        guard let userId = userId else {
+            completion(NSError(domain: "FirebaseManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+
+        let docRef = db.collection("users").document(userId).collection("proposalInteractions").document()
+        do {
+            try docRef.setData(from: interaction) { error in
+                completion(error)
+            }
+        } catch {
+            completion(error)
+        }
+    }
+
+    func fetchRecentInteractions(limit: Int = 20, completion: @escaping ([ProposalInteraction]?, Error?) -> Void) {
+        guard let userId = userId else {
+            completion(nil, NSError(domain: "FirebaseManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+
+        db.collection("users").document(userId).collection("proposalInteractions")
+            .order(by: "timestamp", descending: true)
+            .limit(to: limit)
+            .getDocuments { snapshot, error in
+                if let error = error {
+                    completion(nil, error)
+                    return
+                }
+
+                let interactions = snapshot?.documents.compactMap { doc -> ProposalInteraction? in
+                    try? doc.data(as: ProposalInteraction.self)
+                } ?? []
+
+                completion(interactions, nil)
+            }
+    }
+
+    func fetchInteractionsForDay(_ dayOfWeek: String, limit: Int = 10, completion: @escaping ([ProposalInteraction]?, Error?) -> Void) {
+        guard let userId = userId else {
+            completion(nil, NSError(domain: "FirebaseManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+
+        db.collection("users").document(userId).collection("proposalInteractions")
+            .whereField("dayOfWeek", isEqualTo: dayOfWeek.lowercased())
+            .order(by: "timestamp", descending: true)
+            .limit(to: limit)
+            .getDocuments { snapshot, error in
+                if let error = error {
+                    completion(nil, error)
+                    return
+                }
+
+                let interactions = snapshot?.documents.compactMap { doc -> ProposalInteraction? in
+                    try? doc.data(as: ProposalInteraction.self)
+                } ?? []
+
+                completion(interactions, nil)
+            }
+    }
+
+    // MARK: - Acceptance Stats
+
+    func updateAcceptanceStats(_ stats: AcceptanceStats, completion: @escaping (Error?) -> Void) {
+        guard let userId = userId else {
+            completion(NSError(domain: "FirebaseManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+
+        // Convert stats to dictionary for Firestore
+        var statsDict: [String: Any] = [
+            "totalAccepted": stats.totalAccepted,
+            "totalDeclined": stats.totalDeclined,
+            "totalModified": stats.totalModified,
+            "totalSkipped": stats.totalSkipped
+        ]
+
+        // Convert Int keys to String for Firestore compatibility
+        var preferredHoursString: [String: Int] = [:]
+        for (key, value) in stats.preferredHours {
+            preferredHoursString[String(key)] = value
+        }
+        statsDict["preferredHours"] = preferredHoursString
+
+        var preferredDurationsString: [String: Int] = [:]
+        for (key, value) in stats.preferredDurations {
+            preferredDurationsString[String(key)] = value
+        }
+        statsDict["preferredDurations"] = preferredDurationsString
+
+        if let avgDuration = stats.averageAcceptedDuration {
+            statsDict["averageAcceptedDuration"] = avgDuration
+        }
+
+        let docRef = db.collection("users").document(userId).collection("schedulePreferences").document("preferences")
+        docRef.setData(["acceptanceStats": statsDict], merge: true) { error in
+            completion(error)
+        }
     }
 }

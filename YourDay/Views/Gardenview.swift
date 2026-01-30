@@ -572,7 +572,7 @@ struct GardenView: View {
     func triggerPlantFeedback(plantID: UUID, text: String, color: Color = dynamicSecondaryColor) {
         plantFeedbackItems.removeValue(forKey: plantID)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
-            var newItem = PlantActionFeedback(text: text, color: color)
+            let newItem = PlantActionFeedback(text: text, color: color)
             plantFeedbackItems[plantID] = newItem
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 if plantFeedbackItems[plantID]?.id == newItem.id {

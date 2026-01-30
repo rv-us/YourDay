@@ -235,9 +235,7 @@ class LoginViewModel: ObservableObject {
                 return
             }
 
-            let credential = OAuthProvider.credential(withProviderID: "apple.com",
-                                                      idToken: idTokenString,
-                                                      rawNonce: nonce)
+            let credential = OAuthProvider.credential(withProviderID: "apple.com", idToken: idTokenString, rawNonce: nonce)
             
             // For new users, extract the name and save it.
             // This is only provided on the first authorization.
@@ -486,7 +484,7 @@ class LoginViewModel: ObservableObject {
             print("LoginViewModel: Error fetching local PlayerStats: \(error.localizedDescription)")
         }
 
-        if var existingLocalStats = localStatsToReturn {
+        if let existingLocalStats = localStatsToReturn {
             print("LoginViewModel: Updating existing local PlayerStats (ID: \(existingLocalStats.id)) with data (Codable ID: \(codableStats.id)).")
             existingLocalStats.totalPoints = codableStats.totalPoints
             existingLocalStats.lastEvaluated = codableStats.lastEvaluated
