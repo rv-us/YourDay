@@ -45,9 +45,12 @@ struct Todoview: View {
         NavigationView {
             VStack(spacing: 0) {
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
                 filterPickerView
                 taskListView
 =======
+=======
+>>>>>>> Stashed changes
                 if showGoogleCalendarView {
                     GoogleCalendarView(embedded: true)
                         .environment(\.modelContext, context)
@@ -150,6 +153,9 @@ struct Todoview: View {
                     .listStyle(PlainListStyle())
                     .background(dynamicBackgroundColor)
                 }
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
             }
             .background(dynamicBackgroundColor.edgesIgnoringSafeArea(.all))
@@ -249,6 +255,7 @@ struct Todoview: View {
                 NewItemview(newItemPresented: $viewModel.showingNewItemView, selectedOrigin: selectedFilter == .today ? .today : .master)
             }
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
             .background(
                 NavigationLink(
                     destination: GoogleCalendarView(embedded: true)
@@ -259,6 +266,8 @@ struct Todoview: View {
                 }
                 .hidden()
             )
+=======
+>>>>>>> Stashed changes
 =======
 >>>>>>> Stashed changes
             .alert("Sign Out", isPresented: $showSignOutAlertInTodoView) {
