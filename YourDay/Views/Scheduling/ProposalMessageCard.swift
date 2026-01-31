@@ -12,6 +12,7 @@ struct ProposalMessageCard: View {
     @ObservedObject var schedulingViewModel: SchedulingAssistantViewModel
     @ObservedObject var backlogViewModel: BacklogViewModel
     let onAccept: ([String]) -> Void
+    let onRequestModificationReason: (ModificationContext) -> Void
     let isDisabled: Bool
 
     @State private var selectedStartTime: Date
@@ -19,16 +20,13 @@ struct ProposalMessageCard: View {
     @State private var showingCalendarView = false
     @State private var showingAddTaskSheet = false
     @State private var addedTaskTitles: Set<String> = [] // Track tasks added by user
-    @State private var showingModificationReasonPopup = false
-    @State private var modificationReason = ""
-    @State private var pendingAcceptTasks: [String] = [] // Tasks to mark as accepted after reason submitted
-    @State private var pendingOriginalTime = "" // Captured original time for popup
-    @State private var pendingModifiedTime = "" // Captured modified time for popup
 
     init(
         proposal: Binding<ProposedSession>,
         schedulingViewModel: SchedulingAssistantViewModel,
         backlogViewModel: BacklogViewModel,
+        onAccept: @escaping ([String]) -> Void,
+        onRequestModificationReason: @escaping (ModificationContext) -> Void
         isDisabled: Bool = false,
         onAccept: @escaping ([String]) -> Void
     ) {
@@ -36,6 +34,7 @@ struct ProposalMessageCard: View {
         self.schedulingViewModel = schedulingViewModel
         self.backlogViewModel = backlogViewModel
         self.onAccept = onAccept
+        self.onRequestModificationReason = onRequestModificationReason
         self.isDisabled = isDisabled
 
         // Initialize state from proposal
@@ -245,15 +244,16 @@ struct ProposalMessageCard: View {
                         schedulingViewModel.acceptProposal(backlogItems: backlogViewModel.backlogItems) { scheduledTasks in
                             if !scheduledTasks.isEmpty {
                                 if wasModified {
-                                    // Store data for modification reason popup
-                                    pendingAcceptTasks = scheduledTasks
-                                    pendingOriginalTime = originalTime
-                                    pendingModifiedTime = modifiedTimeStr
-                                    // Show modification reason popup
-                                    showingModificationReasonPopup = true
+                                    onRequestModificationReason(
+                                        ModificationContext(
+                                            tasks: scheduledTasks,
+                                            originalTime: originalTime,
+                                            modifiedTime: modifiedTimeStr
+                                        )
+                                    )
+                                } else {
+                                    onAccept(scheduledTasks)
                                 }
-                                // Always trigger next proposal
-                                onAccept(scheduledTasks)
                             }
                         }
                     }) {
@@ -330,35 +330,6 @@ struct ProposalMessageCard: View {
                 },
                 onDismiss: {
                     showingAddTaskSheet = false
-                }
-            )
-        }
-        .sheet(isPresented: $showingModificationReasonPopup) {
-            ModificationReasonSheet(
-                reason: $modificationReason,
-                originalTime: pendingOriginalTime,
-                modifiedTime: pendingModifiedTime,
-                tasks: pendingAcceptTasks,
-                onSubmit: { reason in
-                    // Save modification reason to agent memory
-                    schedulingViewModel.saveModificationReason(
-                        reason: reason,
-                        originalTime: pendingOriginalTime,
-                        modifiedTime: pendingModifiedTime,
-                        tasks: pendingAcceptTasks
-                    )
-                    modificationReason = ""
-                    pendingAcceptTasks = []
-                    pendingOriginalTime = ""
-                    pendingModifiedTime = ""
-                    showingModificationReasonPopup = false
-                },
-                onSkip: {
-                    modificationReason = ""
-                    pendingAcceptTasks = []
-                    pendingOriginalTime = ""
-                    pendingModifiedTime = ""
-                    showingModificationReasonPopup = false
                 }
             )
         }
