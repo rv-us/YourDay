@@ -443,6 +443,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = YourDay/Info.plist;
+				INFOPLIST_KEY_NSCalendarsUsageDescription = "YourDay needs access to your calendar to sync your tasks and help you stay organized.";
 				INFOPLIST_KEY_NSLocationAlwaysUsageDescription = "We use your location to send smart reminders based on where you are.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "We use your location to send smart reminders based on where you are.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
@@ -460,7 +461,7 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.7;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "YourDay-dev.YourDay-YourDay-dev.YourDay-YourDay-dev.YourDay";
+				PRODUCT_BUNDLE_IDENTIFIER = "rv-rg";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
@@ -485,6 +486,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = YourDay/Info.plist;
+				INFOPLIST_KEY_NSCalendarsUsageDescription = "YourDay needs access to your calendar to sync your tasks and help you stay organized.";
 				INFOPLIST_KEY_NSLocationAlwaysUsageDescription = "We use your location to send smart reminders based on where you are.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "We use your location to send smart reminders based on where you are.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
@@ -502,7 +504,7 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.7;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "YourDay-dev.YourDay-YourDay-dev.YourDay-YourDay-dev.YourDay";
+				PRODUCT_BUNDLE_IDENTIFIER = "rv-rg";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";

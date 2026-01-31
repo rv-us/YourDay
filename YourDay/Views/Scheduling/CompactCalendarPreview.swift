@@ -153,3 +153,4 @@ struct EventBar: View {
     }
 }
 
+
