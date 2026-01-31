@@ -26,15 +26,15 @@ struct ProposalMessageCard: View {
     @State private var pendingOriginalTime = "" // Captured original time for popup
     @State private var pendingModifiedTime = "" // Captured modified time for popup
     @State private var originalTasks: [String]
+    @State private var appeared = false
 
     init(
         proposal: Binding<ProposedSession>,
         schedulingViewModel: SchedulingAssistantViewModel,
         backlogViewModel: BacklogViewModel,
         onAccept: @escaping ([String]) -> Void,
-        onRequestModificationReason: @escaping (ModificationContext) -> Void
-        isDisabled: Bool = false,
-        onAccept: @escaping ([String]) -> Void
+        onRequestModificationReason: @escaping (ModificationContext) -> Void,
+        isDisabled: Bool = false
     ) {
         self._proposal = proposal
         self.schedulingViewModel = schedulingViewModel
@@ -118,10 +118,14 @@ struct ProposalMessageCard: View {
                         let detail = proposal.taskDetails?.first(where: { $0.title == task })
                         let isAdded = addedTaskTitles.contains(task)
                         taskRowEditable(title: task, detail: detail, isAdded: isAdded, canRemove: proposal.tasks.count > 1) {
-                            removeTask(at: index)
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                removeTask(at: index)
+                            }
                         }
+                        .transition(.scale(scale: 0.9).combined(with: .opacity))
                     }
                 }
+                .animation(.easeInOut(duration: 0.2), value: proposal.tasks.count)
 
                 // Grouping type indicator
                 if let groupingType = proposal.groupingType {
@@ -235,7 +239,6 @@ struct ProposalMessageCard: View {
                         let wasModified = hasModifications
                         let originalTime = proposal.workingSessionTime
                         let modifiedTimeStr = timeRangeString
-                        let tasksList = proposal.tasks
 
                         // Update proposal with modifications before accepting
                         if wasModified {
@@ -272,6 +275,7 @@ struct ProposalMessageCard: View {
                         .background(hasModifications ? Color.orange : dynamicPrimaryColor)
                         .cornerRadius(8)
                     }
+                    .buttonStyle(ScaleButtonStyle())
 
                     Button(action: {
                         schedulingViewModel.declineProposal()
@@ -287,6 +291,7 @@ struct ProposalMessageCard: View {
                         .background(dynamicSecondaryBackgroundColor)
                         .cornerRadius(8)
                     }
+                    .buttonStyle(ScaleButtonStyle())
                 }
 
                 Button(action: {
@@ -307,6 +312,7 @@ struct ProposalMessageCard: View {
                     .background(dynamicBackgroundColor)
                     .cornerRadius(6)
                 }
+                .buttonStyle(ScaleButtonStyle())
             }
             .disabled(isDisabled)
             .opacity(isDisabled ? 0.5 : 1)
@@ -316,6 +322,13 @@ struct ProposalMessageCard: View {
         .cornerRadius(12)
         .frame(maxWidth: 320)
         .opacity(isDisabled ? 0.7 : 1)
+        .scaleEffect(appeared ? 1.0 : 0.95)
+        .opacity(appeared ? 1.0 : 0.0)
+        .onAppear {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                appeared = true
+            }
+        }
         .id("proposal")
         .sheet(isPresented: $showingCalendarView) {
             DraggableCalendarView(
@@ -357,24 +370,26 @@ struct ProposalMessageCard: View {
     }
 
     private func addTask(_ item: UnifiedBacklogItem) {
-        proposal.tasks.append(item.title)
-        addedTaskTitles.insert(item.title)
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            proposal.tasks.append(item.title)
+            addedTaskTitles.insert(item.title)
 
-        // Add task details
-        let detail = ProposedTaskDetail(
-            title: item.title,
-            estimatedDuration: item.estimatedDuration,
-            priority: item.priority ?? 0
-        )
-        if proposal.taskDetails == nil {
-            proposal.taskDetails = [detail]
-        } else {
-            proposal.taskDetails?.append(detail)
-        }
+            // Add task details
+            let detail = ProposedTaskDetail(
+                title: item.title,
+                estimatedDuration: item.estimatedDuration,
+                priority: item.priority ?? 0
+            )
+            if proposal.taskDetails == nil {
+                proposal.taskDetails = [detail]
+            } else {
+                proposal.taskDetails?.append(detail)
+            }
 
-        // Update duration based on added task
-        if let duration = item.estimatedDuration {
-            adjustedDuration += duration
+            // Update duration based on added task
+            if let duration = item.estimatedDuration {
+                adjustedDuration += duration
+            }
         }
     }
 
@@ -560,141 +575,158 @@ struct ModificationReasonSheet: View {
 
     var body: some View {
         NavigationView {
-            VStack(spacing: 20) {
-                // Header
-                VStack(spacing: 8) {
-                    Image(systemName: "lightbulb.fill")
-                        .font(.system(size: 40))
-                        .foregroundColor(.orange)
-
-                    Text("Help the agent learn!")
-                        .font(.headline)
-                        .foregroundColor(dynamicTextColor)
-
-                    Text("Why did you modify this session?")
-                        .font(.subheadline)
-                        .foregroundColor(dynamicSecondaryTextColor)
-                }
-                .padding(.top, 20)
-
-                // Modification Summary
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        Text("Tasks:")
-                            .font(.caption)
-                            .foregroundColor(dynamicSecondaryTextColor)
-                        Spacer()
-                        Text(tasks.joined(separator: ", "))
-                            .font(.caption)
-                            .foregroundColor(dynamicTextColor)
-                            .lineLimit(2)
-                            .multilineTextAlignment(.trailing)
-                    }
-
-                    HStack {
-                        Text("Original:")
-                            .font(.caption)
-                            .foregroundColor(dynamicSecondaryTextColor)
-                        Spacer()
-                        Text(originalTime)
-                            .font(.caption)
-                            .foregroundColor(dynamicTextColor)
-                            .strikethrough()
-                    }
-
-                    HStack {
-                        Text("Modified to:")
-                            .font(.caption)
-                            .foregroundColor(dynamicSecondaryTextColor)
-                        Spacer()
-                        Text(modifiedTime)
-                            .font(.caption)
-                            .fontWeight(.medium)
+            ScrollView {
+                VStack(spacing: 20) {
+                    // Header
+                    VStack(spacing: 8) {
+                        Image(systemName: "lightbulb.fill")
+                            .font(.system(size: 40))
                             .foregroundColor(.orange)
-                    }
-                }
-                .padding()
-                .background(dynamicSecondaryBackgroundColor)
-                .cornerRadius(12)
-                .padding(.horizontal)
 
-                // Reason Input
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Your reason (optional but helpful):")
-                        .font(.caption)
-                        .foregroundColor(dynamicSecondaryTextColor)
-
-                    TextField("e.g., I have a meeting at that time, I prefer mornings...", text: $reason, axis: .vertical)
-                        .textFieldStyle(.plain)
-                        .padding()
-                        .background(dynamicSecondaryBackgroundColor)
-                        .cornerRadius(12)
-                        .lineLimit(3...6)
-                        .focused($isTextFieldFocused)
-                }
-                .padding(.horizontal)
-
-                // Quick Suggestions
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Quick reasons:")
-                        .font(.caption)
-                        .foregroundColor(dynamicSecondaryTextColor)
-                        .padding(.horizontal)
-
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            QuickReasonChip(text: "Had a conflict", onTap: { reason = "Had a conflict at that time" })
-                            QuickReasonChip(text: "Too early", onTap: { reason = "That time was too early for me" })
-                            QuickReasonChip(text: "Too late", onTap: { reason = "That time was too late for me" })
-                            QuickReasonChip(text: "Need more time", onTap: { reason = "I need more time for this task" })
-                            QuickReasonChip(text: "Need less time", onTap: { reason = "I don't need that much time" })
-                            QuickReasonChip(text: "Prefer different slot", onTap: { reason = "I prefer a different time slot" })
-                        }
-                        .padding(.horizontal)
-                    }
-                }
-
-                Spacer()
-
-                // Action Buttons
-                VStack(spacing: 12) {
-                    Button(action: {
-                        onSubmit(reason)
-                    }) {
-                        Text(reason.isEmpty ? "Skip for now" : "Save Feedback")
+                        Text("Help the agent learn!")
                             .font(.headline)
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(reason.isEmpty ? dynamicSecondaryTextColor : dynamicPrimaryColor)
-                            .cornerRadius(12)
-                    }
+                            .foregroundColor(dynamicTextColor)
 
-                    if !reason.isEmpty {
-                        Button(action: {
-                            onSkip()
-                        }) {
-                            Text("Skip")
-                                .font(.subheadline)
+                        Text("Why did you modify this session?")
+                            .font(.subheadline)
+                            .foregroundColor(dynamicSecondaryTextColor)
+                    }
+                    .padding(.top, 20)
+
+                    // Modification Summary
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Text("Tasks:")
+                                .font(.caption)
                                 .foregroundColor(dynamicSecondaryTextColor)
+                            Spacer()
+                            Text(tasks.joined(separator: ", "))
+                                .font(.caption)
+                                .foregroundColor(dynamicTextColor)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.trailing)
+                        }
+
+                        HStack {
+                            Text("Original:")
+                                .font(.caption)
+                                .foregroundColor(dynamicSecondaryTextColor)
+                            Spacer()
+                            Text(originalTime)
+                                .font(.caption)
+                                .foregroundColor(dynamicTextColor)
+                                .strikethrough()
+                        }
+
+                        HStack {
+                            Text("Modified to:")
+                                .font(.caption)
+                                .foregroundColor(dynamicSecondaryTextColor)
+                            Spacer()
+                            Text(modifiedTime)
+                                .font(.caption)
+                                .fontWeight(.medium)
+                                .foregroundColor(.orange)
                         }
                     }
+                    .padding()
+                    .background(dynamicSecondaryBackgroundColor)
+                    .cornerRadius(12)
+                    .padding(.horizontal)
+
+                    // Reason Input
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Your reason (optional but helpful):")
+                            .font(.caption)
+                            .foregroundColor(dynamicSecondaryTextColor)
+
+                        TextField("e.g., I have a meeting at that time, I prefer mornings...", text: $reason, axis: .vertical)
+                            .textFieldStyle(.plain)
+                            .padding()
+                            .background(dynamicSecondaryBackgroundColor)
+                            .cornerRadius(12)
+                            .lineLimit(3...6)
+                            .focused($isTextFieldFocused)
+                            .submitLabel(.done)
+                            .onSubmit {
+                                isTextFieldFocused = false
+                            }
+                    }
+                    .padding(.horizontal)
+
+                    // Quick Suggestions
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Quick reasons:")
+                            .font(.caption)
+                            .foregroundColor(dynamicSecondaryTextColor)
+                            .padding(.horizontal)
+
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                QuickReasonChip(text: "Had a conflict", onTap: { reason = "Had a conflict at that time"; isTextFieldFocused = false })
+                                QuickReasonChip(text: "Too early", onTap: { reason = "That time was too early for me"; isTextFieldFocused = false })
+                                QuickReasonChip(text: "Too late", onTap: { reason = "That time was too late for me"; isTextFieldFocused = false })
+                                QuickReasonChip(text: "Need more time", onTap: { reason = "I need more time for this task"; isTextFieldFocused = false })
+                                QuickReasonChip(text: "Need less time", onTap: { reason = "I don't need that much time"; isTextFieldFocused = false })
+                                QuickReasonChip(text: "Prefer different slot", onTap: { reason = "I prefer a different time slot"; isTextFieldFocused = false })
+                            }
+                            .padding(.horizontal)
+                        }
+                    }
+
+                    // Action Buttons
+                    VStack(spacing: 12) {
+                        Button(action: {
+                            isTextFieldFocused = false
+                            onSubmit(reason)
+                        }) {
+                            Text(reason.isEmpty ? "Skip for now" : "Save Feedback")
+                                .font(.headline)
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(reason.isEmpty ? dynamicSecondaryTextColor : dynamicPrimaryColor)
+                                .cornerRadius(12)
+                        }
+                        .buttonStyle(ScaleButtonStyle())
+
+                        if !reason.isEmpty {
+                            Button(action: {
+                                isTextFieldFocused = false
+                                onSkip()
+                            }) {
+                                Text("Skip")
+                                    .font(.subheadline)
+                                    .foregroundColor(dynamicSecondaryTextColor)
+                            }
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.bottom, 20)
                 }
-                .padding(.horizontal)
-                .padding(.bottom, 20)
             }
+            .scrollDismissesKeyboard(.interactively)
             .background(dynamicBackgroundColor)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: { onSkip() }) {
+                    Button(action: {
+                        isTextFieldFocused = false
+                        onSkip()
+                    }) {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundColor(dynamicSecondaryTextColor)
                     }
                 }
-            }
-            .onAppear {
-                isTextFieldFocused = true
+                ToolbarItem(placement: .keyboard) {
+                    HStack {
+                        Spacer()
+                        Button("Done") {
+                            isTextFieldFocused = false
+                        }
+                        .foregroundColor(dynamicPrimaryColor)
+                    }
+                }
             }
         }
         .presentationDetents([.medium, .large])

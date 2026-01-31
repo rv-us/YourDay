@@ -35,7 +35,9 @@ struct SmartSchedulingTestView: View {
     @State private var showingDatePicker = false
     @State private var scheduledTasks: Set<String> = [] // Track scheduled task titles
     @State private var planningDate: Date? = nil // Fixed date for current agent session
-    @State private var pendingModificationContext: ModificationContext? = nil
+    @State private var pendingModifications: [ModificationContext] = [] // Store all modifications to process at end
+    @State private var showingModificationReview = false
+    @State private var currentModificationIndex = 0
     @State private var modificationReason = ""
     
     var body: some View {
@@ -52,9 +54,17 @@ struct SmartSchedulingTestView: View {
                 if selectedTab == 0 {
                     // Setup/Configuration Tab
                     setupTabView
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .leading).combined(with: .opacity),
+                            removal: .move(edge: .trailing).combined(with: .opacity)
+                        ))
                 } else {
                     // Chat Tab
                     chatTabView
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .trailing).combined(with: .opacity),
+                            removal: .move(edge: .leading).combined(with: .opacity)
+                        ))
                 }
             }
             .background(dynamicBackgroundColor.edgesIgnoringSafeArea(.all))
@@ -83,33 +93,17 @@ struct SmartSchedulingTestView: View {
                         }
                     }
             }
-            .sheet(item: $pendingModificationContext) { context in
-                ModificationReasonSheet(
+            .sheet(isPresented: $showingModificationReview) {
+                ModificationReviewSheet(
+                    modifications: $pendingModifications,
+                    currentIndex: $currentModificationIndex,
                     reason: $modificationReason,
-                    originalTime: context.originalTime,
-                    modifiedTime: context.modifiedTime,
-                    tasks: context.tasks,
-                    onSubmit: { reason in
-                        schedulingViewModel.saveModificationReason(
-                            reason: reason,
-                            originalTime: context.originalTime,
-                            modifiedTime: context.modifiedTime,
-                            tasks: context.tasks
-                        )
-                        handleAcceptedTasks(context.tasks)
+                    schedulingViewModel: schedulingViewModel,
+                    onComplete: {
+                        showingModificationReview = false
+                        pendingModifications.removeAll()
+                        currentModificationIndex = 0
                         modificationReason = ""
-                        pendingModificationContext = nil
-                    },
-                    onSkip: {
-                        schedulingViewModel.saveModificationReason(
-                            reason: "",
-                            originalTime: context.originalTime,
-                            modifiedTime: context.modifiedTime,
-                            tasks: context.tasks
-                        )
-                        handleAcceptedTasks(context.tasks)
-                        modificationReason = ""
-                        pendingModificationContext = nil
                     }
                 )
             }
@@ -254,7 +248,8 @@ struct SmartSchedulingTestView: View {
                         .background(dynamicPrimaryColor)
                         .cornerRadius(12)
                     }
-                    
+                    .buttonStyle(ScaleButtonStyle())
+
                     Button(action: {
                         runAgent()
                     }) {
@@ -269,6 +264,7 @@ struct SmartSchedulingTestView: View {
                         .background(isAgentRunning ? dynamicSecondaryTextColor : dynamicPrimaryColor)
                         .cornerRadius(12)
                     }
+                    .buttonStyle(ScaleButtonStyle())
                     .disabled(isAgentRunning || backlogViewModel.backlogItems.isEmpty)
                 }
                 .padding(.horizontal)
@@ -279,190 +275,280 @@ struct SmartSchedulingTestView: View {
     }
     
     // MARK: - Chat Tab
-    
+
+    private var defaultProposal: ProposedSession {
+        ProposedSession(tasks: [], workingSessionTime: "", startTime: nil, endTime: nil, reason: nil)
+    }
+
+    private var proposalBinding: Binding<ProposedSession> {
+        Binding(
+            get: {
+                schedulingViewModel.currentProposal ?? defaultProposal
+            },
+            set: { newValue in
+                schedulingViewModel.currentProposal = newValue
+            }
+        )
+    }
+
     private var chatTabView: some View {
         VStack(spacing: 0) {
             if !isAgentRunning {
-                VStack(spacing: 16) {
-                    Image(systemName: "clock.badge.questionmark")
-                        .font(.system(size: 50))
-                        .foregroundColor(dynamicSecondaryTextColor)
-                    
-                    Text("Agent Not Running")
-                        .font(.headline)
-                        .foregroundColor(dynamicTextColor)
-                    
-                    Text("Go to the Setup tab to configure your data and run the agent.")
-                        .font(.subheadline)
-                        .foregroundColor(dynamicSecondaryTextColor)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
-                    
-                    Button("Go to Setup") {
-                        selectedTab = 0
-                    }
-                    .foregroundColor(dynamicPrimaryColor)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                agentNotRunningView
             } else {
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 10) {
-                            ForEach(Array(schedulingViewModel.messages.enumerated()), id: \.offset) { index, message in
-                                HStack {
-                                    if message.role == .user {
-                                        Spacer()
-                                        Text(message.content)
-                                            .padding()
-                                            .background(dynamicPrimaryColor)
-                                            .cornerRadius(12)
-                                            .foregroundColor(.white)
-                                    } else {
-                                        Text(message.content)
-                                            .padding()
-                                            .background(dynamicSecondaryBackgroundColor)
-                                            .cornerRadius(12)
-                                            .foregroundColor(dynamicTextColor)
-                                        Spacer()
-                                    }
-                                }
-                                .id("message_\(index)")
-                            }
-                            
-                            // Display status message if available
-                            if let statusMessage = schedulingViewModel.statusMessage {
-                                HStack {
-                                    Text(statusMessage)
-                                        .italic()
-                                        .padding()
-                                        .background(dynamicSecondaryBackgroundColor)
-                                        .cornerRadius(12)
-                                        .foregroundColor(dynamicSecondaryTextColor)
-                                    Spacer()
-                                }
-                                .id("status")
-                            }
-                            
-                            // Show current proposal as a message if available
-                            if schedulingViewModel.currentProposal != nil {
-                                HStack {
-                                    ProposalMessageCard(
-                                        proposal: Binding(
-                                            get: { schedulingViewModel.currentProposal ?? ProposedSession(tasks: [], workingSessionTime: "", startTime: nil, endTime: nil, reason: nil) },
-                                            set: { schedulingViewModel.currentProposal = $0 }
-                                        ),
-                                        schedulingViewModel: schedulingViewModel,
-                                        backlogViewModel: backlogViewModel,
-                                        isDisabled: schedulingViewModel.showingDeclineReasonInput,
-                                        onAccept: { taskTitles in
-                                            handleAcceptedTasks(taskTitles)
-                                        },
-                                        onRequestModificationReason: { context in
-                                            modificationReason = ""
-                                            pendingModificationContext = context
-                                        }
-                                    )
-                                    Spacer()
-                                }
-                            }
-                            
-                            // Show decline reason input if needed
-                            if schedulingViewModel.showingDeclineReasonInput {
-                                HStack {
-                                    Spacer()
-                                    VStack(alignment: .trailing, spacing: 8) {
-                                        Text("Why can't you do this session?")
-                                            .font(.subheadline)
-                                            .foregroundColor(dynamicTextColor)
-                                        
-                                        TextField("Explain why...", text: $schedulingViewModel.declineReason, axis: .vertical)
-                                            .textFieldStyle(RoundedBorderTextFieldStyle())
-                                            .lineLimit(3...6)
-                                        
-                                        HStack {
-                                            Button("Cancel") {
-                                                schedulingViewModel.showingDeclineReasonInput = false
-                                                schedulingViewModel.declineReason = ""
-                                                schedulingViewModel.currentProposal = nil
-                                            }
-                                            .foregroundColor(dynamicSecondaryTextColor)
-                                            
-                                            Button("Submit") {
-                                                let reason = schedulingViewModel.declineReason
-                                                schedulingViewModel.declineReason = ""
-                                                
-                                                // sendMessage() will handle proposing a new session automatically
-                                                schedulingViewModel.sendMessage(reason, backlogItems: backlogViewModel.backlogItems) { error in
-                                                    if let error = error {
-                                                        print("Error sending decline reason: \(error.localizedDescription)")
-                                                    }
-                                                    // Note: sendMessage() already handles proposing a new session, so no need to do it here
-                                                }
-                                            }
-                                            .foregroundColor(dynamicPrimaryColor)
-                                            .disabled(schedulingViewModel.declineReason.trimmingCharacters(in: .whitespaces).isEmpty)
-                                        }
-                                    }
-                                    .padding()
-                                    .background(dynamicSecondaryBackgroundColor)
-                                    .cornerRadius(12)
-                                }
-                            }
-                            
-                            if schedulingViewModel.isLoading {
-                                HStack {
-                                    ProgressView()
-                                        .padding()
-                                    Spacer()
-                                }
-                            }
-                        }
-                        .padding()
-                    }
-                    .onChange(of: schedulingViewModel.messages.count) { oldValue, newValue in
-                        let lastIndex = schedulingViewModel.messages.count - 1
-                        if lastIndex >= 0 {
-                            withAnimation {
-                                proxy.scrollTo("message_\(lastIndex)", anchor: .bottom)
-                            }
-                        }
-                    }
-                    .onChange(of: schedulingViewModel.statusMessage) { oldValue, newValue in
-                        if newValue != nil {
-                            // Scroll to show status message when it appears
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                withAnimation {
-                                    proxy.scrollTo("status", anchor: .bottom)
-                                }
-                            }
-                        }
-                    }
-                    .onChange(of: schedulingViewModel.currentProposal != nil) { oldValue, hasProposal in
-                        if hasProposal {
-                            // Scroll to bottom when proposal appears
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                withAnimation {
-                                    proxy.scrollTo("proposal", anchor: .bottom)
-                                }
-                            }
-                        }
-                    }
+                chatMessagesView
+                chatInputView
+            }
+        }
+    }
+
+    private var agentNotRunningView: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "clock.badge.questionmark")
+                .font(.system(size: 50))
+                .foregroundColor(dynamicSecondaryTextColor)
+
+            Text("Agent Not Running")
+                .font(.headline)
+                .foregroundColor(dynamicTextColor)
+
+            Text("Go to the Setup tab to configure your data and run the agent.")
+                .font(.subheadline)
+                .foregroundColor(dynamicSecondaryTextColor)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+
+            Button("Go to Setup") {
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    selectedTab = 0
                 }
-                
-                if !schedulingViewModel.showingDeclineReasonInput {
-                    HStack {
-                        TextField("Ask about scheduling...", text: $newMessage)
-                            .textFieldStyle(RoundedBorderTextFieldStyle())
-                        
-                        Button("Send") {
-                            sendMessage()
-                        }
-                        .foregroundColor(dynamicPrimaryColor)
-                        .disabled(newMessage.trimmingCharacters(in: .whitespaces).isEmpty || schedulingViewModel.isLoading)
-                    }
+            }
+            .buttonStyle(ScaleButtonStyle())
+            .foregroundColor(dynamicPrimaryColor)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var chatMessagesView: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                chatMessagesContent
+            }
+            .onChange(of: schedulingViewModel.messages.count) { _, _ in
+                scrollToLastMessage(proxy: proxy)
+            }
+            .onChange(of: schedulingViewModel.statusMessage) { _, newValue in
+                if newValue != nil {
+                    scrollToStatus(proxy: proxy)
+                }
+            }
+            .onChange(of: schedulingViewModel.currentProposal != nil) { _, hasProposal in
+                if hasProposal {
+                    scrollToProposal(proxy: proxy)
+                }
+            }
+        }
+    }
+
+    private var chatMessagesContent: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(Array(schedulingViewModel.messages.enumerated()), id: \.offset) { index, message in
+                chatMessageBubble(message: message, index: index)
+            }
+
+            statusMessageView
+            proposalCardView
+            declineReasonInputView
+            loadingIndicatorView
+        }
+        .padding()
+    }
+
+    private func chatMessageBubble(message: SchedulingMessage, index: Int) -> some View {
+        HStack {
+            if message.role == .user {
+                Spacer()
+                Text(message.content)
                     .padding()
-                    .background(dynamicBackgroundColor)
+                    .background(dynamicPrimaryColor)
+                    .cornerRadius(12)
+                    .foregroundColor(.white)
+            } else {
+                Text(message.content)
+                    .padding()
+                    .background(dynamicSecondaryBackgroundColor)
+                    .cornerRadius(12)
+                    .foregroundColor(dynamicTextColor)
+                Spacer()
+            }
+        }
+        .id("message_\(index)")
+        .transition(
+            .asymmetric(
+                insertion: message.role == .user
+                    ? .move(edge: .trailing).combined(with: .opacity)
+                    : .move(edge: .leading).combined(with: .opacity),
+                removal: .opacity
+            )
+        )
+    }
+
+    @ViewBuilder
+    private var statusMessageView: some View {
+        if let statusMessage = schedulingViewModel.statusMessage {
+            HStack {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                    Text(statusMessage)
+                        .italic()
                 }
+                .padding()
+                .background(dynamicSecondaryBackgroundColor)
+                .cornerRadius(12)
+                .foregroundColor(dynamicSecondaryTextColor)
+                Spacer()
+            }
+            .id("status")
+            .transition(.opacity.combined(with: .scale(scale: 0.95)))
+        }
+    }
+
+    @ViewBuilder
+    private var proposalCardView: some View {
+        if schedulingViewModel.currentProposal != nil {
+            HStack {
+                ProposalMessageCard(
+                    proposal: proposalBinding,
+                    schedulingViewModel: schedulingViewModel,
+                    backlogViewModel: backlogViewModel,
+                    onAccept: { taskTitles in
+                        handleAcceptedTasks(taskTitles)
+                    },
+                    onRequestModificationReason: { context in
+                        // Store modification for later review and continue immediately
+                        pendingModifications.append(context)
+                        handleAcceptedTasks(context.tasks)
+                    },
+                    isDisabled: schedulingViewModel.showingDeclineReasonInput
+                )
+                Spacer()
+            }
+            .transition(.scale(scale: 0.9).combined(with: .opacity))
+        }
+    }
+
+    @ViewBuilder
+    private var declineReasonInputView: some View {
+        if schedulingViewModel.showingDeclineReasonInput {
+            HStack {
+                Spacer()
+                declineReasonContent
+            }
+            .transition(.move(edge: .trailing).combined(with: .opacity))
+        }
+    }
+
+    private var declineReasonContent: some View {
+        VStack(alignment: .trailing, spacing: 8) {
+            Text("Why can't you do this session?")
+                .font(.subheadline)
+                .foregroundColor(dynamicTextColor)
+
+            TextField("Explain why...", text: $schedulingViewModel.declineReason, axis: .vertical)
+                .textFieldStyle(RoundedBorderTextFieldStyle())
+                .lineLimit(3...6)
+
+            declineReasonButtons
+        }
+        .padding()
+        .background(dynamicSecondaryBackgroundColor)
+        .cornerRadius(12)
+    }
+
+    private var declineReasonButtons: some View {
+        HStack {
+            Button("Cancel") {
+                schedulingViewModel.showingDeclineReasonInput = false
+                schedulingViewModel.declineReason = ""
+                schedulingViewModel.currentProposal = nil
+            }
+            .foregroundColor(dynamicSecondaryTextColor)
+
+            Button("Submit") {
+                submitDeclineReason()
+            }
+            .foregroundColor(dynamicPrimaryColor)
+            .disabled(schedulingViewModel.declineReason.trimmingCharacters(in: .whitespaces).isEmpty)
+        }
+    }
+
+    private func submitDeclineReason() {
+        let reason = schedulingViewModel.declineReason
+        schedulingViewModel.declineReason = ""
+
+        schedulingViewModel.sendMessage(reason, backlogItems: backlogViewModel.backlogItems) { error in
+            if let error = error {
+                print("Error sending decline reason: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var loadingIndicatorView: some View {
+        if schedulingViewModel.isLoading {
+            HStack(spacing: 8) {
+                TypingIndicatorView()
+                Text("Thinking...")
+                    .font(.caption)
+                    .foregroundColor(dynamicSecondaryTextColor)
+                    .italic()
+                Spacer()
+            }
+            .padding()
+            .transition(.opacity.combined(with: .scale(scale: 0.95)))
+        }
+    }
+
+    @ViewBuilder
+    private var chatInputView: some View {
+        if !schedulingViewModel.showingDeclineReasonInput {
+            HStack {
+                TextField("Ask about scheduling...", text: $newMessage)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+
+                Button("Send") {
+                    sendMessage()
+                }
+                .foregroundColor(dynamicPrimaryColor)
+                .disabled(newMessage.trimmingCharacters(in: .whitespaces).isEmpty || schedulingViewModel.isLoading)
+            }
+            .padding()
+            .background(dynamicBackgroundColor)
+        }
+    }
+
+    private func scrollToLastMessage(proxy: ScrollViewProxy) {
+        let lastIndex = schedulingViewModel.messages.count - 1
+        if lastIndex >= 0 {
+            withAnimation {
+                proxy.scrollTo("message_\(lastIndex)", anchor: .bottom)
+            }
+        }
+    }
+
+    private func scrollToStatus(proxy: ScrollViewProxy) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            withAnimation {
+                proxy.scrollTo("status", anchor: .bottom)
+            }
+        }
+    }
+
+    private func scrollToProposal(proxy: ScrollViewProxy) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            withAnimation {
+                proxy.scrollTo("proposal", anchor: .bottom)
             }
         }
     }
@@ -488,7 +574,9 @@ struct SmartSchedulingTestView: View {
         refreshData()
         
         // Switch to chat tab
-        selectedTab = 1
+        withAnimation(.easeInOut(duration: 0.25)) {
+            selectedTab = 1
+        }
         
         // Propose first working session using the fixed planning date
         proposeNextSession()
@@ -525,6 +613,13 @@ struct SmartSchedulingTestView: View {
             )
             schedulingViewModel.messages.append(completionMessage)
             schedulingViewModel.currentProposal = nil
+
+            // Show modification review if there are pending modifications
+            if !pendingModifications.isEmpty {
+                currentModificationIndex = 0
+                modificationReason = ""
+                showingModificationReview = true
+            }
             return
         }
         
@@ -1167,7 +1262,11 @@ struct ExpandableSection<Content: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Button(action: onToggle) {
+            Button(action: {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    onToggle()
+                }
+            }) {
                 HStack {
                     Image(systemName: icon)
                         .foregroundColor(dynamicPrimaryColor)
@@ -1180,9 +1279,11 @@ struct ExpandableSection<Content: View>: View {
 
                     Spacer()
 
-                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                    Image(systemName: "chevron.down")
                         .font(.caption)
                         .foregroundColor(dynamicSecondaryTextColor)
+                        .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                        .animation(.easeInOut(duration: 0.2), value: isExpanded)
                 }
                 .padding(.vertical, 8)
             }
@@ -1192,10 +1293,12 @@ struct ExpandableSection<Content: View>: View {
                 content()
                     .padding(.leading, 32)
                     .padding(.bottom, 8)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
             }
 
             Divider()
         }
+        .animation(.easeInOut(duration: 0.2), value: isExpanded)
     }
 }
 
@@ -1230,5 +1333,274 @@ struct StatBadge: View {
                 .font(.caption2)
                 .foregroundColor(dynamicSecondaryTextColor)
         }
+    }
+}
+
+// MARK: - Animated Button Style
+
+struct ScaleButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
+            .opacity(configuration.isPressed ? 0.9 : 1.0)
+            .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
+    }
+}
+
+// MARK: - Typing Indicator
+
+struct TypingIndicatorView: View {
+    @State private var animationPhase = 0
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(0..<3, id: \.self) { index in
+                Circle()
+                    .fill(dynamicSecondaryTextColor)
+                    .frame(width: 8, height: 8)
+                    .scaleEffect(animationPhase == index ? 1.2 : 0.8)
+                    .opacity(animationPhase == index ? 1.0 : 0.4)
+            }
+        }
+        .onAppear {
+            Timer.scheduledTimer(withTimeInterval: 0.4, repeats: true) { _ in
+                withAnimation(.easeInOut(duration: 0.4)) {
+                    animationPhase = (animationPhase + 1) % 3
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Modification Review Sheet
+
+struct ModificationReviewSheet: View {
+    @Binding var modifications: [ModificationContext]
+    @Binding var currentIndex: Int
+    @Binding var reason: String
+    @ObservedObject var schedulingViewModel: SchedulingAssistantViewModel
+    let onComplete: () -> Void
+
+    @FocusState private var isTextFieldFocused: Bool
+
+    private var currentModification: ModificationContext? {
+        guard currentIndex < modifications.count else { return nil }
+        return modifications[currentIndex]
+    }
+
+    private var progress: String {
+        "\(currentIndex + 1) of \(modifications.count)"
+    }
+
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                VStack(spacing: 20) {
+                    // Header
+                    VStack(spacing: 8) {
+                        Image(systemName: "brain.head.profile")
+                            .font(.system(size: 40))
+                            .foregroundColor(.orange)
+
+                        Text("Help the agent learn!")
+                            .font(.headline)
+                            .foregroundColor(dynamicTextColor)
+
+                        Text("You modified \(modifications.count) session\(modifications.count == 1 ? "" : "s"). Quick feedback helps improve future suggestions.")
+                            .font(.subheadline)
+                            .foregroundColor(dynamicSecondaryTextColor)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                    }
+                    .padding(.top, 20)
+
+                    if let mod = currentModification {
+                        // Progress indicator
+                        Text(progress)
+                            .font(.caption)
+                            .foregroundColor(dynamicSecondaryTextColor)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 4)
+                            .background(dynamicSecondaryBackgroundColor)
+                            .cornerRadius(12)
+
+                        // Modification Summary
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack {
+                                Text("Tasks:")
+                                    .font(.caption)
+                                    .foregroundColor(dynamicSecondaryTextColor)
+                                Spacer()
+                                Text(mod.tasks.joined(separator: ", "))
+                                    .font(.caption)
+                                    .foregroundColor(dynamicTextColor)
+                                    .lineLimit(2)
+                                    .multilineTextAlignment(.trailing)
+                            }
+
+                            HStack {
+                                Text("Original:")
+                                    .font(.caption)
+                                    .foregroundColor(dynamicSecondaryTextColor)
+                                Spacer()
+                                Text(mod.originalTime)
+                                    .font(.caption)
+                                    .foregroundColor(dynamicTextColor)
+                                    .strikethrough()
+                            }
+
+                            HStack {
+                                Text("Modified to:")
+                                    .font(.caption)
+                                    .foregroundColor(dynamicSecondaryTextColor)
+                                Spacer()
+                                Text(mod.modifiedTime)
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(.orange)
+                            }
+                        }
+                        .padding()
+                        .background(dynamicSecondaryBackgroundColor)
+                        .cornerRadius(12)
+                        .padding(.horizontal)
+
+                        // Quick Suggestions
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Quick reasons:")
+                                .font(.caption)
+                                .foregroundColor(dynamicSecondaryTextColor)
+                                .padding(.horizontal)
+
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 8) {
+                                    QuickReasonChip(text: "Had a conflict", onTap: { reason = "Had a conflict at that time"; isTextFieldFocused = false })
+                                    QuickReasonChip(text: "Too early", onTap: { reason = "That time was too early for me"; isTextFieldFocused = false })
+                                    QuickReasonChip(text: "Too late", onTap: { reason = "That time was too late for me"; isTextFieldFocused = false })
+                                    QuickReasonChip(text: "Need more time", onTap: { reason = "I need more time for this task"; isTextFieldFocused = false })
+                                    QuickReasonChip(text: "Need less time", onTap: { reason = "I don't need that much time"; isTextFieldFocused = false })
+                                }
+                                .padding(.horizontal)
+                            }
+                        }
+
+                        // Reason Input
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Or type your own:")
+                                .font(.caption)
+                                .foregroundColor(dynamicSecondaryTextColor)
+
+                            TextField("e.g., I have a meeting at that time...", text: $reason, axis: .vertical)
+                                .textFieldStyle(.plain)
+                                .padding()
+                                .background(dynamicSecondaryBackgroundColor)
+                                .cornerRadius(12)
+                                .lineLimit(2...4)
+                                .focused($isTextFieldFocused)
+                                .submitLabel(.done)
+                                .onSubmit {
+                                    isTextFieldFocused = false
+                                }
+                        }
+                        .padding(.horizontal)
+                    }
+
+                    // Action Buttons
+                    VStack(spacing: 12) {
+                        Button(action: {
+                            saveCurrentAndAdvance()
+                        }) {
+                            HStack {
+                                Text(reason.isEmpty ? "Skip" : "Save")
+                                if currentIndex < modifications.count - 1 {
+                                    Image(systemName: "arrow.right")
+                                }
+                            }
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(reason.isEmpty ? dynamicSecondaryTextColor : dynamicPrimaryColor)
+                            .cornerRadius(12)
+                        }
+                        .buttonStyle(ScaleButtonStyle())
+
+                        Button(action: {
+                            skipAllRemaining()
+                        }) {
+                            Text("Skip all remaining")
+                                .font(.subheadline)
+                                .foregroundColor(dynamicSecondaryTextColor)
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.bottom, 20)
+                }
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .background(dynamicBackgroundColor)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: {
+                        skipAllRemaining()
+                    }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(dynamicSecondaryTextColor)
+                    }
+                }
+                ToolbarItem(placement: .keyboard) {
+                    HStack {
+                        Spacer()
+                        Button("Done") {
+                            isTextFieldFocused = false
+                        }
+                        .foregroundColor(dynamicPrimaryColor)
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+
+    private func saveCurrentAndAdvance() {
+        isTextFieldFocused = false
+
+        if let mod = currentModification {
+            schedulingViewModel.saveModificationReason(
+                reason: reason,
+                originalTime: mod.originalTime,
+                modifiedTime: mod.modifiedTime,
+                tasks: mod.tasks
+            )
+        }
+
+        reason = ""
+
+        if currentIndex < modifications.count - 1 {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                currentIndex += 1
+            }
+        } else {
+            onComplete()
+        }
+    }
+
+    private func skipAllRemaining() {
+        isTextFieldFocused = false
+
+        // Save all remaining modifications with empty reason
+        for i in currentIndex..<modifications.count {
+            let mod = modifications[i]
+            schedulingViewModel.saveModificationReason(
+                reason: i == currentIndex ? reason : "",
+                originalTime: mod.originalTime,
+                modifiedTime: mod.modifiedTime,
+                tasks: mod.tasks
+            )
+        }
+
+        onComplete()
     }
 }
