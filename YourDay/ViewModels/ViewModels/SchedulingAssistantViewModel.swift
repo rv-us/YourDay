@@ -1071,51 +1071,54 @@ class SchedulingAssistantViewModel: ObservableObject {
             ) { [weak self] eventId, error in
                 guard let self = self else { return }
 
-                if let error = error {
-                    print("Error creating calendar event: \(error.localizedDescription)")
-                    onComplete(proposal.tasks)
-                } else {
-                    print("✅ Created working session calendar event")
+                // Dispatch to main thread for @Published property updates
+                DispatchQueue.main.async {
+                    if let error = error {
+                        print("Error creating calendar event: \(error.localizedDescription)")
+                        onComplete(proposal.tasks)
+                    } else {
+                        print("✅ Created working session calendar event")
 
-                    // Record interaction for learning
-                    let duration = Int(adjustedEndTime.timeIntervalSince(adjustedStartTime) / 60)
-                    let interaction = ProposalInteraction(
-                        proposedTasks: proposal.tasks,
-                        proposedTime: proposal.workingSessionTime,
-                        proposedDuration: proposal.effectiveDuration ?? duration,
-                        action: hasModifications ? .acceptedWithChanges : .accepted,
-                        modifiedTime: hasModifications ? proposal.effectiveTimeString : nil,
-                        modifiedDuration: proposal.adjustedDuration,
-                        declineReason: nil,
-                        dayOfWeek: self.getDayOfWeekString(from: self.selectedDate)
-                    )
-                    self.recordInteraction(interaction)
+                        // Record interaction for learning
+                        let duration = Int(adjustedEndTime.timeIntervalSince(adjustedStartTime) / 60)
+                        let interaction = ProposalInteraction(
+                            proposedTasks: proposal.tasks,
+                            proposedTime: proposal.workingSessionTime,
+                            proposedDuration: proposal.effectiveDuration ?? duration,
+                            action: hasModifications ? .acceptedWithChanges : .accepted,
+                            modifiedTime: hasModifications ? proposal.effectiveTimeString : nil,
+                            modifiedDuration: proposal.adjustedDuration,
+                            declineReason: nil,
+                            dayOfWeek: self.getDayOfWeekString(from: self.selectedDate)
+                        )
+                        self.recordInteraction(interaction)
 
-                    self.currentProposal = nil
+                        self.currentProposal = nil
 
-                    // Refresh calendar events to get the newly created event
-                    // Wait a moment for Google Calendar to sync
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        self.fetchCalendarEvents(for: self.selectedDate)
+                        // Refresh calendar events to get the newly created event
+                        // Wait a moment for Google Calendar to sync
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            self.fetchCalendarEvents(for: self.selectedDate)
 
-                        // Wait a bit more for the fetch to complete, then call onComplete
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                            // Save acceptance message
-                            if let userId = Auth.auth().currentUser?.uid {
-                                let tasksList = proposal.tasks.joined(separator: ", ")
-                                let timeStr = hasModifications ? proposal.effectiveTimeString : proposal.workingSessionTime
-                                let message = SchedulingMessage(
-                                    userId: userId,
-                                    role: .user,
-                                    content: hasModifications
-                                        ? "Accepted with changes: \(tasksList) at \(timeStr)"
-                                        : "Accepted: \(tasksList) at \(timeStr)"
-                                )
-                                self.messages.append(message)
-                                self.firebaseManager.saveSchedulingMessage(message) { _ in }
+                            // Wait a bit more for the fetch to complete, then call onComplete
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                                // Save acceptance message
+                                if let userId = Auth.auth().currentUser?.uid {
+                                    let tasksList = proposal.tasks.joined(separator: ", ")
+                                    let timeStr = hasModifications ? proposal.effectiveTimeString : proposal.workingSessionTime
+                                    let message = SchedulingMessage(
+                                        userId: userId,
+                                        role: .user,
+                                        content: hasModifications
+                                            ? "Accepted with changes: \(tasksList) at \(timeStr)"
+                                            : "Accepted: \(tasksList) at \(timeStr)"
+                                    )
+                                    self.messages.append(message)
+                                    self.firebaseManager.saveSchedulingMessage(message) { _ in }
+                                }
+
+                                onComplete(proposal.tasks)
                             }
-
-                            onComplete(proposal.tasks)
                         }
                     }
                 }
@@ -1182,7 +1185,112 @@ class SchedulingAssistantViewModel: ObservableObject {
         currentProposal = nil
         onComplete()
     }
-    
+
+    // MARK: - Modification Reason Learning
+
+    func saveModificationReason(reason: String, originalTime: String, modifiedTime: String, tasks: [String]) {
+        guard !reason.isEmpty else { return }
+
+        // Save to learned patterns
+        var learnedPatterns = schedulePreference?.learnedPatterns ?? [:]
+        let key = "modification_\(Date().timeIntervalSince1970)"
+        learnedPatterns[key] = reason
+        updateSchedulePreference(["learnedPatterns": learnedPatterns])
+
+        // Analyze the reason to extract schedule constraints
+        analyzeModificationReason(reason: reason, originalTime: originalTime, modifiedTime: modifiedTime, tasks: tasks)
+
+        // Save a message for context
+        if let userId = Auth.auth().currentUser?.uid {
+            let message = SchedulingMessage(
+                userId: userId,
+                role: .user,
+                content: "Modified \(tasks.joined(separator: ", ")) from \(originalTime) to \(modifiedTime). Reason: \(reason)"
+            )
+            messages.append(message)
+            firebaseManager.saveSchedulingMessage(message) { _ in }
+        }
+    }
+
+    private func analyzeModificationReason(reason: String, originalTime: String, modifiedTime: String, tasks: [String]) {
+        let analysisPrompt = """
+        The user modified a scheduled working session. Analyze their reason to extract scheduling preferences.
+
+        Original time: \(originalTime)
+        Modified to: \(modifiedTime)
+        Tasks: \(tasks.joined(separator: ", "))
+        User's reason: "\(reason)"
+
+        Extract any schedule constraints or preferences. Return JSON:
+        {
+            "scheduleConstraint": {
+                "reason": "Brief description of the constraint",
+                "timeRange": "Affected time range if specific (e.g., '14:00-15:00') or null",
+                "context": "Additional context or null"
+            } or null,
+            "preferenceUpdate": {
+                "type": "preferEarlier" or "preferLater" or "avoidTime" or "preferDuration" or null,
+                "value": "Specific preference value if applicable"
+            } or null
+        }
+
+        If no clear constraint can be extracted, return {"scheduleConstraint": null, "preferenceUpdate": null}
+        """
+
+        Task {
+            do {
+                let vertex = VertexAI.vertexAI()
+                let model = vertex.generativeModel(modelName: "gemini-2.5-flash")
+
+                let analysisMessage = ModelContent(role: "user", parts: [TextPart(analysisPrompt)])
+                let response = try await model.generateContent([analysisMessage])
+
+                guard let text = response.text,
+                      let data = text.data(using: .utf8),
+                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                    return
+                }
+
+                // Extract and save schedule constraint
+                if let constraintDict = json["scheduleConstraint"] as? [String: Any],
+                   let constraintReason = constraintDict["reason"] as? String {
+                    let constraint = ScheduleConstraint(
+                        reason: constraintReason,
+                        timeRange: constraintDict["timeRange"] as? String,
+                        context: constraintDict["context"] as? String
+                    )
+
+                    // Add to existing constraints
+                    firebaseManager.fetchSchedulePreference { [weak self] preference, _ in
+                        guard let self = self, let pref = preference else { return }
+
+                        var constraints = pref.scheduleConstraints
+                        constraints.append(constraint)
+
+                        let constraintsDicts = constraints.map { c in
+                            var dict: [String: Any] = ["reason": c.reason]
+                            if let timeRange = c.timeRange { dict["timeRange"] = timeRange }
+                            if let context = c.context { dict["context"] = context }
+                            return dict
+                        }
+
+                        self.updateSchedulePreference(["scheduleConstraints": constraintsDicts])
+                    }
+                }
+
+                // Handle preference updates (e.g., user prefers earlier times)
+                if let prefUpdate = json["preferenceUpdate"] as? [String: Any],
+                   let prefType = prefUpdate["type"] as? String {
+                    var learnedPatterns = schedulePreference?.learnedPatterns ?? [:]
+                    learnedPatterns["preference_\(prefType)"] = prefUpdate["value"] as? String ?? "true"
+                    updateSchedulePreference(["learnedPatterns": learnedPatterns])
+                }
+            } catch {
+                print("Error analyzing modification reason: \(error.localizedDescription)")
+            }
+        }
+    }
+
     // MARK: - Not Today Detection
     
     private func detectNotTodayIntent(_ message: String) -> Bool {

@@ -129,70 +129,8 @@ struct SmartSchedulingTestView: View {
                 // Day Context Section (expandable)
                 DayContextSection(schedulingViewModel: schedulingViewModel)
 
-                // Schedule Preferences Section
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Schedule Preferences")
-                        .font(.headline)
-                        .foregroundColor(dynamicTextColor)
-
-                    if let preference = schedulingViewModel.schedulePreference {
-                        VStack(alignment: .leading, spacing: 8) {
-                            if let wakeTime = preference.preferredWakeTime {
-                                HStack {
-                                    Text("Wake Time:")
-                                    Spacer()
-                                    Text(wakeTime)
-                                        .foregroundColor(dynamicSecondaryTextColor)
-                                }
-                            }
-
-                            if let lunchTime = preference.lunchTime {
-                                HStack {
-                                    Text("Lunch Time:")
-                                    Spacer()
-                                    Text(lunchTime)
-                                        .foregroundColor(dynamicSecondaryTextColor)
-                                }
-                            }
-
-                            if !preference.recurringCommitments.isEmpty {
-                                Text("Recurring Commitments:")
-                                    .font(.subheadline)
-                                    .padding(.top, 4)
-
-                                ForEach(preference.recurringCommitments.indices, id: \.self) { index in
-                                    let commitment = preference.recurringCommitments[index]
-                                    Text("• \(commitment.eventName): \(commitment.daysOfWeek.joined(separator: ", ")) at \(commitment.time)")
-                                        .font(.caption)
-                                        .foregroundColor(dynamicSecondaryTextColor)
-                                }
-                            }
-
-                            // Show acceptance stats if available
-                            if let stats = preference.acceptanceStats {
-                                Divider()
-                                Text("Learning Stats:")
-                                    .font(.subheadline)
-                                    .padding(.top, 4)
-                                Text("Accepted: \(stats.totalAccepted) | Declined: \(stats.totalDeclined) | Modified: \(stats.totalModified)")
-                                    .font(.caption)
-                                    .foregroundColor(dynamicSecondaryTextColor)
-                                if let avgDuration = stats.averageAcceptedDuration {
-                                    Text("Avg session duration: \(avgDuration) min")
-                                        .font(.caption)
-                                        .foregroundColor(dynamicSecondaryTextColor)
-                                }
-                            }
-                        }
-                    } else {
-                        Text("No preferences set yet. The agent will learn from your responses.")
-                            .font(.caption)
-                            .foregroundColor(dynamicSecondaryTextColor)
-                    }
-                }
-                .padding()
-                .background(dynamicSecondaryBackgroundColor)
-                .cornerRadius(12)
+                // MARK: - Agent Memory Section
+                AgentMemorySection(schedulingViewModel: schedulingViewModel, selectedDate: selectedDate)
                 
                 // Date Selection Section
                 VStack(alignment: .leading, spacing: 12) {
@@ -331,7 +269,7 @@ struct SmartSchedulingTestView: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         VStack(alignment: .leading, spacing: 10) {
-                            ForEach(schedulingViewModel.messages) { message in
+                            ForEach(Array(schedulingViewModel.messages.enumerated()), id: \.offset) { index, message in
                                 HStack {
                                     if message.role == .user {
                                         Spacer()
@@ -349,6 +287,7 @@ struct SmartSchedulingTestView: View {
                                         Spacer()
                                     }
                                 }
+                                .id("message_\(index)")
                             }
                             
                             // Display status message if available
@@ -445,9 +384,10 @@ struct SmartSchedulingTestView: View {
                         .padding()
                     }
                     .onChange(of: schedulingViewModel.messages.count) { oldValue, newValue in
-                        if let last = schedulingViewModel.messages.last?.id {
+                        let lastIndex = schedulingViewModel.messages.count - 1
+                        if lastIndex >= 0 {
                             withAnimation {
-                                proxy.scrollTo(last, anchor: .bottom)
+                                proxy.scrollTo("message_\(lastIndex)", anchor: .bottom)
                             }
                         }
                     }
@@ -705,6 +645,544 @@ struct AddBacklogItemSheet: View {
                     .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
+        }
+    }
+}
+
+// MARK: - Agent Memory Section
+
+struct AgentMemorySection: View {
+    @ObservedObject var schedulingViewModel: SchedulingAssistantViewModel
+    let selectedDate: Date
+
+    @State private var expandedSections: Set<String> = []
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Agent Memory")
+                .font(.title2)
+                .fontWeight(.bold)
+                .foregroundColor(dynamicTextColor)
+
+            Text("Everything the agent references when making scheduling decisions")
+                .font(.caption)
+                .foregroundColor(dynamicSecondaryTextColor)
+
+            // 1. Basic Preferences
+            ExpandableSection(
+                title: "Basic Preferences",
+                icon: "gearshape.fill",
+                isExpanded: expandedSections.contains("preferences"),
+                onToggle: { toggleSection("preferences") }
+            ) {
+                basicPreferencesContent
+            }
+
+            // 2. Schedule Constraints
+            ExpandableSection(
+                title: "Schedule Constraints",
+                icon: "exclamationmark.triangle.fill",
+                isExpanded: expandedSections.contains("constraints"),
+                onToggle: { toggleSection("constraints") }
+            ) {
+                scheduleConstraintsContent
+            }
+
+            // 3. Recurring Commitments
+            ExpandableSection(
+                title: "Recurring Commitments",
+                icon: "repeat",
+                isExpanded: expandedSections.contains("recurring"),
+                onToggle: { toggleSection("recurring") }
+            ) {
+                recurringCommitmentsContent
+            }
+
+            // 4. Learned Patterns
+            ExpandableSection(
+                title: "Learned Patterns",
+                icon: "brain.head.profile",
+                isExpanded: expandedSections.contains("patterns"),
+                onToggle: { toggleSection("patterns") }
+            ) {
+                learnedPatternsContent
+            }
+
+            // 5. Schedule Notes
+            ExpandableSection(
+                title: "Schedule Notes (Selected Date)",
+                icon: "note.text",
+                isExpanded: expandedSections.contains("notes"),
+                onToggle: { toggleSection("notes") }
+            ) {
+                scheduleNotesContent
+            }
+
+            // 6. Acceptance Stats
+            ExpandableSection(
+                title: "Learning Statistics",
+                icon: "chart.bar.fill",
+                isExpanded: expandedSections.contains("stats"),
+                onToggle: { toggleSection("stats") }
+            ) {
+                acceptanceStatsContent
+            }
+
+            // 7. Recent Interactions
+            ExpandableSection(
+                title: "Recent Interactions",
+                icon: "clock.arrow.circlepath",
+                isExpanded: expandedSections.contains("interactions"),
+                onToggle: { toggleSection("interactions") }
+            ) {
+                recentInteractionsContent
+            }
+        }
+        .padding()
+        .background(dynamicSecondaryBackgroundColor)
+        .cornerRadius(12)
+        .onAppear {
+            schedulingViewModel.fetchScheduleNotes(for: selectedDate)
+        }
+        .onChange(of: selectedDate) { _, newDate in
+            schedulingViewModel.fetchScheduleNotes(for: newDate)
+        }
+    }
+
+    private func toggleSection(_ section: String) {
+        if expandedSections.contains(section) {
+            expandedSections.remove(section)
+        } else {
+            expandedSections.insert(section)
+        }
+    }
+
+    // MARK: - Basic Preferences Content
+
+    @ViewBuilder
+    private var basicPreferencesContent: some View {
+        if let pref = schedulingViewModel.schedulePreference {
+            VStack(alignment: .leading, spacing: 8) {
+                DataRow(label: "Wake Time", value: pref.preferredWakeTime ?? "Not set")
+                DataRow(label: "Lunch Time", value: pref.lunchTime ?? "Not set")
+
+                if let workTimes = pref.preferredWorkTimes, !workTimes.isEmpty {
+                    DataRow(label: "Preferred Work Times", value: workTimes.joined(separator: ", "))
+                }
+
+                if let blockedTimes = pref.blockedTimes, !blockedTimes.isEmpty {
+                    DataRow(label: "Blocked Times", value: blockedTimes.joined(separator: ", "))
+                }
+            }
+        } else {
+            Text("No preferences saved yet")
+                .font(.caption)
+                .foregroundColor(dynamicSecondaryTextColor)
+                .italic()
+        }
+    }
+
+    // MARK: - Schedule Constraints Content
+
+    @ViewBuilder
+    private var scheduleConstraintsContent: some View {
+        if let pref = schedulingViewModel.schedulePreference, !pref.scheduleConstraints.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(pref.scheduleConstraints.indices, id: \.self) { index in
+                    let constraint = pref.scheduleConstraints[index]
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("• \(constraint.reason)")
+                            .font(.caption)
+                            .foregroundColor(dynamicTextColor)
+
+                        HStack(spacing: 8) {
+                            if let timeRange = constraint.timeRange {
+                                Label(timeRange, systemImage: "clock")
+                                    .font(.caption2)
+                                    .foregroundColor(dynamicSecondaryTextColor)
+                            }
+                            if let context = constraint.context {
+                                Text(context)
+                                    .font(.caption2)
+                                    .foregroundColor(dynamicSecondaryTextColor)
+                                    .italic()
+                            }
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        } else {
+            Text("No constraints learned yet. The agent learns when you decline proposals.")
+                .font(.caption)
+                .foregroundColor(dynamicSecondaryTextColor)
+                .italic()
+        }
+    }
+
+    // MARK: - Recurring Commitments Content
+
+    @ViewBuilder
+    private var recurringCommitmentsContent: some View {
+        if let pref = schedulingViewModel.schedulePreference, !pref.recurringCommitments.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(pref.recurringCommitments.indices, id: \.self) { index in
+                    let commitment = pref.recurringCommitments[index]
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(commitment.eventName)
+                                .font(.caption)
+                                .fontWeight(.medium)
+                                .foregroundColor(dynamicTextColor)
+
+                            Text("\(commitment.daysOfWeek.joined(separator: ", ")) at \(commitment.time)")
+                                .font(.caption2)
+                                .foregroundColor(dynamicSecondaryTextColor)
+                        }
+
+                        Spacer()
+
+                        Text(commitment.frequency)
+                            .font(.caption2)
+                            .foregroundColor(dynamicPrimaryColor)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(dynamicPrimaryColor.opacity(0.15))
+                            .cornerRadius(4)
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        } else {
+            Text("No recurring commitments saved. Mention regular activities in chat.")
+                .font(.caption)
+                .foregroundColor(dynamicSecondaryTextColor)
+                .italic()
+        }
+    }
+
+    // MARK: - Learned Patterns Content
+
+    @ViewBuilder
+    private var learnedPatternsContent: some View {
+        if let pref = schedulingViewModel.schedulePreference,
+           let patterns = pref.learnedPatterns, !patterns.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(Array(patterns.keys.sorted()), id: \.self) { key in
+                    if let value = patterns[key] {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(formatPatternKey(key))
+                                .font(.caption2)
+                                .foregroundColor(dynamicSecondaryTextColor)
+                            Text(value)
+                                .font(.caption)
+                                .foregroundColor(dynamicTextColor)
+                        }
+                        .padding(.vertical, 2)
+                    }
+                }
+            }
+        } else {
+            Text("No patterns learned yet. These are extracted from your decline reasons.")
+                .font(.caption)
+                .foregroundColor(dynamicSecondaryTextColor)
+                .italic()
+        }
+    }
+
+    private func formatPatternKey(_ key: String) -> String {
+        if key.starts(with: "decline_reason_") {
+            return "Decline Reason"
+        }
+        return key.replacingOccurrences(of: "_", with: " ").capitalized
+    }
+
+    // MARK: - Schedule Notes Content
+
+    @ViewBuilder
+    private var scheduleNotesContent: some View {
+        if !schedulingViewModel.scheduleNotes.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(schedulingViewModel.scheduleNotes) { note in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(note.note)
+                                .font(.caption)
+                                .foregroundColor(dynamicTextColor)
+
+                            if let timeRange = note.timeRange {
+                                Label(timeRange, systemImage: "clock")
+                                    .font(.caption2)
+                                    .foregroundColor(dynamicSecondaryTextColor)
+                            }
+                        }
+
+                        Spacer()
+
+                        if note.isBlocking {
+                            Text("BLOCKING")
+                                .font(.caption2)
+                                .foregroundColor(.red)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.red.opacity(0.15))
+                                .cornerRadius(4)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        } else {
+            Text("No notes for this date. Mention appointments in chat to save them.")
+                .font(.caption)
+                .foregroundColor(dynamicSecondaryTextColor)
+                .italic()
+        }
+    }
+
+    // MARK: - Acceptance Stats Content
+
+    @ViewBuilder
+    private var acceptanceStatsContent: some View {
+        if let pref = schedulingViewModel.schedulePreference,
+           let stats = pref.acceptanceStats {
+            VStack(alignment: .leading, spacing: 12) {
+                // Summary Row
+                HStack(spacing: 16) {
+                    StatBadge(label: "Accepted", value: stats.totalAccepted, color: .green)
+                    StatBadge(label: "Declined", value: stats.totalDeclined, color: .red)
+                    StatBadge(label: "Modified", value: stats.totalModified, color: .orange)
+                    StatBadge(label: "Skipped", value: stats.totalSkipped, color: .gray)
+                }
+
+                if let avgDuration = stats.averageAcceptedDuration {
+                    DataRow(label: "Avg Session Duration", value: "\(avgDuration) min")
+                }
+
+                // Preferred Hours
+                if !stats.preferredHours.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Preferred Hours:")
+                            .font(.caption)
+                            .foregroundColor(dynamicSecondaryTextColor)
+
+                        let sortedHours = stats.preferredHours.sorted { $0.value > $1.value }
+                        HStack(spacing: 8) {
+                            ForEach(sortedHours.prefix(5), id: \.key) { hour, count in
+                                Text(formatHour(hour))
+                                    .font(.caption2)
+                                    .foregroundColor(dynamicTextColor)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(dynamicPrimaryColor.opacity(Double(count) / Double(sortedHours.first?.value ?? 1) * 0.3 + 0.1))
+                                    .cornerRadius(4)
+                            }
+                        }
+                    }
+                }
+
+                // Preferred Durations
+                if !stats.preferredDurations.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Preferred Durations:")
+                            .font(.caption)
+                            .foregroundColor(dynamicSecondaryTextColor)
+
+                        let sortedDurations = stats.preferredDurations.sorted { $0.value > $1.value }
+                        HStack(spacing: 8) {
+                            ForEach(sortedDurations.prefix(5), id: \.key) { duration, count in
+                                Text("\(duration)m")
+                                    .font(.caption2)
+                                    .foregroundColor(dynamicTextColor)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(dynamicPrimaryColor.opacity(Double(count) / Double(sortedDurations.first?.value ?? 1) * 0.3 + 0.1))
+                                    .cornerRadius(4)
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            Text("No statistics yet. Accept or decline proposals to build learning data.")
+                .font(.caption)
+                .foregroundColor(dynamicSecondaryTextColor)
+                .italic()
+        }
+    }
+
+    private func formatHour(_ hour: Int) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h a"
+        let date = Calendar.current.date(bySettingHour: hour, minute: 0, second: 0, of: Date()) ?? Date()
+        return formatter.string(from: date)
+    }
+
+    // MARK: - Recent Interactions Content
+
+    @ViewBuilder
+    private var recentInteractionsContent: some View {
+        if !schedulingViewModel.recentInteractions.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(schedulingViewModel.recentInteractions.prefix(10)) { interaction in
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            actionBadge(interaction.action)
+
+                            Text(interaction.proposedTasks.joined(separator: ", "))
+                                .font(.caption)
+                                .foregroundColor(dynamicTextColor)
+                                .lineLimit(1)
+
+                            Spacer()
+
+                            Text(interaction.dayOfWeek.prefix(3).capitalized)
+                                .font(.caption2)
+                                .foregroundColor(dynamicSecondaryTextColor)
+                        }
+
+                        HStack(spacing: 8) {
+                            Text(interaction.proposedTime)
+                                .font(.caption2)
+                                .foregroundColor(dynamicSecondaryTextColor)
+
+                            Text("\(interaction.proposedDuration) min")
+                                .font(.caption2)
+                                .foregroundColor(dynamicSecondaryTextColor)
+
+                            if let modifiedTime = interaction.modifiedTime {
+                                Text("→ \(modifiedTime)")
+                                    .font(.caption2)
+                                    .foregroundColor(.orange)
+                            }
+
+                            if let modifiedDuration = interaction.modifiedDuration {
+                                Text("→ \(modifiedDuration) min")
+                                    .font(.caption2)
+                                    .foregroundColor(.orange)
+                            }
+                        }
+
+                        if let reason = interaction.declineReason {
+                            Text("Reason: \(reason)")
+                                .font(.caption2)
+                                .foregroundColor(.red)
+                                .italic()
+                        }
+
+                        Text(interaction.timestamp, style: .relative)
+                            .font(.caption2)
+                            .foregroundColor(dynamicSecondaryTextColor.opacity(0.7))
+                    }
+                    .padding(.vertical, 4)
+
+                    if interaction.id != schedulingViewModel.recentInteractions.prefix(10).last?.id {
+                        Divider()
+                    }
+                }
+            }
+        } else {
+            Text("No interactions yet. The agent tracks every proposal you accept, decline, or modify.")
+                .font(.caption)
+                .foregroundColor(dynamicSecondaryTextColor)
+                .italic()
+        }
+    }
+
+    @ViewBuilder
+    private func actionBadge(_ action: ProposalAction) -> some View {
+        let (text, color): (String, Color) = {
+            switch action {
+            case .accepted: return ("✓", .green)
+            case .acceptedWithChanges: return ("~", .orange)
+            case .declined: return ("✗", .red)
+            case .skipped: return ("→", .gray)
+            }
+        }()
+
+        Text(text)
+            .font(.caption2)
+            .fontWeight(.bold)
+            .foregroundColor(color)
+            .frame(width: 20, height: 20)
+            .background(color.opacity(0.2))
+            .cornerRadius(4)
+    }
+}
+
+// MARK: - Helper Views
+
+struct ExpandableSection<Content: View>: View {
+    let title: String
+    let icon: String
+    let isExpanded: Bool
+    let onToggle: () -> Void
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button(action: onToggle) {
+                HStack {
+                    Image(systemName: icon)
+                        .foregroundColor(dynamicPrimaryColor)
+                        .frame(width: 24)
+
+                    Text(title)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(dynamicTextColor)
+
+                    Spacer()
+
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.caption)
+                        .foregroundColor(dynamicSecondaryTextColor)
+                }
+                .padding(.vertical, 8)
+            }
+            .buttonStyle(PlainButtonStyle())
+
+            if isExpanded {
+                content()
+                    .padding(.leading, 32)
+                    .padding(.bottom, 8)
+            }
+
+            Divider()
+        }
+    }
+}
+
+struct DataRow: View {
+    let label: String
+    let value: String
+
+    var body: some View {
+        HStack {
+            Text(label)
+                .font(.caption)
+                .foregroundColor(dynamicSecondaryTextColor)
+            Spacer()
+            Text(value)
+                .font(.caption)
+                .foregroundColor(dynamicTextColor)
+        }
+    }
+}
+
+struct StatBadge: View {
+    let label: String
+    let value: Int
+    let color: Color
+
+    var body: some View {
+        VStack(spacing: 2) {
+            Text("\(value)")
+                .font(.headline)
+                .foregroundColor(color)
+            Text(label)
+                .font(.caption2)
+                .foregroundColor(dynamicSecondaryTextColor)
         }
     }
 }

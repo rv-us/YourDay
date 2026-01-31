@@ -16,6 +16,13 @@ struct ProposalMessageCard: View {
     @State private var selectedStartTime: Date
     @State private var adjustedDuration: Int
     @State private var showingCalendarView = false
+    @State private var showingAddTaskSheet = false
+    @State private var addedTaskTitles: Set<String> = [] // Track tasks added by user
+    @State private var showingModificationReasonPopup = false
+    @State private var modificationReason = ""
+    @State private var pendingAcceptTasks: [String] = [] // Tasks to mark as accepted after reason submitted
+    @State private var pendingOriginalTime = "" // Captured original time for popup
+    @State private var pendingModifiedTime = "" // Captured modified time for popup
 
     init(proposal: Binding<ProposedSession>, schedulingViewModel: SchedulingAssistantViewModel, backlogViewModel: BacklogViewModel, onAccept: @escaping ([String]) -> Void) {
         self._proposal = proposal
@@ -30,7 +37,19 @@ struct ProposalMessageCard: View {
         _adjustedDuration = State(initialValue: initialDuration)
     }
 
+    // Backlog items that are not already in the proposal
+    private var availableBacklogItems: [UnifiedBacklogItem] {
+        backlogViewModel.backlogItems.filter { item in
+            !proposal.tasks.contains(item.title)
+        }
+    }
+
     private var hasModifications: Bool {
+        // Check if tasks were added
+        if !addedTaskTitles.isEmpty {
+            return true
+        }
+
         guard let originalStart = proposal.startTime else { return false }
         let originalDuration = proposal.effectiveDuration ?? 60
 
@@ -61,17 +80,34 @@ struct ProposalMessageCard: View {
 
             // Tasks Section
             VStack(alignment: .leading, spacing: 8) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(proposal.tasks.count == 1 ? "Task:" : "Tasks:")
+                HStack {
+                    Text(proposal.tasks.count == 1 ? "Task:" : "Tasks (\(proposal.tasks.count)):")
                         .font(.subheadline)
                         .foregroundColor(dynamicSecondaryTextColor)
 
-                    if proposal.tasks.count == 1 {
-                        taskRow(title: proposal.tasks.first ?? "", detail: proposal.taskDetails?.first)
-                    } else {
-                        ForEach(Array(proposal.tasks.enumerated()), id: \.offset) { index, task in
-                            let detail = proposal.taskDetails?.first(where: { $0.title == task })
-                            taskRow(title: task, detail: detail)
+                    Spacer()
+
+                    // Add Task Button
+                    if !availableBacklogItems.isEmpty {
+                        Button(action: {
+                            showingAddTaskSheet = true
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "plus.circle.fill")
+                                Text("Add")
+                            }
+                            .font(.caption)
+                            .foregroundColor(dynamicPrimaryColor)
+                        }
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(Array(proposal.tasks.enumerated()), id: \.offset) { index, task in
+                        let detail = proposal.taskDetails?.first(where: { $0.title == task })
+                        let isAdded = addedTaskTitles.contains(task)
+                        taskRowEditable(title: task, detail: detail, isAdded: isAdded, canRemove: proposal.tasks.count > 1) {
+                            removeTask(at: index)
                         }
                     }
                 }
@@ -184,15 +220,31 @@ struct ProposalMessageCard: View {
             VStack(spacing: 10) {
                 HStack(spacing: 12) {
                     Button(action: {
+                        // Capture modification state BEFORE async operations
+                        let wasModified = hasModifications
+                        let originalTime = proposal.workingSessionTime
+                        let modifiedTimeStr = timeRangeString
+                        let tasksList = proposal.tasks
+
                         // Update proposal with modifications before accepting
-                        if hasModifications {
+                        if wasModified {
                             proposal.adjustedStartTime = selectedStartTime
                             proposal.adjustedDuration = adjustedDuration
                         }
                         schedulingViewModel.currentProposal = proposal
 
+                        // Accept the proposal and create calendar event
                         schedulingViewModel.acceptProposal(backlogItems: backlogViewModel.backlogItems) { scheduledTasks in
                             if !scheduledTasks.isEmpty {
+                                if wasModified {
+                                    // Store data for modification reason popup
+                                    pendingAcceptTasks = scheduledTasks
+                                    pendingOriginalTime = originalTime
+                                    pendingModifiedTime = modifiedTimeStr
+                                    // Show modification reason popup
+                                    showingModificationReasonPopup = true
+                                }
+                                // Always trigger next proposal
                                 onAccept(scheduledTasks)
                             }
                         }
@@ -258,6 +310,86 @@ struct ProposalMessageCard: View {
                 selectedDate: Calendar.current.startOfDay(for: selectedStartTime)
             )
         }
+        .sheet(isPresented: $showingAddTaskSheet) {
+            AddTaskToProposalSheet(
+                availableItems: availableBacklogItems,
+                onAdd: { item in
+                    addTask(item)
+                    showingAddTaskSheet = false
+                },
+                onDismiss: {
+                    showingAddTaskSheet = false
+                }
+            )
+        }
+        .sheet(isPresented: $showingModificationReasonPopup) {
+            ModificationReasonSheet(
+                reason: $modificationReason,
+                originalTime: pendingOriginalTime,
+                modifiedTime: pendingModifiedTime,
+                tasks: pendingAcceptTasks,
+                onSubmit: { reason in
+                    // Save modification reason to agent memory
+                    schedulingViewModel.saveModificationReason(
+                        reason: reason,
+                        originalTime: pendingOriginalTime,
+                        modifiedTime: pendingModifiedTime,
+                        tasks: pendingAcceptTasks
+                    )
+                    modificationReason = ""
+                    pendingAcceptTasks = []
+                    pendingOriginalTime = ""
+                    pendingModifiedTime = ""
+                    showingModificationReasonPopup = false
+                },
+                onSkip: {
+                    modificationReason = ""
+                    pendingAcceptTasks = []
+                    pendingOriginalTime = ""
+                    pendingModifiedTime = ""
+                    showingModificationReasonPopup = false
+                }
+            )
+        }
+    }
+
+    // MARK: - Task Management
+
+    private func removeTask(at index: Int) {
+        guard proposal.tasks.count > 1, index < proposal.tasks.count else { return }
+        let removedTask = proposal.tasks[index]
+
+        // Adjust duration if the removed task had an estimated duration
+        if let taskDetail = proposal.taskDetails?.first(where: { $0.title == removedTask }),
+           let duration = taskDetail.estimatedDuration {
+            adjustedDuration = max(15, adjustedDuration - duration)
+        }
+
+        proposal.tasks.remove(at: index)
+        proposal.taskDetails?.removeAll { $0.title == removedTask }
+        addedTaskTitles.remove(removedTask)
+    }
+
+    private func addTask(_ item: UnifiedBacklogItem) {
+        proposal.tasks.append(item.title)
+        addedTaskTitles.insert(item.title)
+
+        // Add task details
+        let detail = ProposedTaskDetail(
+            title: item.title,
+            estimatedDuration: item.estimatedDuration,
+            priority: item.priority ?? 0
+        )
+        if proposal.taskDetails == nil {
+            proposal.taskDetails = [detail]
+        } else {
+            proposal.taskDetails?.append(detail)
+        }
+
+        // Update duration based on added task
+        if let duration = item.estimatedDuration {
+            adjustedDuration += duration
+        }
     }
 
     // MARK: - Helper Views
@@ -288,6 +420,50 @@ struct ProposalMessageCard: View {
         }
     }
 
+    @ViewBuilder
+    private func taskRowEditable(title: String, detail: ProposedTaskDetail?, isAdded: Bool, canRemove: Bool, onRemove: @escaping () -> Void) -> some View {
+        HStack {
+            Image(systemName: "circle.fill")
+                .font(.system(size: 5))
+                .foregroundColor(isAdded ? .green : dynamicPrimaryColor)
+            Text(title)
+                .font(.caption)
+                .foregroundColor(dynamicTextColor)
+
+            if isAdded {
+                Text("Added")
+                    .font(.caption2)
+                    .foregroundColor(.green)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(Color.green.opacity(0.15))
+                    .cornerRadius(3)
+            }
+
+            Spacer()
+
+            if let detail = detail, let duration = detail.estimatedDuration {
+                Text("\(duration) min")
+                    .font(.caption2)
+                    .foregroundColor(dynamicSecondaryTextColor)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(dynamicBackgroundColor)
+                    .cornerRadius(3)
+            }
+
+            if canRemove {
+                Button(action: onRemove) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.caption)
+                        .foregroundColor(dynamicSecondaryTextColor)
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
     private func groupingTypeIcon(_ type: TaskGroupingType) -> String {
         switch type {
         case .quickTaskBatch: return "rectangle.stack"
@@ -302,5 +478,258 @@ struct ProposalMessageCard: View {
         case .relatedTasks: return "Related tasks"
         case .singleFocus: return "Focus task"
         }
+    }
+}
+
+// MARK: - Add Task Sheet
+
+struct AddTaskToProposalSheet: View {
+    let availableItems: [UnifiedBacklogItem]
+    let onAdd: (UnifiedBacklogItem) -> Void
+    let onDismiss: () -> Void
+
+    var body: some View {
+        NavigationView {
+            List {
+                if availableItems.isEmpty {
+                    Text("No more tasks available to add.")
+                        .foregroundColor(dynamicSecondaryTextColor)
+                        .padding()
+                } else {
+                    ForEach(availableItems) { item in
+                        Button(action: {
+                            onAdd(item)
+                        }) {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(item.title)
+                                        .font(.headline)
+                                        .foregroundColor(dynamicTextColor)
+
+                                    if !item.description.isEmpty {
+                                        Text(item.description)
+                                            .font(.caption)
+                                            .foregroundColor(dynamicSecondaryTextColor)
+                                            .lineLimit(2)
+                                    }
+
+                                    HStack(spacing: 8) {
+                                        if let duration = item.estimatedDuration {
+                                            Label("\(duration) min", systemImage: "clock")
+                                                .font(.caption2)
+                                                .foregroundColor(dynamicSecondaryTextColor)
+                                        }
+                                        if let priority = item.priority, priority > 0 {
+                                            Label("P\(priority)", systemImage: "flag")
+                                                .font(.caption2)
+                                                .foregroundColor(dynamicSecondaryTextColor)
+                                        }
+                                        if let category = item.category {
+                                            Text(category)
+                                                .font(.caption2)
+                                                .foregroundColor(dynamicPrimaryColor)
+                                                .padding(.horizontal, 4)
+                                                .padding(.vertical, 1)
+                                                .background(dynamicPrimaryColor.opacity(0.15))
+                                                .cornerRadius(3)
+                                        }
+                                    }
+                                }
+
+                                Spacer()
+
+                                Image(systemName: "plus.circle.fill")
+                                    .foregroundColor(dynamicPrimaryColor)
+                            }
+                            .padding(.vertical, 4)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+                }
+            }
+            .navigationTitle("Add Task")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        onDismiss()
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Modification Reason Sheet
+
+struct ModificationReasonSheet: View {
+    @Binding var reason: String
+    let originalTime: String
+    let modifiedTime: String
+    let tasks: [String]
+    let onSubmit: (String) -> Void
+    let onSkip: () -> Void
+
+    @FocusState private var isTextFieldFocused: Bool
+
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 20) {
+                // Header
+                VStack(spacing: 8) {
+                    Image(systemName: "lightbulb.fill")
+                        .font(.system(size: 40))
+                        .foregroundColor(.orange)
+
+                    Text("Help the agent learn!")
+                        .font(.headline)
+                        .foregroundColor(dynamicTextColor)
+
+                    Text("Why did you modify this session?")
+                        .font(.subheadline)
+                        .foregroundColor(dynamicSecondaryTextColor)
+                }
+                .padding(.top, 20)
+
+                // Modification Summary
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Text("Tasks:")
+                            .font(.caption)
+                            .foregroundColor(dynamicSecondaryTextColor)
+                        Spacer()
+                        Text(tasks.joined(separator: ", "))
+                            .font(.caption)
+                            .foregroundColor(dynamicTextColor)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.trailing)
+                    }
+
+                    HStack {
+                        Text("Original:")
+                            .font(.caption)
+                            .foregroundColor(dynamicSecondaryTextColor)
+                        Spacer()
+                        Text(originalTime)
+                            .font(.caption)
+                            .foregroundColor(dynamicTextColor)
+                            .strikethrough()
+                    }
+
+                    HStack {
+                        Text("Modified to:")
+                            .font(.caption)
+                            .foregroundColor(dynamicSecondaryTextColor)
+                        Spacer()
+                        Text(modifiedTime)
+                            .font(.caption)
+                            .fontWeight(.medium)
+                            .foregroundColor(.orange)
+                    }
+                }
+                .padding()
+                .background(dynamicSecondaryBackgroundColor)
+                .cornerRadius(12)
+                .padding(.horizontal)
+
+                // Reason Input
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Your reason (optional but helpful):")
+                        .font(.caption)
+                        .foregroundColor(dynamicSecondaryTextColor)
+
+                    TextField("e.g., I have a meeting at that time, I prefer mornings...", text: $reason, axis: .vertical)
+                        .textFieldStyle(.plain)
+                        .padding()
+                        .background(dynamicSecondaryBackgroundColor)
+                        .cornerRadius(12)
+                        .lineLimit(3...6)
+                        .focused($isTextFieldFocused)
+                }
+                .padding(.horizontal)
+
+                // Quick Suggestions
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Quick reasons:")
+                        .font(.caption)
+                        .foregroundColor(dynamicSecondaryTextColor)
+                        .padding(.horizontal)
+
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            QuickReasonChip(text: "Had a conflict", onTap: { reason = "Had a conflict at that time" })
+                            QuickReasonChip(text: "Too early", onTap: { reason = "That time was too early for me" })
+                            QuickReasonChip(text: "Too late", onTap: { reason = "That time was too late for me" })
+                            QuickReasonChip(text: "Need more time", onTap: { reason = "I need more time for this task" })
+                            QuickReasonChip(text: "Need less time", onTap: { reason = "I don't need that much time" })
+                            QuickReasonChip(text: "Prefer different slot", onTap: { reason = "I prefer a different time slot" })
+                        }
+                        .padding(.horizontal)
+                    }
+                }
+
+                Spacer()
+
+                // Action Buttons
+                VStack(spacing: 12) {
+                    Button(action: {
+                        onSubmit(reason)
+                    }) {
+                        Text(reason.isEmpty ? "Skip for now" : "Save Feedback")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(reason.isEmpty ? dynamicSecondaryTextColor : dynamicPrimaryColor)
+                            .cornerRadius(12)
+                    }
+
+                    if !reason.isEmpty {
+                        Button(action: {
+                            onSkip()
+                        }) {
+                            Text("Skip")
+                                .font(.subheadline)
+                                .foregroundColor(dynamicSecondaryTextColor)
+                        }
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.bottom, 20)
+            }
+            .background(dynamicBackgroundColor)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: { onSkip() }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(dynamicSecondaryTextColor)
+                    }
+                }
+            }
+            .onAppear {
+                isTextFieldFocused = true
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+}
+
+struct QuickReasonChip: View {
+    let text: String
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            Text(text)
+                .font(.caption)
+                .foregroundColor(dynamicPrimaryColor)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(dynamicPrimaryColor.opacity(0.15))
+                .cornerRadius(16)
+        }
+        .buttonStyle(PlainButtonStyle())
     }
 }

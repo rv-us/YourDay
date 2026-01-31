@@ -28,7 +28,7 @@ struct ProposedTaskDetail: Codable {
 }
 
 struct ProposedSession: Codable {
-    let tasks: [String] // Can be single task or multiple grouped tasks
+    var tasks: [String] // Can be single task or multiple grouped tasks (mutable for user edits)
     let workingSessionTime: String // e.g., "2:00 PM - 3:30 PM"
     var startTime: Date? // Parsed start time
     var endTime: Date? // Parsed end time
