@@ -353,6 +353,7 @@ struct SmartSchedulingTestView: View {
                                         ),
                                         schedulingViewModel: schedulingViewModel,
                                         backlogViewModel: backlogViewModel,
+                                        isDisabled: schedulingViewModel.showingDeclineReasonInput,
                                         onAccept: { taskTitles in
                                             handleAcceptedTasks(taskTitles)
                                         },

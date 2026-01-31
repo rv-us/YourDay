@@ -13,6 +13,7 @@ struct ProposalMessageCard: View {
     @ObservedObject var backlogViewModel: BacklogViewModel
     let onAccept: ([String]) -> Void
     let onRequestModificationReason: (ModificationContext) -> Void
+    let isDisabled: Bool
 
     @State private var selectedStartTime: Date
     @State private var adjustedDuration: Int
@@ -26,12 +27,15 @@ struct ProposalMessageCard: View {
         backlogViewModel: BacklogViewModel,
         onAccept: @escaping ([String]) -> Void,
         onRequestModificationReason: @escaping (ModificationContext) -> Void
+        isDisabled: Bool = false,
+        onAccept: @escaping ([String]) -> Void
     ) {
         self._proposal = proposal
         self.schedulingViewModel = schedulingViewModel
         self.backlogViewModel = backlogViewModel
         self.onAccept = onAccept
         self.onRequestModificationReason = onRequestModificationReason
+        self.isDisabled = isDisabled
 
         // Initialize state from proposal
         let initialStart = proposal.wrappedValue.effectiveStartTime ?? proposal.wrappedValue.startTime ?? Date()
@@ -300,11 +304,14 @@ struct ProposalMessageCard: View {
                     .cornerRadius(6)
                 }
             }
+            .disabled(isDisabled)
+            .opacity(isDisabled ? 0.5 : 1)
         }
         .padding()
         .background(dynamicSecondaryBackgroundColor)
         .cornerRadius(12)
         .frame(maxWidth: 320)
+        .opacity(isDisabled ? 0.7 : 1)
         .id("proposal")
         .sheet(isPresented: $showingCalendarView) {
             DraggableCalendarView(
