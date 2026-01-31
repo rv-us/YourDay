@@ -23,6 +23,7 @@ struct ProposalMessageCard: View {
     @State private var pendingAcceptTasks: [String] = [] // Tasks to mark as accepted after reason submitted
     @State private var pendingOriginalTime = "" // Captured original time for popup
     @State private var pendingModifiedTime = "" // Captured modified time for popup
+    @State private var originalTasks: [String]
 
     init(proposal: Binding<ProposedSession>, schedulingViewModel: SchedulingAssistantViewModel, backlogViewModel: BacklogViewModel, onAccept: @escaping ([String]) -> Void) {
         self._proposal = proposal
@@ -35,6 +36,7 @@ struct ProposalMessageCard: View {
         let initialDuration = proposal.wrappedValue.effectiveDuration ?? 60
         _selectedStartTime = State(initialValue: initialStart)
         _adjustedDuration = State(initialValue: initialDuration)
+        _originalTasks = State(initialValue: proposal.wrappedValue.tasks)
     }
 
     // Backlog items that are not already in the proposal
@@ -45,10 +47,7 @@ struct ProposalMessageCard: View {
     }
 
     private var hasModifications: Bool {
-        // Check if tasks were added
-        if !addedTaskTitles.isEmpty {
-            return true
-        }
+        let tasksChanged = Set(originalTasks) != Set(proposal.tasks)
 
         guard let originalStart = proposal.startTime else { return false }
         let originalDuration = proposal.effectiveDuration ?? 60
@@ -57,7 +56,7 @@ struct ProposalMessageCard: View {
         let startChanged = !calendar.isDate(selectedStartTime, equalTo: originalStart, toGranularity: .minute)
         let durationChanged = adjustedDuration != originalDuration
 
-        return startChanged || durationChanged
+        return tasksChanged || startChanged || durationChanged
     }
 
     private var effectiveEndTime: Date {
