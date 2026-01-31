@@ -314,6 +314,7 @@ struct SmartSchedulingTestView: View {
                                         ),
                                         schedulingViewModel: schedulingViewModel,
                                         backlogViewModel: backlogViewModel,
+                                        isDisabled: schedulingViewModel.showingDeclineReasonInput,
                                         onAccept: { taskTitles in
                                             // Mark tasks as processed (scheduled or skipped)
                                             if !taskTitles.isEmpty {
@@ -1186,4 +1187,3 @@ struct StatBadge: View {
         }
     }
 }
-
