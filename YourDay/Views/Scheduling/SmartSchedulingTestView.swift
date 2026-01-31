@@ -9,6 +9,13 @@ import SwiftUI
 import SwiftData
 import FirebaseAuth
 
+struct ModificationContext: Identifiable {
+    let id = UUID()
+    let tasks: [String]
+    let originalTime: String
+    let modifiedTime: String
+}
+
 struct SmartSchedulingTestView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject var firebaseManager: FirebaseManager
@@ -28,6 +35,8 @@ struct SmartSchedulingTestView: View {
     @State private var showingDatePicker = false
     @State private var scheduledTasks: Set<String> = [] // Track scheduled task titles
     @State private var planningDate: Date? = nil // Fixed date for current agent session
+    @State private var pendingModificationContext: ModificationContext? = nil
+    @State private var modificationReason = ""
     
     var body: some View {
         NavigationView {
@@ -73,6 +82,36 @@ struct SmartSchedulingTestView: View {
                             planningDate = nil
                         }
                     }
+            }
+            .sheet(item: $pendingModificationContext) { context in
+                ModificationReasonSheet(
+                    reason: $modificationReason,
+                    originalTime: context.originalTime,
+                    modifiedTime: context.modifiedTime,
+                    tasks: context.tasks,
+                    onSubmit: { reason in
+                        schedulingViewModel.saveModificationReason(
+                            reason: reason,
+                            originalTime: context.originalTime,
+                            modifiedTime: context.modifiedTime,
+                            tasks: context.tasks
+                        )
+                        handleAcceptedTasks(context.tasks)
+                        modificationReason = ""
+                        pendingModificationContext = nil
+                    },
+                    onSkip: {
+                        schedulingViewModel.saveModificationReason(
+                            reason: "",
+                            originalTime: context.originalTime,
+                            modifiedTime: context.modifiedTime,
+                            tasks: context.tasks
+                        )
+                        handleAcceptedTasks(context.tasks)
+                        modificationReason = ""
+                        pendingModificationContext = nil
+                    }
+                )
             }
             .onAppear {
                 refreshData()
@@ -314,16 +353,13 @@ struct SmartSchedulingTestView: View {
                                         ),
                                         schedulingViewModel: schedulingViewModel,
                                         backlogViewModel: backlogViewModel,
+                                        isDisabled: schedulingViewModel.showingDeclineReasonInput,
                                         onAccept: { taskTitles in
-                                            // Mark tasks as processed (scheduled or skipped)
-                                            if !taskTitles.isEmpty {
-                                                for taskTitle in taskTitles {
-                                                    scheduledTasks.insert(taskTitle)
-                                                }
-                                            }
-                                            // Clear proposal and propose next session
-                                            schedulingViewModel.currentProposal = nil
-                                            proposeNextSession()
+                                            handleAcceptedTasks(taskTitles)
+                                        },
+                                        onRequestModificationReason: { context in
+                                            modificationReason = ""
+                                            pendingModificationContext = context
                                         }
                                     )
                                     Spacer()
@@ -455,6 +491,16 @@ struct SmartSchedulingTestView: View {
         selectedTab = 1
         
         // Propose first working session using the fixed planning date
+        proposeNextSession()
+    }
+
+    private func handleAcceptedTasks(_ taskTitles: [String]) {
+        if !taskTitles.isEmpty {
+            for taskTitle in taskTitles {
+                scheduledTasks.insert(taskTitle)
+            }
+        }
+        schedulingViewModel.currentProposal = nil
         proposeNextSession()
     }
     
@@ -1186,4 +1232,3 @@ struct StatBadge: View {
         }
     }
 }
-
