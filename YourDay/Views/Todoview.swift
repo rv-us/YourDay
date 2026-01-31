@@ -25,6 +25,7 @@ struct Todoview: View {
     @State private var showSignOutAlertInTodoView = false
     @State private var signOutAlertMessageInTodoView = ""
     @State private var navigateToCalendar = false
+    @State private var showGoogleCalendarView = false
 
     enum TaskListFilter {
         case today
@@ -44,10 +45,6 @@ struct Todoview: View {
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
-<<<<<<< Updated upstream
-                filterPickerView
-                taskListView
-=======
                 if showGoogleCalendarView {
                     GoogleCalendarView(embedded: true)
                         .environment(\.modelContext, context)
@@ -150,7 +147,6 @@ struct Todoview: View {
                     .listStyle(PlainListStyle())
                     .background(dynamicBackgroundColor)
                 }
->>>>>>> Stashed changes
             }
             .background(dynamicBackgroundColor.edgesIgnoringSafeArea(.all))
             .navigationTitle("")
@@ -158,9 +154,6 @@ struct Todoview: View {
             .toolbarBackground(dynamicSecondaryBackgroundColor, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
-<<<<<<< Updated upstream
-                toolbarContent
-=======
                 ToolbarItem(placement: .principal) {
                     Text("Your To-Do List")
                         .fontWeight(.bold)
@@ -239,7 +232,6 @@ struct Todoview: View {
                         }
                     }
                 }
->>>>>>> Stashed changes
             }
             .overlay(tutorialOverlay)
             .sheet(isPresented: $viewModel.showingDailySummary) {
@@ -248,19 +240,6 @@ struct Todoview: View {
             .sheet(isPresented: $viewModel.showingNewItemView) {
                 NewItemview(newItemPresented: $viewModel.showingNewItemView, selectedOrigin: selectedFilter == .today ? .today : .master)
             }
-<<<<<<< Updated upstream
-            .background(
-                NavigationLink(
-                    destination: GoogleCalendarView(embedded: true)
-                        .environment(\.modelContext, context),
-                    isActive: $navigateToCalendar
-                ) {
-                    EmptyView()
-                }
-                .hidden()
-            )
-=======
->>>>>>> Stashed changes
             .alert("Sign Out", isPresented: $showSignOutAlertInTodoView) {
                 Button("OK", role: .cancel) {}
             } message: {

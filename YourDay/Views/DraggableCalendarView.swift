@@ -43,7 +43,8 @@ struct DraggableCalendarView: View {
     }
     
     private var proposedEndTime: Date {
-        calendar.date(byAdding: .minute, value: proposedDuration, to: proposedStartTime) ?? proposedStartTime
+        let endTime = calendar.date(byAdding: .minute, value: proposedDuration, to: proposedStartTime)
+        return endTime ?? proposedStartTime
     }
     
     
@@ -103,7 +104,7 @@ struct DraggableCalendarView: View {
                         // Calculate new time based on drag offset
                         let startOfDay = calendar.startOfDay(for: selectedDate)
                         let originalTopOffset = proposedStartTime.timeIntervalSince(startOfDay) / 3600.0 * Double(hourHeight) + 20
-                        let newTopOffset = originalTopOffset + newOffset.y
+                        let newTopOffset = originalTopOffset + Double(newOffset.height)
                         
                         // Convert back to time
                         let hoursFromStart = (newTopOffset - 20) / Double(hourHeight)
@@ -174,7 +175,10 @@ struct DraggableEventBlock: View {
         let startOfDay = calendar.startOfDay(for: selectedDate)
         let timeInterval = eventStart.timeIntervalSince(startOfDay)
         let hoursFromStart = timeInterval / 3600.0
-        return CGFloat(hoursFromStart) * hourHeight + 20 + (isDraggable ? dragOffset.y : 0)
+        let baseOffset = CGFloat(hoursFromStart) * hourHeight
+        let headerOffset: CGFloat = 20
+        let dragY: CGFloat = isDraggable ? dragOffset.height : 0
+        return baseOffset + headerOffset + dragY
     }
     
     private var height: CGFloat {
