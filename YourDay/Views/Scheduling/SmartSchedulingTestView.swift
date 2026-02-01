@@ -14,6 +14,8 @@ struct ModificationContext: Identifiable {
     let tasks: [String]
     let originalTime: String
     let modifiedTime: String
+    let dayOfWeek: String
+    var reason: String?
 }
 
 struct SmartSchedulingTestView: View {
@@ -98,12 +100,14 @@ struct SmartSchedulingTestView: View {
                     modifications: $pendingModifications,
                     currentIndex: $currentModificationIndex,
                     reason: $modificationReason,
-                    schedulingViewModel: schedulingViewModel,
                     onComplete: {
                         showingModificationReview = false
-                        pendingModifications.removeAll()
-                        currentModificationIndex = 0
                         modificationReason = ""
+                        if !isAgentRunning {
+                            processModificationReasonsBatch()
+                            pendingModifications.removeAll()
+                            currentModificationIndex = 0
+                        }
                     }
                 )
             }
@@ -428,6 +432,9 @@ struct SmartSchedulingTestView: View {
                     onRequestModificationReason: { context in
                         // Store modification for later review and continue immediately
                         pendingModifications.append(context)
+                        currentModificationIndex = nextPendingModificationIndex() ?? (pendingModifications.count - 1)
+                        modificationReason = pendingModifications[currentModificationIndex].reason ?? ""
+                        showingModificationReview = true
                         handleAcceptedTasks(context.tasks)
                     },
                     isDisabled: schedulingViewModel.showingDeclineReasonInput
@@ -616,9 +623,11 @@ struct SmartSchedulingTestView: View {
 
             // Show modification review if there are pending modifications
             if !pendingModifications.isEmpty {
-                currentModificationIndex = 0
-                modificationReason = ""
-                showingModificationReview = true
+                if !showingModificationReview {
+                    processModificationReasonsBatch()
+                    pendingModifications.removeAll()
+                    currentModificationIndex = 0
+                }
             }
             return
         }
@@ -656,6 +665,23 @@ struct SmartSchedulingTestView: View {
         backlogViewModel.fetchBacklogItems(todoItems: todoItems)
         fetchCalendarForDate()
         schedulingViewModel.fetchSchedulePreference()
+    }
+
+    private func nextPendingModificationIndex() -> Int? {
+        pendingModifications.firstIndex { ($0.reason ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    }
+
+    private func processModificationReasonsBatch() {
+        let inputs = pendingModifications.map { modification in
+            ModificationReasonInput(
+                dayOfWeek: modification.dayOfWeek,
+                originalTime: modification.originalTime,
+                modifiedTime: modification.modifiedTime,
+                tasks: modification.tasks,
+                reason: modification.reason ?? ""
+            )
+        }
+        schedulingViewModel.analyzeModificationReasonsBatch(inputs)
     }
 }
 
@@ -1378,7 +1404,6 @@ struct ModificationReviewSheet: View {
     @Binding var modifications: [ModificationContext]
     @Binding var currentIndex: Int
     @Binding var reason: String
-    @ObservedObject var schedulingViewModel: SchedulingAssistantViewModel
     let onComplete: () -> Void
 
     @FocusState private var isTextFieldFocused: Bool
@@ -1562,25 +1587,25 @@ struct ModificationReviewSheet: View {
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+        .onChange(of: currentIndex) { _, newIndex in
+            if newIndex < modifications.count {
+                reason = modifications[newIndex].reason ?? ""
+            }
+        }
     }
 
     private func saveCurrentAndAdvance() {
         isTextFieldFocused = false
 
-        if let mod = currentModification {
-            schedulingViewModel.saveModificationReason(
-                reason: reason,
-                originalTime: mod.originalTime,
-                modifiedTime: mod.modifiedTime,
-                tasks: mod.tasks
-            )
+        if currentModification != nil {
+            modifications[currentIndex].reason = reason
         }
 
         reason = ""
 
-        if currentIndex < modifications.count - 1 {
+        if let nextIndex = modifications.firstIndex(where: { ($0.reason ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
             withAnimation(.easeInOut(duration: 0.2)) {
-                currentIndex += 1
+                currentIndex = nextIndex
             }
         } else {
             onComplete()
@@ -1592,13 +1617,7 @@ struct ModificationReviewSheet: View {
 
         // Save all remaining modifications with empty reason
         for i in currentIndex..<modifications.count {
-            let mod = modifications[i]
-            schedulingViewModel.saveModificationReason(
-                reason: i == currentIndex ? reason : "",
-                originalTime: mod.originalTime,
-                modifiedTime: mod.modifiedTime,
-                tasks: mod.tasks
-            )
+            modifications[i].reason = i == currentIndex ? reason : ""
         }
 
         onComplete()
