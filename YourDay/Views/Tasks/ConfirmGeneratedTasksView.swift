@@ -87,7 +87,7 @@ struct ConfirmGeneratedTasksView: View {
                             }
                             .buttonStyle(PlainButtonStyle())
 
-                            VStack(alignment: .leading) {
+                            VStack(alignment: .leading, spacing: 4) {
                                 Text(task.title)
                                     .font(.headline)
                                     .foregroundColor(dynamicTextColor)
@@ -95,6 +95,22 @@ struct ConfirmGeneratedTasksView: View {
                                     Text(task.detail)
                                         .font(.caption)
                                         .foregroundColor(dynamicSecondaryTextColor)
+                                }
+                                if !task.subtasks.isEmpty {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        ForEach(task.subtasks) { subtask in
+                                            HStack(spacing: 6) {
+                                                Text("•")
+                                                    .font(.caption)
+                                                    .foregroundColor(dynamicSecondaryTextColor)
+                                                Text(subtask.title)
+                                                    .font(.caption)
+                                                    .foregroundColor(dynamicSecondaryTextColor)
+                                            }
+                                        }
+                                    }
+                                    .padding(.leading, 8)
+                                    .padding(.top, 2)
                                 }
                             }
                         }
