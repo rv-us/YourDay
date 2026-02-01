@@ -255,7 +255,9 @@ struct ProposalMessageCard: View {
                                         ModificationContext(
                                             tasks: scheduledTasks,
                                             originalTime: originalTime,
-                                            modifiedTime: modifiedTimeStr
+                                            modifiedTime: modifiedTimeStr,
+                                            dayOfWeek: dayOfWeekString(from: schedulingViewModel.selectedDate),
+                                            reason: nil
                                         )
                                     )
                                 } else {
@@ -350,6 +352,12 @@ struct ProposalMessageCard: View {
                 }
             )
         }
+    }
+
+    private func dayOfWeekString(from date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEEE"
+        return formatter.string(from: date).lowercased()
     }
 
     // MARK: - Task Management

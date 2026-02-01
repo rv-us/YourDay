@@ -11,6 +11,14 @@ import FirebaseVertexAI
 import FirebaseAuth
 import GoogleSignIn
 
+struct ModificationReasonInput {
+    let dayOfWeek: String
+    let originalTime: String
+    let modifiedTime: String
+    let tasks: [String]
+    let reason: String
+}
+
 @MainActor
 class SchedulingAssistantViewModel: ObservableObject {
     @Published var messages: [SchedulingMessage] = []
@@ -500,6 +508,14 @@ class SchedulingAssistantViewModel: ObservableObject {
             return text
         }.joined(separator: "\n")
     }
+
+    private func formatDayOfWeekMemories(for dayOfWeek: String) -> String {
+        guard let memories = schedulePreference?.dayOfWeekMemories?[dayOfWeek.lowercased()], !memories.isEmpty else {
+            return "None"
+        }
+
+        return memories.map { "- \($0)" }.joined(separator: "\n")
+    }
     
     // MARK: - AI Integration
 
@@ -546,6 +562,7 @@ class SchedulingAssistantViewModel: ObservableObject {
             let dayOfWeek = self.getDayOfWeekString(from: date)
             let dayContext = self.dayContexts[dayOfWeek]
             let dayContextText = self.formatDayContext(dayContext, dayOfWeek: dayOfWeek)
+            let dayOfWeekMemoriesText = self.formatDayOfWeekMemories(for: dayOfWeek)
 
             // Get schedule notes for this date
             let scheduleNotesText = self.formatScheduleNotes()
@@ -601,6 +618,9 @@ class SchedulingAssistantViewModel: ObservableObject {
 
             Day-Specific Context for \(dayOfWeek.capitalized):
             \(dayContextText)
+
+            Learned Day-of-Week Memories for \(dayOfWeek.capitalized):
+            \(dayOfWeekMemoriesText)
 
             Schedule Notes for This Date:
             \(scheduleNotesText)
@@ -1209,6 +1229,77 @@ class SchedulingAssistantViewModel: ObservableObject {
             )
             messages.append(message)
             firebaseManager.saveSchedulingMessage(message) { _ in }
+        }
+    }
+
+    func analyzeModificationReasonsBatch(_ modifications: [ModificationReasonInput]) {
+        let trimmedModifications = modifications.compactMap { modification -> ModificationReasonInput? in
+            let trimmedReason = modification.reason.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmedReason.isEmpty else { return nil }
+            return ModificationReasonInput(
+                dayOfWeek: modification.dayOfWeek,
+                originalTime: modification.originalTime,
+                modifiedTime: modification.modifiedTime,
+                tasks: modification.tasks,
+                reason: trimmedReason
+            )
+        }
+
+        guard !trimmedModifications.isEmpty else { return }
+
+        let grouped = Dictionary(grouping: trimmedModifications, by: { $0.dayOfWeek.lowercased() })
+        let groupedSummary = grouped.keys.sorted().map { day in
+            let items = grouped[day, default: []]
+            let lines = items.map { item in
+                "- Tasks: \(item.tasks.joined(separator: ", ")); Original: \(item.originalTime); Modified: \(item.modifiedTime); Reason: \(item.reason)"
+            }.joined(separator: "\n")
+            return "\(day.capitalized):\n\(lines)"
+        }.joined(separator: "\n\n")
+
+        let analysisPrompt = """
+        The user provided reasons for modifying scheduled sessions. Extract day-of-week specific memories that can guide future scheduling.
+
+        Reasons grouped by day of week:
+        \(groupedSummary)
+
+        Return JSON in this format:
+        {
+            "dayOfWeekMemories": {
+                "monday": ["Memory 1", "Memory 2"],
+                "tuesday": ["Memory 1"]
+            }
+        }
+
+        Only include days that have meaningful, actionable memories. Keep memories short and specific.
+        """
+
+        Task {
+            do {
+                let vertex = VertexAI.vertexAI()
+                let model = vertex.generativeModel(modelName: "gemini-2.5-flash")
+
+                let analysisMessage = ModelContent(role: "user", parts: [TextPart(analysisPrompt)])
+                let response = try await model.generateContent([analysisMessage])
+
+                guard let text = response.text,
+                      let data = text.data(using: .utf8),
+                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let memories = json["dayOfWeekMemories"] as? [String: [String]] else {
+                    return
+                }
+
+                var updatedMemories = schedulePreference?.dayOfWeekMemories ?? [:]
+                for (day, dayMemories) in memories {
+                    let normalizedDay = day.lowercased()
+                    let existing = updatedMemories[normalizedDay] ?? []
+                    let merged = existing + dayMemories.filter { !existing.contains($0) }
+                    updatedMemories[normalizedDay] = merged
+                }
+
+                updateSchedulePreference(["dayOfWeekMemories": updatedMemories])
+            } catch {
+                print("Error analyzing modification reasons batch: \(error.localizedDescription)")
+            }
         }
     }
 

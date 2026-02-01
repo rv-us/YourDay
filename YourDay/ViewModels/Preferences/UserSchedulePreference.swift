@@ -134,12 +134,13 @@ struct UserSchedulePreference: Codable {
     var preferredWorkTimes: [String]? // Array of preferred time ranges
     var blockedTimes: [String]? // Array of blocked time ranges
     var learnedPatterns: [String: String]? // Key-value pairs of learned patterns
+    var dayOfWeekMemories: [String: [String]]? // Day-of-week memories extracted from modification reasons
     var scheduleConstraints: [ScheduleConstraint] = [] // General constraints learned from user feedback
     var recurringCommitments: [RecurringCommitment] = []
     var dayContexts: [String: DayContext]? // Day-specific contexts keyed by day name (monday, tuesday, etc.)
     var acceptanceStats: AcceptanceStats? // Aggregated stats for learning
 
-    init(id: String? = nil, userId: String, preferredWakeTime: String? = nil, lunchTime: String? = nil, preferredWorkTimes: [String]? = nil, blockedTimes: [String]? = nil, learnedPatterns: [String: String]? = nil, scheduleConstraints: [ScheduleConstraint] = [], recurringCommitments: [RecurringCommitment] = [], dayContexts: [String: DayContext]? = nil, acceptanceStats: AcceptanceStats? = nil) {
+    init(id: String? = nil, userId: String, preferredWakeTime: String? = nil, lunchTime: String? = nil, preferredWorkTimes: [String]? = nil, blockedTimes: [String]? = nil, learnedPatterns: [String: String]? = nil, dayOfWeekMemories: [String: [String]]? = nil, scheduleConstraints: [ScheduleConstraint] = [], recurringCommitments: [RecurringCommitment] = [], dayContexts: [String: DayContext]? = nil, acceptanceStats: AcceptanceStats? = nil) {
         self.id = id
         self.userId = userId
         self.preferredWakeTime = preferredWakeTime
@@ -147,10 +148,10 @@ struct UserSchedulePreference: Codable {
         self.preferredWorkTimes = preferredWorkTimes
         self.blockedTimes = blockedTimes
         self.learnedPatterns = learnedPatterns
+        self.dayOfWeekMemories = dayOfWeekMemories
         self.scheduleConstraints = scheduleConstraints
         self.recurringCommitments = recurringCommitments
         self.dayContexts = dayContexts
         self.acceptanceStats = acceptanceStats
     }
 }
-
