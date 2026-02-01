@@ -14,6 +14,7 @@ struct ProposalMessageCard: View {
     let onAccept: ([String]) -> Void
     let onRequestModificationReason: (ModificationContext) -> Void
     let isDisabled: Bool
+    let maxWidth: CGFloat
 
     @State private var selectedStartTime: Date
     @State private var adjustedDuration: Int
@@ -34,7 +35,8 @@ struct ProposalMessageCard: View {
         backlogViewModel: BacklogViewModel,
         onAccept: @escaping ([String]) -> Void,
         onRequestModificationReason: @escaping (ModificationContext) -> Void,
-        isDisabled: Bool = false
+        isDisabled: Bool = false,
+        maxWidth: CGFloat = 320
     ) {
         self._proposal = proposal
         self.schedulingViewModel = schedulingViewModel
@@ -42,6 +44,7 @@ struct ProposalMessageCard: View {
         self.onAccept = onAccept
         self.onRequestModificationReason = onRequestModificationReason
         self.isDisabled = isDisabled
+        self.maxWidth = maxWidth
 
         // Initialize state from proposal
         let initialStart = proposal.wrappedValue.effectiveStartTime ?? proposal.wrappedValue.startTime ?? Date()
@@ -76,9 +79,7 @@ struct ProposalMessageCard: View {
     }
 
     private var timeRangeString: String {
-        let formatter = DateFormatter()
-        formatter.timeStyle = .short
-        return "\(formatter.string(from: selectedStartTime)) - \(formatter.string(from: effectiveEndTime))"
+        CalendarTimeFormatter.formatTimeRange(start: selectedStartTime, end: effectiveEndTime)
     }
 
     var body: some View {
@@ -251,9 +252,18 @@ struct ProposalMessageCard: View {
                         schedulingViewModel.acceptProposal(backlogItems: backlogViewModel.backlogItems) { scheduledTasks in
                             if !scheduledTasks.isEmpty {
                                 if wasModified {
+                                    // Calculate task changes
+                                    let originalTaskSet = Set(originalTasks)
+                                    let finalTaskSet = Set(scheduledTasks)
+                                    let addedTasks = Array(finalTaskSet.subtracting(originalTaskSet))
+                                    let removedTasks = Array(originalTaskSet.subtracting(finalTaskSet))
+                                    
                                     onRequestModificationReason(
                                         ModificationContext(
                                             tasks: scheduledTasks,
+                                            originalTasks: originalTasks,
+                                            addedTasks: addedTasks,
+                                            removedTasks: removedTasks,
                                             originalTime: originalTime,
                                             modifiedTime: modifiedTimeStr,
                                             dayOfWeek: dayOfWeekString(from: schedulingViewModel.selectedDate),
@@ -322,7 +332,7 @@ struct ProposalMessageCard: View {
         .padding()
         .background(dynamicSecondaryBackgroundColor)
         .cornerRadius(12)
-        .frame(maxWidth: 320)
+        .frame(maxWidth: maxWidth)
         .opacity(isDisabled ? 0.7 : 1)
         .scaleEffect(appeared ? 1.0 : 0.95)
         .opacity(appeared ? 1.0 : 0.0)
@@ -490,84 +500,6 @@ struct ProposalMessageCard: View {
     }
 }
 
-// MARK: - Add Task Sheet
-
-struct AddTaskToProposalSheet: View {
-    let availableItems: [UnifiedBacklogItem]
-    let onAdd: (UnifiedBacklogItem) -> Void
-    let onDismiss: () -> Void
-
-    var body: some View {
-        NavigationView {
-            List {
-                if availableItems.isEmpty {
-                    Text("No more tasks available to add.")
-                        .foregroundColor(dynamicSecondaryTextColor)
-                        .padding()
-                } else {
-                    ForEach(availableItems) { item in
-                        Button(action: {
-                            onAdd(item)
-                        }) {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(item.title)
-                                        .font(.headline)
-                                        .foregroundColor(dynamicTextColor)
-
-                                    if !item.description.isEmpty {
-                                        Text(item.description)
-                                            .font(.caption)
-                                            .foregroundColor(dynamicSecondaryTextColor)
-                                            .lineLimit(2)
-                                    }
-
-                                    HStack(spacing: 8) {
-                                        if let duration = item.estimatedDuration {
-                                            Label("\(duration) min", systemImage: "clock")
-                                                .font(.caption2)
-                                                .foregroundColor(dynamicSecondaryTextColor)
-                                        }
-                                        if let priority = item.priority, priority > 0 {
-                                            Label("P\(priority)", systemImage: "flag")
-                                                .font(.caption2)
-                                                .foregroundColor(dynamicSecondaryTextColor)
-                                        }
-                                        if let category = item.category {
-                                            Text(category)
-                                                .font(.caption2)
-                                                .foregroundColor(dynamicPrimaryColor)
-                                                .padding(.horizontal, 4)
-                                                .padding(.vertical, 1)
-                                                .background(dynamicPrimaryColor.opacity(0.15))
-                                                .cornerRadius(3)
-                                        }
-                                    }
-                                }
-
-                                Spacer()
-
-                                Image(systemName: "plus.circle.fill")
-                                    .foregroundColor(dynamicPrimaryColor)
-                            }
-                            .padding(.vertical, 4)
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                    }
-                }
-            }
-            .navigationTitle("Add Task")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
-                        onDismiss()
-                    }
-                }
-            }
-        }
-    }
-}
 
 // MARK: - Modification Reason Sheet
 
@@ -739,23 +671,5 @@ struct ModificationReasonSheet: View {
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
-    }
-}
-
-struct QuickReasonChip: View {
-    let text: String
-    let onTap: () -> Void
-
-    var body: some View {
-        Button(action: onTap) {
-            Text(text)
-                .font(.caption)
-                .foregroundColor(dynamicPrimaryColor)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(dynamicPrimaryColor.opacity(0.15))
-                .cornerRadius(16)
-        }
-        .buttonStyle(PlainButtonStyle())
     }
 }

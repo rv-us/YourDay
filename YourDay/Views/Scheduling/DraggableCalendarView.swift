@@ -33,13 +33,7 @@ struct DraggableCalendarView: View {
     }
     
     private var dayEvents: [GoogleCalendarEvent] {
-        let startOfDay = calendar.startOfDay(for: selectedDate)
-        let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
-        
-        return events.filter { event in
-            guard let eventStart = event.start.startDate else { return false }
-            return eventStart >= startOfDay && eventStart < endOfDay
-        }
+        CalendarEventFilter.filterEventsForDay(events, date: selectedDate)
     }
     
     private var proposedEndTime: Date {
@@ -65,7 +59,7 @@ struct DraggableCalendarView: View {
                                     alignment: .bottom
                                 )
                             
-                            Text(timeString(from: timeSlot))
+                            Text(CalendarTimeFormatter.formatTime(timeSlot))
                                 .font(.caption)
                                 .foregroundColor(dynamicSecondaryTextColor)
                                 .frame(width: 70, alignment: .trailing)
@@ -137,105 +131,6 @@ struct DraggableCalendarView: View {
                 }
             }
         }
-    }
-    
-    private func timeString(from date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.timeStyle = .short
-        return formatter.string(from: date)
-    }
-}
-
-struct DraggableEventBlock: View {
-    let event: GoogleCalendarEvent?
-    let eventStart: Date
-    let eventEnd: Date
-    let selectedDate: Date
-    let hourHeight: CGFloat
-    let isDraggable: Bool
-    @Binding var dragOffset: CGSize
-    @Binding var isDragging: Bool
-    var onDragEnd: ((CGSize) -> Void)?
-    
-    private let calendar = Calendar.current
-    
-    init(event: GoogleCalendarEvent?, eventStart: Date, eventEnd: Date, selectedDate: Date, hourHeight: CGFloat, isDraggable: Bool, dragOffset: Binding<CGSize> = .constant(.zero), isDragging: Binding<Bool> = .constant(false), onDragEnd: ((CGSize) -> Void)? = nil) {
-        self.event = event
-        self.eventStart = eventStart
-        self.eventEnd = eventEnd
-        self.selectedDate = selectedDate
-        self.hourHeight = hourHeight
-        self.isDraggable = isDraggable
-        self._dragOffset = dragOffset
-        self._isDragging = isDragging
-        self.onDragEnd = onDragEnd
-    }
-    
-    private var topOffset: CGFloat {
-        let startOfDay = calendar.startOfDay(for: selectedDate)
-        let timeInterval = eventStart.timeIntervalSince(startOfDay)
-        let hoursFromStart = timeInterval / 3600.0
-        let baseOffset = CGFloat(hoursFromStart) * hourHeight
-        let headerOffset: CGFloat = 20
-        let dragY: CGFloat = isDraggable ? dragOffset.height : 0
-        return baseOffset + headerOffset + dragY
-    }
-    
-    private var height: CGFloat {
-        let duration = eventEnd.timeIntervalSince(eventStart)
-        let hours = duration / 3600.0
-        return CGFloat(hours) * hourHeight
-    }
-    
-    var body: some View {
-        RoundedRectangle(cornerRadius: 8)
-            .fill(isDraggable ? dynamicPrimaryColor : dynamicPrimaryColor.opacity(0.6))
-            .frame(width: UIScreen.main.bounds.width - 120, height: height)
-            .overlay(
-                VStack(alignment: .leading, spacing: 4) {
-                    if isDraggable {
-                        Text("Proposed Session")
-                            .font(.headline)
-                            .foregroundColor(.white)
-                        Text(timeRangeString)
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.9))
-                    } else if let event = event {
-                        Text(event.summary)
-                            .font(.headline)
-                            .foregroundColor(.white)
-                        Text(timeRangeString)
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.9))
-                    }
-                }
-                .padding(8),
-                alignment: .topLeading
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(isDraggable ? Color.white : Color.clear, lineWidth: 2)
-            )
-            .offset(x: 80, y: topOffset)
-            .gesture(
-                isDraggable ? DragGesture()
-                    .onChanged { value in
-                        isDragging = true
-                        dragOffset = value.translation
-                    }
-                    .onEnded { value in
-                        isDragging = false
-                        onDragEnd?(value.translation)
-                    } : nil
-            )
-            .scaleEffect(isDragging ? 1.05 : 1.0)
-            .animation(.spring(response: 0.3), value: isDragging)
-    }
-    
-    private var timeRangeString: String {
-        let formatter = DateFormatter()
-        formatter.timeStyle = .short
-        return "\(formatter.string(from: eventStart)) - \(formatter.string(from: eventEnd))"
     }
 }
 

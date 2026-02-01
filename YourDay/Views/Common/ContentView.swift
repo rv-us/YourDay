@@ -57,7 +57,7 @@ struct ContentView: View {
                         .environmentObject(loginViewModel)
                         .environmentObject(firebaseManager)
 
-                    SmartSchedulingTestView()
+                    SmartSchedulingView()
                         .tabItem { Label("Scheduling", systemImage: "calendar.badge.clock") }
                         .environmentObject(firebaseManager)
 

@@ -16,6 +16,9 @@ struct ModificationReasonInput {
     let originalTime: String
     let modifiedTime: String
     let tasks: [String]
+    let originalTasks: [String]
+    let addedTasks: [String]
+    let removedTasks: [String]
     let reason: String
 }
 
@@ -29,16 +32,24 @@ class SchedulingAssistantViewModel: ObservableObject {
     @Published var currentProposal: ProposedSession?
     @Published var showingDeclineReasonInput = false
     @Published var declineReason = ""
+    @Published var showingRescheduleConfirmation = false
+    @Published var pendingRescheduleBacklogItems: [UnifiedBacklogItem] = []
+    @Published var declinedTasks: [String] = [] // Track tasks that were declined
     @Published var dayContexts: [String: DayContext] = [:]
     @Published var scheduleNotes: [ScheduleNote] = []
     @Published var recentInteractions: [ProposalInteraction] = []
     @Published var statusMessage: String? // Status message for current agent operation
+    @Published var isGeneratingMemory = false // Track when memory is being generated
 
     private let firebaseManager = FirebaseManager.shared
     private let calendarManager = GoogleCalendarManager.shared
 
     private var conversationContext: String = ""
-    private var declineReasons: [String] = [] // Store reasons for declined proposals
+    private var declineReasons: [String] = [] // Persistent decline reasons derived from interactions
+    
+    // Session-specific tracking (cleared when session ends)
+    private var sessionDeclineReasons: [String] = [] // Decline reasons from current session
+    private var sessionModificationReasons: [String] = [] // Modification reasons from current session
     
     // MARK: - Status Message Helpers
     
@@ -66,7 +77,24 @@ class SchedulingAssistantViewModel: ObservableObject {
         currentProposal = nil
         showingDeclineReasonInput = false
         declineReason = ""
-        declineReasons.removeAll()
+        showingRescheduleConfirmation = false
+        pendingRescheduleBacklogItems = []
+        declinedTasks = []
+        clearSessionContext()
+    }
+    
+    func clearSessionContext() {
+        // Clear session-specific reasons when session ends
+        sessionDeclineReasons.removeAll()
+        sessionModificationReasons.removeAll()
+    }
+    
+    func addSessionModificationReason(reason: String, originalTime: String, modifiedTime: String, tasks: [String]) {
+        // Track modification reason for current session
+        let modificationText = "Modified \(tasks.joined(separator: ", ")) from \(originalTime) to \(modifiedTime). Reason: \(reason)"
+        if !sessionModificationReasons.contains(modificationText) {
+            sessionModificationReasons.append(modificationText)
+        }
     }
     
     // MARK: - Calendar Integration
@@ -179,7 +207,7 @@ class SchedulingAssistantViewModel: ObservableObject {
     
     // MARK: - Schedule Preferences
     
-    func fetchSchedulePreference() {
+    func fetchSchedulePreference(completion: (() -> Void)? = nil) {
         firebaseManager.fetchSchedulePreference { [weak self] preference, error in
             guard let self = self else { return }
             
@@ -190,19 +218,28 @@ class SchedulingAssistantViewModel: ObservableObject {
                     // Create default preference
                     self.schedulePreference = UserSchedulePreference(userId: userId)
                 }
+                self.refreshDeclineReasonsFromInteractions()
+                completion?()
             }
         }
     }
     
     func updateSchedulePreference(_ updates: [String: Any]) {
-        guard Auth.auth().currentUser?.uid != nil else { return }
+        guard Auth.auth().currentUser?.uid != nil else {
+            print("⚠️ Cannot update schedule preference: User not authenticated")
+            return
+        }
 
+        print("💾 Updating schedule preference with keys: \(updates.keys.joined(separator: ", "))")
+        
         firebaseManager.updateSchedulePreference(updates) { [weak self] error in
             if let error = error {
-                print("Error updating schedule preference: \(error.localizedDescription)")
+                print("❌ Error updating schedule preference: \(error.localizedDescription)")
                 return
             }
 
+            print("✅ Successfully updated schedule preference in Firebase")
+            
             // Refresh preference
             self?.fetchSchedulePreference()
         }
@@ -266,9 +303,29 @@ class SchedulingAssistantViewModel: ObservableObject {
             DispatchQueue.main.async {
                 if let interactions = interactions {
                     self.recentInteractions = interactions
+                    self.refreshDeclineReasonsFromInteractions()
                 }
             }
         }
+    }
+
+    private func refreshDeclineReasonsFromInteractions() {
+        var reasons = recentInteractions
+            .filter { $0.action == .declined }
+            .compactMap { $0.declineReason?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        if let learnedPatterns = schedulePreference?.learnedPatterns {
+            for (key, value) in learnedPatterns where key.hasPrefix("decline_reason_") {
+                let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    reasons.append(trimmed)
+                }
+            }
+        }
+
+        var seen = Set<String>()
+        declineReasons = reasons.filter { seen.insert($0).inserted }
     }
 
     func recordInteraction(_ interaction: ProposalInteraction) {
@@ -552,7 +609,13 @@ class SchedulingAssistantViewModel: ObservableObject {
                 "- \(commitment.eventName): \(commitment.daysOfWeek.joined(separator: ", ")) at \(commitment.time)"
             }.joined(separator: "\n") ?? "None"
 
+            // Persistent decline reasons from history
             let declineReasonsText = self.declineReasons.isEmpty ? "None" : self.declineReasons.joined(separator: "; ")
+            // Session-specific decline reasons
+            let sessionDeclineReasonsText = self.sessionDeclineReasons.isEmpty ? "None" : self.sessionDeclineReasons.joined(separator: "; ")
+            
+            // Format session-specific modification reasons
+            let sessionModificationReasonsText = self.sessionModificationReasons.isEmpty ? "None" : self.sessionModificationReasons.joined(separator: "\n")
 
             let dateFormatter = DateFormatter()
             dateFormatter.dateStyle = .full
@@ -567,8 +630,8 @@ class SchedulingAssistantViewModel: ObservableObject {
             // Get schedule notes for this date
             let scheduleNotesText = self.formatScheduleNotes()
 
-            // Get recent interactions for learning
-            let interactionHistoryText = self.formatRecentInteractions(for: dayOfWeek)
+            // Get recent interactions for learning (only from this specific date)
+            let interactionHistoryText = self.formatRecentInteractions(for: date)
 
             // Get acceptance stats
             let acceptanceStatsText = self.formatAcceptanceStats()
@@ -636,8 +699,16 @@ class SchedulingAssistantViewModel: ObservableObject {
             Previous Decline Reasons (learn from these):
             \(declineReasonsText)
 
-            User's Interaction History (what they've accepted/declined before on \(dayOfWeek.capitalized)):
+            Session-Specific Information (from this planning session):
+            - Decline Reasons: \(sessionDeclineReasonsText)
+            - Modification Reasons: \(sessionModificationReasonsText)
+            
+            IMPORTANT: The session-specific information above contains real-time feedback from this session. For example, if the user mentioned they're meeting a friend at 1 PM, you MUST account for that when proposing future events in this session.
+
+            User's Interaction History (from this specific date - \(dateString)):
             \(interactionHistoryText)
+            
+            NOTE: For general day-of-week patterns, refer to the "Learned Day-of-Week Memories" section above.
 
             User's Preference Statistics:
             \(acceptanceStatsText)
@@ -670,6 +741,13 @@ class SchedulingAssistantViewModel: ObservableObject {
                     DispatchQueue.main.async {
                         self.showStatus("Proposing working session...")
                     }
+                    
+                    // DEBUG: Print exact prompt sent to Gemini
+                    print(String(repeating: "=", count: 80))
+                    print("🔵 GEMINI PROMPT - proposeWorkingSession")
+                    print(String(repeating: "=", count: 80))
+                    print(prompt)
+                    print(String(repeating: "=", count: 80))
                     
                     let vertex = VertexAI.vertexAI()
                     let model = vertex.generativeModel(modelName: "gemini-2.5-flash")
@@ -777,15 +855,28 @@ class SchedulingAssistantViewModel: ObservableObject {
         }.joined(separator: "\n")
     }
 
-    private func formatRecentInteractions(for dayOfWeek: String) -> String {
-        let relevantInteractions = recentInteractions.filter { $0.dayOfWeek.lowercased() == dayOfWeek.lowercased() }
+    private func formatRecentInteractions(for date: Date) -> String {
+        let calendar = Calendar.current
+        let targetDateStart = calendar.startOfDay(for: date)
+        let targetDateEnd = calendar.date(byAdding: .day, value: 1, to: targetDateStart) ?? date
+        
+        // Filter interactions to only include those from the specific date being planned
+        let relevantInteractions = recentInteractions.filter { interaction in
+            let interactionDate = interaction.timestamp
+            return interactionDate >= targetDateStart && interactionDate < targetDateEnd
+        }
 
         guard !relevantInteractions.isEmpty else {
-            return "No previous interactions on \(dayOfWeek.capitalized)"
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateStyle = .medium
+            return "No previous interactions on \(dateFormatter.string(from: date))"
         }
 
         return relevantInteractions.prefix(5).map { interaction in
             var line = "- \(interaction.action.rawValue.capitalized)"
+            // Include task names
+            let tasksText = interaction.proposedTasks.isEmpty ? "No tasks" : interaction.proposedTasks.joined(separator: ", ")
+            line += " tasks: [\(tasksText)]"
             line += " at \(interaction.proposedTime)"
             line += " (\(interaction.proposedDuration) min)"
             if let modifiedTime = interaction.modifiedTime {
@@ -847,22 +938,46 @@ class SchedulingAssistantViewModel: ObservableObject {
         // Update conversation context
         conversationContext += "\nuser: \(content)"
         
-        // If this is a decline reason, save it and propose another time
+        // If this is a decline reason, save it and ask user if they want to reschedule
         if showingDeclineReasonInput {
-            declineReasons.append(content)
+            let trimmedReason = content.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmedReason.isEmpty {
+                sessionDeclineReasons.append(trimmedReason)
+                
+                // Save to preferences
+                var learnedPatterns = schedulePreference?.learnedPatterns ?? [:]
+                learnedPatterns["decline_reason_\(UUID().uuidString)"] = trimmedReason
+                updateSchedulePreference(["learnedPatterns": learnedPatterns])
+            }
             showingDeclineReasonInput = false
             declineReason = ""
             
-            // Save to preferences
-            var learnedPatterns = schedulePreference?.learnedPatterns ?? [:]
-            learnedPatterns["decline_reason_\(Date().timeIntervalSince1970)"] = content
-            updateSchedulePreference(["learnedPatterns": learnedPatterns])
+            // Store declined tasks before clearing proposal
+            if let proposal = currentProposal {
+                declinedTasks = proposal.tasks
+                
+                let duration = proposal.effectiveDuration ?? 60
+                let interaction = ProposalInteraction(
+                    proposedTasks: proposal.tasks,
+                    proposedTime: proposal.workingSessionTime,
+                    proposedDuration: duration,
+                    action: .declined,
+                    modifiedTime: nil,
+                    modifiedDuration: nil,
+                    declineReason: trimmedReason.isEmpty ? nil : trimmedReason,
+                    dayOfWeek: getDayOfWeekString(from: selectedDate)
+                )
+                recordInteraction(interaction)
+            }
             
-            // Clear current proposal before proposing a new one to ensure UI updates properly
+            // Clear current proposal
             currentProposal = nil
             
-            // Propose another time
-            proposeWorkingSession(backlogItems: backlogItems, completion: completion)
+            // Store backlog items and show confirmation dialog instead of automatically rescheduling
+            pendingRescheduleBacklogItems = backlogItems
+            showingRescheduleConfirmation = true
+            
+            completion(nil)
             return
         }
         
@@ -919,6 +1034,13 @@ class SchedulingAssistantViewModel: ObservableObject {
         
         Task {
             do {
+                // DEBUG: Print exact prompt sent to Gemini
+                print(String(repeating: "=", count: 80))
+                print("🟢 GEMINI PROMPT - sendMessage")
+                print(String(repeating: "=", count: 80))
+                print(prompt)
+                print(String(repeating: "=", count: 80))
+                
                 let vertex = VertexAI.vertexAI()
                 let model = vertex.generativeModel(modelName: "gemini-2.5-flash")
                 
@@ -1150,10 +1272,28 @@ class SchedulingAssistantViewModel: ObservableObject {
         }
     }
 
-    func declineProposal(reason: String? = nil) {
+    func declineProposal() {
+        guard currentProposal != nil else { return }
+        showingDeclineReasonInput = true
+    }
+
+    func submitDeclineReason(_ reason: String?, backlogItems: [UnifiedBacklogItem]) {
+        let trimmedReason = (reason ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        showingDeclineReasonInput = false
+        declineReason = ""
+
         guard let proposal = currentProposal else { return }
 
-        // Record interaction for learning
+        if !trimmedReason.isEmpty {
+            sessionDeclineReasons.append(trimmedReason)
+
+            var learnedPatterns = schedulePreference?.learnedPatterns ?? [:]
+            learnedPatterns["decline_reason_\(UUID().uuidString)"] = trimmedReason
+            updateSchedulePreference(["learnedPatterns": learnedPatterns])
+        }
+
+        declinedTasks = proposal.tasks
+
         let duration = proposal.effectiveDuration ?? 60
         let interaction = ProposalInteraction(
             proposedTasks: proposal.tasks,
@@ -1162,12 +1302,39 @@ class SchedulingAssistantViewModel: ObservableObject {
             action: .declined,
             modifiedTime: nil,
             modifiedDuration: nil,
-            declineReason: reason,
+            declineReason: trimmedReason.isEmpty ? nil : trimmedReason,
             dayOfWeek: getDayOfWeekString(from: selectedDate)
         )
         recordInteraction(interaction)
 
-        showingDeclineReasonInput = true
+        currentProposal = nil
+        pendingRescheduleBacklogItems = backlogItems
+        showingRescheduleConfirmation = true
+    }
+
+    func cancelDeclineReason() {
+        showingDeclineReasonInput = false
+        declineReason = ""
+    }
+    
+    func confirmReschedule(completion: @escaping (Error?) -> Void) {
+        showingRescheduleConfirmation = false
+        let backlogItems = pendingRescheduleBacklogItems
+        pendingRescheduleBacklogItems = []
+        declinedTasks = [] // Clear declined tasks when rescheduling
+        
+        // Propose another time
+        proposeWorkingSession(backlogItems: backlogItems, completion: completion)
+    }
+    
+    func cancelReschedule() {
+        showingRescheduleConfirmation = false
+        pendingRescheduleBacklogItems = []
+        declinedTasks = [] // Clear declined tasks
+    }
+    
+    func getDeclinedTasks() -> [String] {
+        return declinedTasks
     }
 
     func skipTask(tasks: [String], onComplete: @escaping () -> Void) {
@@ -1206,6 +1373,134 @@ class SchedulingAssistantViewModel: ObservableObject {
         onComplete()
     }
 
+    // MARK: - Decline Reason Learning
+    
+    func analyzeDeclineReasonsBatch() {
+        // Refresh recent interactions to ensure we have the latest data
+        fetchRecentInteractions()
+        
+        // Get all declined interactions from recent interactions
+        // Use a small delay to ensure fetchRecentInteractions completes
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            guard let self = self else { return }
+            
+            let declinedInteractions = self.recentInteractions.filter { interaction in
+                interaction.action == .declined && interaction.declineReason != nil && !interaction.declineReason!.isEmpty
+            }
+            
+            guard !declinedInteractions.isEmpty else { return }
+            
+            // Group by day of week
+            let grouped = Dictionary(grouping: declinedInteractions, by: { $0.dayOfWeek.lowercased() })
+            let groupedSummary = grouped.keys.sorted().map { day in
+                let items = grouped[day, default: []]
+                let lines = items.map { interaction in
+                    "- Tasks: \(interaction.proposedTasks.joined(separator: ", ")); Time: \(interaction.proposedTime); Reason: \(interaction.declineReason ?? "No reason")"
+                }.joined(separator: "\n")
+                return "\(day.capitalized):\n\(lines)"
+            }.joined(separator: "\n\n")
+            
+            let analysisPrompt = """
+            The user declined several scheduled sessions with reasons. Extract day-of-week specific memories and schedule constraints that can guide future scheduling.
+
+            Declined sessions grouped by day of week:
+            \(groupedSummary)
+
+            Return JSON in this format:
+            {
+                "dayOfWeekMemories": {
+                    "monday": ["Memory 1", "Memory 2"],
+                    "tuesday": ["Memory 1"]
+                },
+                "scheduleConstraints": [
+                    {
+                        "reason": "Brief description of the constraint",
+                        "timeRange": "Affected time range if specific (e.g., '14:00-15:00') or null",
+                        "context": "Additional context or null"
+                    }
+                ]
+            }
+
+            Only include days that have meaningful, actionable memories. Keep memories short and specific.
+            Extract constraints that appear multiple times or are clearly stated.
+            """
+            
+            Task {
+                do {
+                    // DEBUG: Print exact prompt sent to Gemini
+                    print(String(repeating: "=", count: 80))
+                    print("🔴 GEMINI PROMPT - analyzeDeclineReasonsBatch")
+                    print(String(repeating: "=", count: 80))
+                    print(analysisPrompt)
+                    print(String(repeating: "=", count: 80))
+                    
+                    let vertex = VertexAI.vertexAI()
+                    let model = vertex.generativeModel(modelName: "gemini-2.5-flash")
+                    
+                    let analysisMessage = ModelContent(role: "user", parts: [TextPart(analysisPrompt)])
+                    let response = try await model.generateContent([analysisMessage])
+                    
+                    guard let text = response.text,
+                          let data = text.data(using: .utf8),
+                          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                        return
+                    }
+                    
+                    // Update day-of-week memories
+                    if let memories = json["dayOfWeekMemories"] as? [String: [String]] {
+                        var updatedMemories = self.schedulePreference?.dayOfWeekMemories ?? [:]
+                        for (day, dayMemories) in memories {
+                            let normalizedDay = day.lowercased()
+                            let existing = updatedMemories[normalizedDay] ?? []
+                            let merged = existing + dayMemories.filter { !existing.contains($0) }
+                            updatedMemories[normalizedDay] = merged
+                        }
+                        self.updateSchedulePreference(["dayOfWeekMemories": updatedMemories])
+                        DispatchQueue.main.async {
+                            self.schedulePreference?.dayOfWeekMemories = updatedMemories
+                        }
+                    }
+                    
+                    // Update schedule constraints
+                    if let constraintsArray = json["scheduleConstraints"] as? [[String: Any]] {
+                        self.firebaseManager.fetchSchedulePreference { [weak self] preference, _ in
+                            guard let self = self, let pref = preference else { return }
+                            
+                            var constraints = pref.scheduleConstraints
+                            for constraintDict in constraintsArray {
+                                if let reason = constraintDict["reason"] as? String {
+                                    let constraint = ScheduleConstraint(
+                                        reason: reason,
+                                        timeRange: constraintDict["timeRange"] as? String,
+                                        context: constraintDict["context"] as? String
+                                    )
+                                    // Only add if not already present (simple deduplication)
+                                    if !constraints.contains(where: { $0.reason == reason && $0.timeRange == constraint.timeRange }) {
+                                        constraints.append(constraint)
+                                    }
+                                }
+                            }
+                            
+                            let constraintsDicts = constraints.map { c in
+                                var dict: [String: Any] = ["reason": c.reason]
+                                if let timeRange = c.timeRange { dict["timeRange"] = timeRange }
+                                if let context = c.context { dict["context"] = context }
+                                return dict
+                            }
+                            
+                            self.updateSchedulePreference(["scheduleConstraints": constraintsDicts])
+                            DispatchQueue.main.async {
+                                self.schedulePreference?.scheduleConstraints = constraints
+                            }
+                        }
+                    }
+                } catch {
+                    print("Error analyzing decline reasons batch: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
     // MARK: - Modification Reason Learning
 
     func saveModificationReason(reason: String, originalTime: String, modifiedTime: String, tasks: [String]) {
@@ -1236,22 +1531,43 @@ class SchedulingAssistantViewModel: ObservableObject {
         let trimmedModifications = modifications.compactMap { modification -> ModificationReasonInput? in
             let trimmedReason = modification.reason.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmedReason.isEmpty else { return nil }
+            
             return ModificationReasonInput(
                 dayOfWeek: modification.dayOfWeek,
                 originalTime: modification.originalTime,
                 modifiedTime: modification.modifiedTime,
                 tasks: modification.tasks,
+                originalTasks: modification.originalTasks,
+                addedTasks: modification.addedTasks,
+                removedTasks: modification.removedTasks,
                 reason: trimmedReason
             )
         }
 
         guard !trimmedModifications.isEmpty else { return }
 
+        // Persist raw modification reasons for history
+        var learnedPatterns = schedulePreference?.learnedPatterns ?? [:]
+        for modification in trimmedModifications {
+            learnedPatterns["modification_reason_\(UUID().uuidString)"] = modification.reason
+        }
+        updateSchedulePreference(["learnedPatterns": learnedPatterns])
+
         let grouped = Dictionary(grouping: trimmedModifications, by: { $0.dayOfWeek.lowercased() })
         let groupedSummary = grouped.keys.sorted().map { day in
             let items = grouped[day, default: []]
             let lines = items.map { item in
-                "- Tasks: \(item.tasks.joined(separator: ", ")); Original: \(item.originalTime); Modified: \(item.modifiedTime); Reason: \(item.reason)"
+                var taskInfo = "Tasks: \(item.tasks.joined(separator: ", "))"
+                
+                // Add task change information
+                if !item.addedTasks.isEmpty {
+                    taskInfo += "; Added: \(item.addedTasks.joined(separator: ", "))"
+                }
+                if !item.removedTasks.isEmpty {
+                    taskInfo += "; Removed: \(item.removedTasks.joined(separator: ", "))"
+                }
+                
+                return "- \(taskInfo); Original: \(item.originalTime); Modified: \(item.modifiedTime); Reason: \(item.reason)"
             }.joined(separator: "\n")
             return "\(day.capitalized):\n\(lines)"
         }.joined(separator: "\n\n")
@@ -1267,42 +1583,166 @@ class SchedulingAssistantViewModel: ObservableObject {
             "dayOfWeekMemories": {
                 "monday": ["Memory 1", "Memory 2"],
                 "tuesday": ["Memory 1"]
-            }
+            },
+            "scheduleConstraints": [
+                {
+                    "reason": "Brief description of the constraint",
+                    "timeRange": "Affected time range if specific (e.g., '14:00-15:00') or null",
+                    "context": "Additional context or null"
+                }
+            ]
         }
 
         Only include days that have meaningful, actionable memories. Keep memories short and specific.
+        Note: When tasks were added or removed, consider this in the memory extraction (e.g., "User prefers not to group food tasks with other tasks").
+        Only include schedule constraints that are clearly stated or repeated. If none, return an empty array.
         """
 
         Task {
+            await MainActor.run {
+                isGeneratingMemory = true
+            }
+            
             do {
+                // DEBUG: Print exact prompt sent to Gemini
+                print(String(repeating: "=", count: 80))
+                print("🟣 GEMINI PROMPT - analyzeModificationReasonsBatch")
+                print(String(repeating: "=", count: 80))
+                print(analysisPrompt)
+                print(String(repeating: "=", count: 80))
+                
                 let vertex = VertexAI.vertexAI()
                 let model = vertex.generativeModel(modelName: "gemini-2.5-flash")
 
                 let analysisMessage = ModelContent(role: "user", parts: [TextPart(analysisPrompt)])
                 let response = try await model.generateContent([analysisMessage])
 
-                guard let text = response.text,
-                      let data = text.data(using: .utf8),
-                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let memories = json["dayOfWeekMemories"] as? [String: [String]] else {
+                // DEBUG: Print Gemini output
+                guard let responseText = response.text else {
+                    print("⚠️ No response text from Gemini")
+                    await MainActor.run {
+                        isGeneratingMemory = false
+                    }
+                    return
+                }
+                
+                print(String(repeating: "=", count: 80))
+                print("🟣 GEMINI OUTPUT - analyzeModificationReasonsBatch")
+                print(String(repeating: "=", count: 80))
+                print(responseText)
+                print(String(repeating: "=", count: 80))
+                
+                // Extract JSON from markdown code blocks if present
+                guard let jsonText = extractJSONFromResponse(responseText),
+                      let jsonData = jsonText.data(using: .utf8),
+                      let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {
+                    print("⚠️ Failed to parse JSON from Gemini response")
+                    if let jsonText = extractJSONFromResponse(responseText) {
+                        print("Extracted JSON text: \(jsonText)")
+                    }
+                    await MainActor.run {
+                        isGeneratingMemory = false
+                    }
                     return
                 }
 
-                var updatedMemories = schedulePreference?.dayOfWeekMemories ?? [:]
-                for (day, dayMemories) in memories {
-                    let normalizedDay = day.lowercased()
-                    let existing = updatedMemories[normalizedDay] ?? []
-                    let merged = existing + dayMemories.filter { !existing.contains($0) }
-                    updatedMemories[normalizedDay] = merged
+                if let memories = json["dayOfWeekMemories"] as? [String: [String]] {
+                    print("✅ Successfully parsed \(memories.count) day(s) of memories from Gemini response")
+
+                    var updatedMemories = schedulePreference?.dayOfWeekMemories ?? [:]
+                    for (day, dayMemories) in memories {
+                        let normalizedDay = day.lowercased()
+                        let existing = updatedMemories[normalizedDay] ?? []
+                        let merged = existing + dayMemories.filter { !existing.contains($0) }
+                        updatedMemories[normalizedDay] = merged
+                        print("📝 Updated memories for \(normalizedDay): \(merged.count) total (\(dayMemories.count) new)")
+                    }
+
+                    updateSchedulePreference(["dayOfWeekMemories": updatedMemories])
+                    await MainActor.run {
+                        self.schedulePreference?.dayOfWeekMemories = updatedMemories
+                    }
+                    print("💾 Saved dayOfWeekMemories to Firebase")
+                } else {
+                    print("⚠️ No dayOfWeekMemories found in Gemini response")
                 }
 
-                updateSchedulePreference(["dayOfWeekMemories": updatedMemories])
+                if let constraintsArray = json["scheduleConstraints"] as? [[String: Any]],
+                   !constraintsArray.isEmpty {
+                    self.firebaseManager.fetchSchedulePreference { [weak self] preference, _ in
+                        guard let self = self, let pref = preference else { return }
+
+                        var constraints = pref.scheduleConstraints
+                        for constraintDict in constraintsArray {
+                            if let reason = constraintDict["reason"] as? String {
+                                let constraint = ScheduleConstraint(
+                                    reason: reason,
+                                    timeRange: constraintDict["timeRange"] as? String,
+                                    context: constraintDict["context"] as? String
+                                )
+                                if !constraints.contains(where: { $0.reason == reason && $0.timeRange == constraint.timeRange }) {
+                                    constraints.append(constraint)
+                                }
+                            }
+                        }
+
+                        let constraintsDicts = constraints.map { c in
+                            var dict: [String: Any] = ["reason": c.reason]
+                            if let timeRange = c.timeRange { dict["timeRange"] = timeRange }
+                            if let context = c.context { dict["context"] = context }
+                            return dict
+                        }
+
+                        self.updateSchedulePreference(["scheduleConstraints": constraintsDicts])
+                        DispatchQueue.main.async {
+                            self.schedulePreference?.scheduleConstraints = constraints
+                        }
+                    }
+                }
+                
+                await MainActor.run {
+                    isGeneratingMemory = false
+                }
             } catch {
                 print("Error analyzing modification reasons batch: \(error.localizedDescription)")
+                await MainActor.run {
+                    isGeneratingMemory = false
+                }
             }
         }
     }
 
+    // MARK: - JSON Extraction Helper
+    
+    private func extractJSONFromResponse(_ text: String) -> String? {
+        // Check for markdown code blocks with json
+        if text.contains("```json") {
+            // Extract content between ```json and ```
+            let pattern = #"```json\s*(.*?)\s*```"#
+            if let regex = try? NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators]) {
+                let nsString = text as NSString
+                let results = regex.matches(in: text, options: [], range: NSRange(location: 0, length: nsString.length))
+                
+                if let match = results.first, match.numberOfRanges > 1 {
+                    let jsonRange = match.range(at: 1)
+                    if jsonRange.location != NSNotFound {
+                        let jsonContent = nsString.substring(with: jsonRange)
+                        return jsonContent.trimmingCharacters(in: .whitespacesAndNewlines)
+                    }
+                }
+            }
+            
+            // Fallback: simple string replacement if regex fails
+            return text
+                .replacingOccurrences(of: "```json", with: "")
+                .replacingOccurrences(of: "```", with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        
+        // If no markdown, return as-is
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    
     private func analyzeModificationReason(reason: String, originalTime: String, modifiedTime: String, tasks: [String]) {
         let analysisPrompt = """
         The user modified a scheduled working session. Analyze their reason to extract scheduling preferences.
@@ -1330,6 +1770,13 @@ class SchedulingAssistantViewModel: ObservableObject {
 
         Task {
             do {
+                // DEBUG: Print exact prompt sent to Gemini
+                print(String(repeating: "=", count: 80))
+                print("🟡 GEMINI PROMPT - analyzeModificationReason")
+                print(String(repeating: "=", count: 80))
+                print(analysisPrompt)
+                print(String(repeating: "=", count: 80))
+                
                 let vertex = VertexAI.vertexAI()
                 let model = vertex.generativeModel(modelName: "gemini-2.5-flash")
 
@@ -1452,12 +1899,19 @@ class SchedulingAssistantViewModel: ObservableObject {
         
         Task {
             do {
+                // DEBUG: Print exact prompt sent to Gemini
+                print(String(repeating: "=", count: 80))
+                print("🟠 GEMINI PROMPT - analyzeAndUpdatePreferences")
+                print(String(repeating: "=", count: 80))
+                print(analysisPrompt)
+                print(String(repeating: "=", count: 80))
+                
                 let vertex = VertexAI.vertexAI()
                 let model = vertex.generativeModel(modelName: "gemini-2.5-flash")
                 
                 let analysisMessage = ModelContent(role: "user", parts: [TextPart(analysisPrompt)])
                 let response = try await model.generateContent([analysisMessage])
-                
+
                 guard let text = response.text else { return }
                 
                 // Parse JSON response
