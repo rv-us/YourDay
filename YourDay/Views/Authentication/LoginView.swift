@@ -230,13 +230,46 @@ private struct LoginFormView: View {
                             .padding(.vertical, 50)
                     } else {
                         VStack(spacing: 14) {
-                            Picker("Login or Register", selection: $isRegistering) {
-                                Text("Sign In").tag(false)
-                                Text("Create Account").tag(true)
+                            // Custom pill toggle (replaces SegmentedPickerStyle)
+                            HStack(spacing: 0) {
+                                Button {
+                                    focusedField = nil
+                                    withAnimation(.easeInOut(duration: 0.15)) {
+                                        isRegistering = false
+                                    }
+                                } label: {
+                                    Text("Sign In")
+                                        .fontWeight(.semibold)
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 10)
+                                        .foregroundColor(isRegistering ? .black.opacity(0.65) : .white)
+                                        .background(isRegistering ? Color.clear : dynamicPrimaryColor)
+                                        .clipShape(Capsule())
+                                }
+                                .buttonStyle(.plain)
+
+                                Button {
+                                    focusedField = nil
+                                    withAnimation(.easeInOut(duration: 0.15)) {
+                                        isRegistering = true
+                                    }
+                                } label: {
+                                    Text("Create Account")
+                                        .fontWeight(.semibold)
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 10)
+                                        .foregroundColor(isRegistering ? .white : .black.opacity(0.65))
+                                        .background(isRegistering ? dynamicPrimaryColor : Color.clear)
+                                        .clipShape(Capsule())
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .pickerStyle(SegmentedPickerStyle())
-                            .padding(.bottom)
-                            .padding(.horizontal, 6)
+                            .padding(4)
+                            .background(
+                                Capsule()
+                                    .fill(Color.black.opacity(0.06))
+                            )
+                            .padding(.bottom, 6)
 
                             if isRegistering {
                                 AuthTextField(

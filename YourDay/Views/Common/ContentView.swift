@@ -48,27 +48,19 @@ struct ContentView: View {
                         .environmentObject(loginViewModel)
                         .environmentObject(firebaseManager)
 
-                    AddNotesView()
-                        .tabItem { Label("Notes", systemImage: "square.and.pencil") }
-                        .environmentObject(loginViewModel)
-
-                    SocialView()
-                        .tabItem { Label("Social", systemImage: "person.2.fill") }
-                        .environmentObject(loginViewModel)
-                        .environmentObject(firebaseManager)
-
                     SmartSchedulingTestView()
                         .tabItem { Label("Scheduling", systemImage: "calendar.badge.clock") }
                         .environmentObject(firebaseManager)
 
-                    NotificationSettingsView(
+                    MoreView(
                         todoViewModel: todoViewModel,
                         loginViewModel: loginViewModel,
                         onSignOutRequested: {
                             requestSignOut()
                         }
                     )
-                         .tabItem { Label("Settings", systemImage: "gearshape.fill") }
+                    .tabItem { Label("More", systemImage: "ellipsis.circle") }
+                    .environmentObject(firebaseManager)
                 }
                 .tint(.black)
                 .task {
