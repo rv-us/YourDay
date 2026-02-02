@@ -245,5 +245,5 @@ struct DailyPlanningNoteView: View {
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.date(from: str)
     }
-}
+}	
 

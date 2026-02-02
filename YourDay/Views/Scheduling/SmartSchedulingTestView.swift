@@ -15,7 +15,7 @@ struct SmartSchedulingTestView: View {
     
     @StateObject private var backlogViewModel = BacklogViewModel()
     @StateObject private var schedulingViewModel = SchedulingAssistantViewModel()
-    @StateObject private var journalViewModel = JournalViewModel()
+    @ObservedObject private var journalViewModel = JournalViewModel.shared
     
     @Query(sort: \TodoItem.position) private var todoItems: [TodoItem]
     

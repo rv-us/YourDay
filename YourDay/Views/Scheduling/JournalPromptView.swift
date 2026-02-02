@@ -50,6 +50,14 @@ struct JournalPromptView: View {
                             .font(.subheadline)
                             .foregroundColor(dynamicSecondaryTextColor)
                             .multilineTextAlignment(.center)
+                        
+                        // Queue status indicator
+                        if journalViewModel.pendingCount > 1 {
+                            Text("\(journalViewModel.pendingCount - 1) more reflection\(journalViewModel.pendingCount - 1 == 1 ? "" : "s") waiting")
+                                .font(.caption)
+                                .foregroundColor(dynamicSecondaryTextColor)
+                                .padding(.top, 4)
+                        }
                     }
                     .padding(.top, 20)
                     

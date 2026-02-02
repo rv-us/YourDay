@@ -3,6 +3,7 @@ import SwiftData
 import FirebaseCore
 import GoogleSignIn
 import UIKit
+import UserNotifications
 
 
 @main
@@ -23,6 +24,9 @@ struct YourDayApp: App {
         
         // Initialize GoogleCalendarManager to restore sign-in state
         _ = GoogleCalendarManager.shared
+        
+        // Set up notification delegate for journal prompts
+        UNUserNotificationCenter.current().delegate = JournalNotificationDelegate.shared
         
         let appearance = UITabBarAppearance()
         appearance.configureWithOpaqueBackground()

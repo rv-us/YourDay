@@ -40,6 +40,7 @@ struct ContentView: View {
 
     @Query private var allTodoItems: [TodoItem]
     @StateObject private var todoViewModel = TodoViewModel()
+    @ObservedObject private var journalViewModel = JournalViewModel.shared
 
     var body: some View {
         Group {
@@ -141,6 +142,26 @@ struct ContentView: View {
                     Button("OK") {}
                 } message: {
                     Text(witheringAlertMessage)
+                }
+                .sheet(isPresented: $journalViewModel.showingJournalPrompt) {
+                    if let pendingEvent = journalViewModel.pendingJournalPrompt {
+                        JournalPromptView(journalViewModel: journalViewModel, pendingEvent: pendingEvent)
+                            .onDisappear {
+                                // Trigger AI analysis when journal entry is saved
+                                // Note: This requires SchedulingAssistantViewModel, which is only available in SmartSchedulingView
+                                // For now, we'll trigger it from there if needed
+                            }
+                    }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ShowJournalPrompt"))) { notification in
+                    // Handle notification tap to show journal prompt
+                    if let eventId = notification.userInfo?["eventId"] as? String {
+                        journalViewModel.showPromptForEvent(eventId: eventId)
+                    }
+                }
+                .onAppear {
+                    // Set journal view model in notification delegate
+                    JournalNotificationDelegate.shared.setJournalViewModel(journalViewModel)
                 }
 
             } else {

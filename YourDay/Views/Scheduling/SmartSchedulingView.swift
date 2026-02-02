@@ -15,7 +15,7 @@ struct SmartSchedulingView: View {
     
     @StateObject private var backlogViewModel = BacklogViewModel()
     @StateObject private var schedulingViewModel = SchedulingAssistantViewModel()
-    @StateObject private var journalViewModel = JournalViewModel()
+    @ObservedObject private var journalViewModel = JournalViewModel.shared
     
     @Query(sort: \TodoItem.position) private var todoItems: [TodoItem]
     
@@ -175,17 +175,6 @@ struct SmartSchedulingView: View {
             } message: {
                 Text("Would you like me to suggest a different time for these tasks?")
             }
-            .sheet(isPresented: $journalViewModel.showingJournalPrompt) {
-                if let pendingEvent = journalViewModel.pendingJournalPrompt {
-                    JournalPromptView(journalViewModel: journalViewModel, pendingEvent: pendingEvent)
-                        .onDisappear {
-                            // Trigger AI analysis when journal entry is saved
-                            if !journalViewModel.journalEntries.isEmpty {
-                                journalViewModel.triggerJournalAnalysis(schedulingViewModel: schedulingViewModel)
-                            }
-                        }
-                }
-            }
             .onAppear {
                 // Set initial date if provided
                 if let initialDate = initialDate {
@@ -216,6 +205,16 @@ struct SmartSchedulingView: View {
                             }
                         }
                     }
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+                // Force check for ended tasks when app becomes active
+                TaskEndMonitor.shared.forceCheck()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("JournalEntrySaved"))) { _ in
+                // Trigger AI analysis when journal entry is saved
+                if !journalViewModel.journalEntries.isEmpty {
+                    journalViewModel.triggerJournalAnalysis(schedulingViewModel: schedulingViewModel)
                 }
             }
             .onChange(of: schedulingViewModel.showingDeclineReasonInput) { _, isShowing in

@@ -12,28 +12,66 @@ import Combine
 
 @MainActor
 class JournalViewModel: ObservableObject {
+    static let shared = JournalViewModel()
+    
     @Published var journalEntries: [JournalEntry] = []
     @Published var pendingJournalPrompt: TaskEndMonitor.PendingJournalEvent?
     @Published var showingJournalPrompt = false
     @Published var isLoading = false
     @Published var errorMessage: String?
     
+    // Queue for pending journal events
+    private var pendingJournalQueue: [TaskEndMonitor.PendingJournalEvent] = []
+    
+    var pendingCount: Int {
+        pendingJournalQueue.count + (pendingJournalPrompt != nil ? 1 : 0)
+    }
+    
     private let firebaseManager = FirebaseManager.shared
     private let taskEndMonitor = TaskEndMonitor.shared
+    private let notificationManager = NotificationManager.shared
     private var cancellables = Set<AnyCancellable>()
     
-    init() {
+    private init() {
         // Observe pending journal events from TaskEndMonitor
         taskEndMonitor.$pendingJournalEvents
             .sink { [weak self] events in
                 guard let self = self else { return }
-                // Show prompt for the most recent event
-                if let latestEvent = events.first, !self.showingJournalPrompt {
-                    self.pendingJournalPrompt = latestEvent
-                    self.showingJournalPrompt = true
+                // Add all new events to queue (avoid duplicates)
+                let existingEventIds = Set(self.pendingJournalQueue.map { $0.eventId })
+                let newEvents = events.filter { !existingEventIds.contains($0.eventId) }
+                
+                // Add new events to queue
+                self.pendingJournalQueue.append(contentsOf: newEvents)
+                
+                // Schedule notifications for new events
+                for event in newEvents {
+                    self.notificationManager.scheduleJournalPromptNotification(
+                        eventId: event.eventId,
+                        taskTitle: event.taskTitle,
+                        scheduledEndTime: event.scheduledEndTime
+                    )
+                }
+                
+                // Show next prompt if not already showing one
+                if !self.showingJournalPrompt {
+                    self.showNextPendingPrompt()
                 }
             }
             .store(in: &cancellables)
+    }
+    
+    private func showNextPendingPrompt() {
+        // Remove the next event from queue and show it
+        guard !pendingJournalQueue.isEmpty else {
+            pendingJournalPrompt = nil
+            showingJournalPrompt = false
+            return
+        }
+        
+        let nextEvent = pendingJournalQueue.removeFirst()
+        pendingJournalPrompt = nextEvent
+        showingJournalPrompt = true
     }
     
     func fetchJournalEntries() {
@@ -151,16 +189,19 @@ class JournalViewModel: ObservableObject {
                 // Mark event as journaled
                 if let eventId = eventId {
                     self.taskEndMonitor.markEventAsJournaled(eventId: eventId)
+                    // Cancel notification for this event
+                    self.notificationManager.cancelJournalPromptNotification(eventId: eventId)
                 }
                 
                 // Add to local entries
                 self.journalEntries.insert(entry, at: 0)
                 
-                // Clear prompt
+                // Clear current prompt and show next one
                 self.pendingJournalPrompt = nil
-                self.showingJournalPrompt = false
+                self.showNextPendingPrompt()
                 
-                // Note: AI analysis is triggered from the view layer after journal entry is saved
+                // Post notification to trigger AI analysis (SmartSchedulingView will listen)
+                NotificationCenter.default.post(name: NSNotification.Name("JournalEntrySaved"), object: nil)
             }
         }
     }
@@ -217,9 +258,32 @@ class JournalViewModel: ObservableObject {
     func skipJournalPrompt() {
         if let event = pendingJournalPrompt {
             taskEndMonitor.markEventAsJournaled(eventId: event.eventId)
+            // Cancel notification for this event
+            notificationManager.cancelJournalPromptNotification(eventId: event.eventId)
         }
         pendingJournalPrompt = nil
-        showingJournalPrompt = false
+        // Show next prompt from queue
+        showNextPendingPrompt()
+    }
+    
+    // Method to show prompt for a specific event (used when notification is tapped)
+    func showPromptForEvent(eventId: String) {
+        // Check if it's the current prompt
+        if let current = pendingJournalPrompt, current.eventId == eventId {
+            showingJournalPrompt = true
+            return
+        }
+        
+        // Check if it's in the queue
+        if let index = pendingJournalQueue.firstIndex(where: { $0.eventId == eventId }) {
+            // Move it to the front of the queue
+            let event = pendingJournalQueue.remove(at: index)
+            pendingJournalQueue.insert(event, at: 0)
+            // Show it if not already showing another
+            if !showingJournalPrompt {
+                showNextPendingPrompt()
+            }
+        }
     }
     
     // Helper to trigger AI analysis - will be called from integration

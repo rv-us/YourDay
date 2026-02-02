@@ -76,7 +76,7 @@ class TaskEndMonitor: ObservableObject {
                 }
                 
                 let now = Date()
-                let checkWindow: TimeInterval = 5 * 60 // 5 minutes
+                let checkWindow: TimeInterval = 24 * 60 * 60 // 24 hours (expanded from 5 minutes to catch missed events)
                 
                 var newPendingEvents: [PendingJournalEvent] = []
                 
@@ -92,7 +92,7 @@ class TaskEndMonitor: ObservableObject {
                     let scheduledStartTime = startTimestamp.dateValue()
                     let scheduledEndTime = endTimestamp.dateValue()
                     
-                    // Check if event ended in the last 5 minutes
+                    // Check if event ended within the expanded window (last 24 hours)
                     let timeSinceEnd = now.timeIntervalSince(scheduledEndTime)
                     if timeSinceEnd >= 0 && timeSinceEnd <= checkWindow {
                         // Check if this event is already in pending list
@@ -115,6 +115,12 @@ class TaskEndMonitor: ObservableObject {
                                     DispatchQueue.main.async {
                                         if !self.pendingJournalEvents.contains(where: { $0.eventId == eventId }) {
                                             self.pendingJournalEvents.append(pendingEvent)
+                                            // Schedule notification for this pending event
+                                            NotificationManager.shared.scheduleJournalPromptNotification(
+                                                eventId: eventId,
+                                                taskTitle: taskTitle,
+                                                scheduledEndTime: scheduledEndTime
+                                            )
                                         }
                                     }
                                 }
@@ -134,6 +140,15 @@ class TaskEndMonitor: ObservableObject {
     
     func markEventAsJournaled(eventId: String) {
         pendingJournalEvents.removeAll { $0.eventId == eventId }
+        // Cancel notification for this event
+        NotificationManager.shared.cancelJournalPromptNotification(eventId: eventId)
+    }
+    
+    // Force check on app activation
+    func forceCheck() {
+        Task {
+            await checkForEndedTasks()
+        }
     }
 }
 
