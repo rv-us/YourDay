@@ -16,16 +16,16 @@ let plantPeach = Color(hex: "#FCE6D3")
 let gardenViewBackground = Color(hex: "#72b084")
 
 
-// MARK: - New Dynamic Color Palette (Gardening/Productivity Theme) - For Future Implementation
+// MARK: - New Dynamic Color Palette (White theme with Warm Pastel Green/Orange accents)
 struct LightTheme {
-    static let primary = Color(hex: "#6D2726") // brown for icons/accents
-    static let secondary = Color(hex: "#6D2726") // more brown???
-    static let accent = Color(hex: "#5E8D3F") // highlights?? and hopefully navbar
-    static let destructive = Color(hex: "#5E8D3F") // forest green for i have no clue
-    static let background = Color(hex: "#CAE4C5") // tea green background for all pages
-    static let secondaryBackground = Color(hex: "#FFF7CD") // lemon chiffon for modules (tasks/notes)
-    static let text = Color(hex: "#254222") // dark green for titles
-    static let secondaryText = Color(hex: "#254222") // dark green for titles
+    static let primary = Color(hex: "#7BC9A6")           // Warm pastel green - main accent
+    static let secondary = Color(hex: "#F97316")         // Orange - smaller accent
+    static let accent = Color(hex: "#7BC9A6")            // Warm pastel green for highlights
+    static let destructive = Color(hex: "#EF4444")       // Red for destructive actions
+    static let background = Color(hex: "#FFFFFF")        // Pure white background
+    static let secondaryBackground = Color(hex: "#FFFFFF") // Also white for seamless look
+    static let text = Color(hex: "#1F2937")              // Dark gray for primary text
+    static let secondaryText = Color(hex: "#6B7280")     // Medium gray for secondary text
 }
 
 //struct DarkTheme {
@@ -39,16 +39,16 @@ struct LightTheme {
 //    static let secondaryText = Color(hex: "#A0AEC0") // A light gray for secondary info
 //}
 
-//replacement dark theme, can switch back if needed
+// Dark theme variant with Warm Pastel Green/Orange accents
 struct DarkTheme {
-    static let primary = Color(hex: "#6D2726") // brown for icons/accents
-    static let secondary = Color(hex: "#6D2726") // more brown???
-    static let accent = Color(hex: "#5E8D3F") // highlights?? and hopefully navbar
-    static let destructive = Color(hex: "#5E8D3F") // forest green for i have no clue
-    static let background = Color(hex: "#CAE4C5") // tea green background for all pages (same as light)
-    static let secondaryBackground = Color(hex: "#FFF7CD") // lemon chiffon for modules (tasks/notes) (same as light)
-    static let text = Color(hex: "#254222") // dark green for titles (same as light)
-    static let secondaryText = Color(hex: "#254222") // dark green for titles (same as light)
+    static let primary = Color(hex: "#A7E2CD")           // Light mint green for dark mode
+    static let secondary = Color(hex: "#FB923C")         // Lighter orange for dark mode
+    static let accent = Color(hex: "#A7E2CD")            // Light mint green
+    static let destructive = Color(hex: "#EF4444")       // Red for destructive actions
+    static let background = Color(hex: "#111827")        // Dark charcoal background
+    static let secondaryBackground = Color(hex: "#1F2937") // Darker gray for cards
+    static let text = Color(hex: "#F9FAFB")              // Off-white text
+    static let secondaryText = Color(hex: "#9CA3AF")     // Light gray secondary text
 }
 
 // Dynamic Colors (will be used when the new theme is applied)

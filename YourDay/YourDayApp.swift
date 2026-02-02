@@ -32,7 +32,7 @@ struct YourDayApp: App {
         }
         
         let selectedColor = UIColor { _ in
-            return UIColor(LightTheme.primary)
+            return UIColor.black
         }
         
         let unselectedColor = UIColor { _ in

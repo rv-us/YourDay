@@ -70,7 +70,7 @@ struct ContentView: View {
                     )
                          .tabItem { Label("Settings", systemImage: "gearshape.fill") }
                 }
-                .tint(dynamicPrimaryColor)
+                .tint(.black)
                 .task {
                     await processNewDayLogicIfNeeded()
                 }

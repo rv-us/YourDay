@@ -206,13 +206,49 @@ struct LeaderboardHeaderView: View {
 struct LeaderboardRowView: View {
     let entry: LeaderboardEntry
     let isCurrentUser: Bool
+    
+    // Colorful rank indicators for top 3
+    private var rankColor: Color? {
+        guard let rank = entry.rank else { return nil }
+        switch rank {
+        case 1: return plantPeach           // Gold/Peach for 1st
+        case 2: return plantVeryLightBlue   // Silver/Blue for 2nd
+        case 3: return plantLightMintGreen  // Bronze/Mint for 3rd
+        default: return nil
+        }
+    }
+    
+    private var rankIcon: String? {
+        guard let rank = entry.rank else { return nil }
+        switch rank {
+        case 1: return "crown.fill"
+        case 2: return "star.fill"
+        case 3: return "star.fill"
+        default: return nil
+        }
+    }
 
     var body: some View {
         HStack {
-            Text("\(entry.rank ?? 0)")
-                .fontWeight(isCurrentUser ? .bold : .regular)
-                .foregroundColor(isCurrentUser ? dynamicTextColor : dynamicSecondaryTextColor)
-                .frame(width: 50, alignment: .center)
+            // Rank with optional medal/icon for top 3
+            ZStack {
+                if let color = rankColor {
+                    Circle()
+                        .fill(color)
+                        .frame(width: 36, height: 36)
+                }
+                
+                if let icon = rankIcon, let _ = rankColor {
+                    Image(systemName: icon)
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(dynamicTextColor)
+                } else {
+                    Text("\(entry.rank ?? 0)")
+                        .fontWeight(isCurrentUser ? .bold : .regular)
+                        .foregroundColor(isCurrentUser ? dynamicTextColor : dynamicSecondaryTextColor)
+                }
+            }
+            .frame(width: 50, alignment: .center)
 
             Text(entry.displayName)
                 .fontWeight(isCurrentUser ? .bold : .regular)

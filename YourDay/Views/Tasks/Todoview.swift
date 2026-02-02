@@ -52,7 +52,7 @@ struct Todoview: View {
                     ZStack(alignment: .center) {
                         if highlightFilterButton {
                             RoundedRectangle(cornerRadius: 8)
-                                .fill(Color.yellow.opacity(0.4))
+                                .fill(plantPeach.opacity(0.6))
                                 .frame(height: 40)
                                 .padding(.horizontal)
                                 .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: highlightFilterButton)
@@ -70,16 +70,25 @@ struct Todoview: View {
 
                     List {
                         Section(header:
-                            HStack {
+                            HStack(spacing: 8) {
+                                Circle()
+                                    .fill(plantLightMintGreen)
+                                    .frame(width: 10, height: 10)
                                 Text("In Progress")
                                     .fontWeight(.semibold)
-                                    .foregroundColor(dynamicPrimaryColor)
+                                    .foregroundColor(dynamicTextColor)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             }
                             .font(.subheadline)
                             .padding(.horizontal)
                             .padding(.vertical, 8)
-                            .background(dynamicSecondaryBackgroundColor.opacity(0.8))
+                            .background(
+                                LinearGradient(
+                                    colors: [plantLightMintGreen.opacity(0.3), dynamicSecondaryBackgroundColor],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
                             .cornerRadius(6)
                             .listRowInsets(EdgeInsets())
                         ) {
@@ -108,16 +117,25 @@ struct Todoview: View {
                         }
 
                         Section(header:
-                            HStack {
+                            HStack(spacing: 8) {
+                                Circle()
+                                    .fill(plantVeryLightBlue)
+                                    .frame(width: 10, height: 10)
                                 Text("Completed")
                                     .fontWeight(.semibold)
-                                    .foregroundColor(dynamicPrimaryColor)
+                                    .foregroundColor(dynamicTextColor)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             }
                             .font(.subheadline)
                             .padding(.horizontal)
                             .padding(.vertical, 8)
-                            .background(dynamicSecondaryBackgroundColor.opacity(0.8))
+                            .background(
+                                LinearGradient(
+                                    colors: [plantVeryLightBlue.opacity(0.4), dynamicSecondaryBackgroundColor],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
                             .cornerRadius(6)
                             .listRowInsets(EdgeInsets())
                         ) {
@@ -164,7 +182,7 @@ struct Todoview: View {
                         ZStack(alignment: .center) {
                             if highlightAddButton {
                                 Circle()
-                                    .fill(Color.yellow.opacity(0.4))
+                                    .fill(plantPeach.opacity(0.6))
                                     .frame(width: 44, height: 44)
                                     .offset(x: 4)
                                     .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: highlightAddButton)
@@ -193,7 +211,7 @@ struct Todoview: View {
                         ZStack(alignment: .center) {
                             if highlightSummaryButton {
                                 Circle()
-                                    .fill(Color.yellow.opacity(0.4))
+                                    .fill(plantPeach.opacity(0.6))
                                     .frame(width: 44, height: 44)
                                     .offset(x: 4)
                                     .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: highlightSummaryButton)
@@ -276,7 +294,7 @@ struct Todoview: View {
         ZStack(alignment: .center) {
             if highlightFilterButton {
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.yellow.opacity(0.4))
+                    .fill(plantPeach.opacity(0.6))
                     .frame(height: 40)
                     .padding(.horizontal)
                     .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: highlightFilterButton)
@@ -366,7 +384,7 @@ struct Todoview: View {
         ZStack(alignment: .center) {
             if highlightAddButton {
                 Circle()
-                    .fill(Color.yellow.opacity(0.4))
+                    .fill(plantPeach.opacity(0.6))
                     .frame(width: 44, height: 44)
                     .offset(x: 4)
                     .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: highlightAddButton)
@@ -397,7 +415,7 @@ struct Todoview: View {
         ZStack(alignment: .center) {
             if highlightSummaryButton {
                 Circle()
-                    .fill(Color.yellow.opacity(0.4))
+                    .fill(plantPeach.opacity(0.6))
                     .frame(width: 44, height: 44)
                     .offset(x: 4)
                     .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: highlightSummaryButton)

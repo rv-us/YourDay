@@ -8,10 +8,27 @@ struct TodoListItemView: View {
     @ObservedObject var todoViewModel: TodoViewModel
     @EnvironmentObject var firebaseManager: FirebaseManager
 
+    // Color based on task origin
+    private var originColor: Color {
+        switch item.origin {
+        case .today:
+            return plantPeach
+        case .master:
+            return plantLightMintGreen
+        }
+    }
+    
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 10) {
-                Button(action: {
+        HStack(spacing: 0) {
+            // Colored origin indicator strip
+            RoundedRectangle(cornerRadius: 2)
+                .fill(originColor)
+                .frame(width: 4)
+                .padding(.vertical, 4)
+            
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 10) {
+                    Button(action: {
                     withAnimation {
                         item.isDone.toggle()
                         item.completedAt = item.isDone ? Date() : nil
@@ -99,6 +116,8 @@ struct TodoListItemView: View {
                 }
                 .padding(.leading, 34)
             }
+            }
+            .padding(.leading, 8)
         }
         .padding(.vertical, 4)
         .sheet(isPresented: $showingEditView) {

@@ -4,204 +4,423 @@ import GoogleSignIn
 import GoogleSignInSwift
 import AuthenticationServices // Import for Apple Sign In
 
-// MARK: - Login View
+// MARK: - Login View (Carousel landing)
 struct LoginView: View {
-
     @StateObject var viewModel: LoginViewModel
-    
-    // State for managing focus on different text fields
-    private enum Field: Int, Hashable {
-        case displayName, email, password, guestName
-    }
-    @FocusState private var focusedField: Field?
-    
+    @State private var showAuthForm = false
     @State private var isRegistering = false
+
+    private let carouselImages: [String] = [
+        "summer-legendary",
+        "spring-legendary",
+        "spring-epic",
+        "fall-common1",
+        "summer-common1"
+    ]
 
     var body: some View {
         NavigationView {
-            // Using a ZStack allows us to place a tappable background
-            // behind the content, resolving the gesture conflict.
             ZStack {
-                // This is the tappable background.
-                LightTheme.background
-                    .edgesIgnoringSafeArea(.all)
-                    .onTapGesture {
-                        // Dismiss the keyboard when the background is tapped.
-                        focusedField = nil
-                    }
-                
-                // All UI content goes inside a ScrollView for smaller devices.
-                ScrollView {
-                    VStack(spacing: 15) {
-                        Spacer(minLength: 50)
+                Color.white.ignoresSafeArea()
 
-                        Text("Welcome to YourDay")
-                            .font(.largeTitle)
-                            .fontWeight(.bold)
-                            .foregroundColor(LightTheme.text)
-                            .multilineTextAlignment(.center)
-
-                        Text("Sign in to save your progress online or continue as a guest.")
-                            .font(.headline)
-                            .foregroundColor(LightTheme.secondaryText)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 40)
-                        
-                        if viewModel.isLoading {
-                            ProgressView("Please Wait...")
-                                .progressViewStyle(CircularProgressViewStyle(tint: LightTheme.accent))
-                                .scaleEffect(1.5)
-                                .padding(.vertical, 50)
-                        } else {
-                            // MARK: Email/Password Form
-                            VStack {
-                                Picker("Login or Register", selection: $isRegistering) {
-                                    Text("Sign In").tag(false)
-                                    Text("Create Account").tag(true)
-                                }
-                                .pickerStyle(SegmentedPickerStyle())
-                                .padding(.bottom)
-                                .onAppear {
-                                     UISegmentedControl.appearance().selectedSegmentTintColor = UIColor(LightTheme.accent)
-                                     UISegmentedControl.appearance().setTitleTextAttributes([.foregroundColor: UIColor(LightTheme.secondaryBackground)], for: .selected)
-                                     UISegmentedControl.appearance().setTitleTextAttributes([.foregroundColor: UIColor(LightTheme.text)], for: .normal)
-                                 }
-
-                                if isRegistering {
-                                    TextField("Display Name", text: $viewModel.displayNameForRegistration)
-                                        .textContentType(.nickname)
-                                        .autocapitalization(.words)
-                                        .focused($focusedField, equals: .displayName)
-                                }
-
-                                TextField("Email", text: $viewModel.email)
-                                    .keyboardType(.emailAddress)
-                                    .textContentType(.emailAddress)
-                                    .autocapitalization(.none)
-                                    .focused($focusedField, equals: .email)
-                                
-                                SecureField("Password", text: $viewModel.password)
-                                    .textContentType(isRegistering ? .newPassword : .password)
-                                    .focused($focusedField, equals: .password)
-
-                                Button(action: {
-                                    focusedField = nil // Dismiss keyboard on button press
-                                    if isRegistering {
-                                        viewModel.createAccountWithEmailPassword()
-                                    } else {
-                                        viewModel.signInWithEmailPassword()
-                                    }
-                                }) {
-                                    Text(isRegistering ? "Create Account" : "Sign In")
-                                        .fontWeight(.semibold)
-                                        .frame(maxWidth: .infinity)
-                                        .padding()
-                                        .background(LightTheme.accent)
-                                        .foregroundColor(LightTheme.secondaryBackground)
-                                        .cornerRadius(8)
-                                }
-                                .padding(.top, 5)
-
-                                if !isRegistering {
-                                    Button(action: {
-                                        viewModel.sendPasswordResetEmail()
-                                    }) {
-                                        Text("Forgot your password?")
-                                            .font(.footnote)
-                                            .foregroundColor(LightTheme.accent)
-                                            .underline()
-                                            .frame(maxWidth: .infinity, alignment: .trailing)
-                                            .padding(.top, 4)
-                                    }
-                                }
-                            }
-                            .textFieldStyle(RoundedBorderTextFieldStyle())
-                            .padding(.horizontal)
-
-                            // MARK: Divider
-                            HStack {
-                                VStack { Divider() }
-                                Text("OR")
-                                VStack { Divider() }
-                            }
-                            .foregroundColor(LightTheme.secondaryText)
-                            .padding()
-
-                            // MARK: Social & Guest Logins
-                            
-//                            // Apple Sign In Button
-//                            SignInWithAppleButton(
-//                                .signIn,
-//                                onRequest: viewModel.handleAppleSignInRequest,
-//                                onCompletion: viewModel.handleAppleSignInCompletion
-//                            )
-//                            .signInWithAppleButtonStyle(.black) // Or .white, .whiteOutline
-//                            .frame(height: 50)
-//                            .cornerRadius(8)
-                            
-//                            .padding(.horizontal)
-//                            .accessibilityLabel("Sign in with Apple")
-//
-//                            // Google Sign In Button
-//                            GoogleSignInButton(scheme: .light, style: .wide, state: .normal, action: viewModel.signInWithGoogle)
-//                                .frame(height: 50)
-//                                .padding(.horizontal)
-//                                .accessibilityLabel("Sign in with Google")
-
-                            TextField("Enter Your Guest Name", text: $viewModel.guestDisplayName)
-                                .textFieldStyle(.roundedBorder)
-                                .textContentType(.nickname)
-                                .autocapitalization(.words)
-                                .multilineTextAlignment(.center)
-                                .focused($focusedField, equals: .guestName)
-                                .padding(.horizontal)
-
-                            Button(action: {
-                                focusedField = nil
-                                viewModel.startGuestSession()
-                            }) {
-                                Text("Continue as Guest")
-                                    .fontWeight(.semibold)
-                                    .frame(maxWidth: .infinity)
-                                    .padding()
-                                    .background(isGuestButtonDisabled ? LightTheme.accent.opacity(0.5) : LightTheme.accent)
-                                    .foregroundColor(LightTheme.secondaryBackground)
-                                    .cornerRadius(8)
-                            }
-                            .frame(height: 50)
-                            .padding(.horizontal)
-                            .disabled(isGuestButtonDisabled)
-                            .accessibilityLabel("Continue as a guest")
+                if showAuthForm {
+                    LoginFormView(viewModel: viewModel, isRegistering: $isRegistering, onBack: {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            showAuthForm = false
                         }
-
-                        if let errorMessage = viewModel.errorMessage {
-                            Text(errorMessage)
-                                .foregroundColor(LightTheme.destructive)
-                                .font(.caption)
-                                .multilineTextAlignment(.center)
-                                .padding(.horizontal)
-                                .padding(.top, 10)
+                    })
+                    .transition(.move(edge: .trailing))
+                } else {
+                    CarouselLoginLandingView(
+                        images: carouselImages,
+                        onSignUpWithEmail: {
+                            isRegistering = true
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showAuthForm = true
+                            }
+                        },
+                        onLogIn: {
+                            isRegistering = false
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showAuthForm = true
+                            }
                         }
-                        
-                        Spacer()
-                        
-                        Text("By signing in or creating an account, you agree to our Terms of Service and Privacy Policy.")
-                            .font(.caption2)
-                            .foregroundColor(LightTheme.secondaryText)
-                            .multilineTextAlignment(.center)
-                            .padding(.bottom, 10)
-
-                    }
-                    .padding()
+                    )
+                    .transition(.move(edge: .leading))
                 }
             }
-            .navigationTitle("Welcome")
             .navigationBarHidden(true)
         }
         .navigationViewStyle(.stack)
     }
+}
 
-    private var isGuestButtonDisabled: Bool {
-        viewModel.guestDisplayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+// MARK: - Carousel Landing Screen
+private struct CarouselLoginLandingView: View {
+    let images: [String]
+    let onSignUpWithEmail: () -> Void
+    let onLogIn: () -> Void
+
+    @State private var selectedIndex: Int = 1
+
+    var body: some View {
+        VStack(spacing: 24) {
+            Spacer()
+
+            LoginCarouselHeaderView(images: images, selectedIndex: $selectedIndex)
+                .frame(maxWidth: .infinity)
+
+            VStack(spacing: 8) {
+                Text("YourDay")
+                    .font(.system(.largeTitle, weight: .semibold))
+                    .foregroundColor(.black)
+
+                Text("Capture and organize your days, goals, and moments.")
+                    .multilineTextAlignment(.center)
+                    .frame(width: 280)
+                    .foregroundColor(.black.opacity(0.7))
+            }
+            .padding(.bottom)
+
+            Spacer()
+
+            VStack(spacing: 16) {
+                Button(action: {
+                    // If you enable Apple Sign-In later, wire it here.
+                }) {
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Image(systemName: "apple.logo")
+                        Text("Sign up with Apple")
+                    }
+                    .padding(4)
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .buttonBorderShape(.roundedRectangle(radius: 10))
+                .tint(.black)
+                .foregroundStyle(Color.white)
+
+                Button(action: onSignUpWithEmail) {
+                    Text("Sign up with Email")
+                        .padding(4)
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .buttonBorderShape(.roundedRectangle(radius: 10))
+                .tint(dynamicPrimaryColor)
+                .foregroundStyle(Color.white)
+            }
+            .font(.system(.title3, weight: .medium))
+            .frame(width: 290)
+
+            Spacer()
+
+            Button(action: onLogIn) {
+                Text("Already signed up? Log in")
+                    .foregroundStyle(.secondary)
+                    .font(.callout)
+            }
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.top, 60)
+        .background(Color.white)
+    }
+}
+
+// MARK: - Carousel Header (layered cards)
+private struct LoginCarouselHeaderView: View {
+    let images: [String]
+    @Binding var selectedIndex: Int
+
+    var body: some View {
+        ZStack {
+            // Back-most row
+            HStack(spacing: 150) {
+                carouselCard(name: image(at: selectedIndex - 2), height: 108)
+                carouselCard(name: image(at: selectedIndex + 2), height: 108)
+            }
+
+            // Middle row
+            HStack {
+                carouselCard(name: image(at: selectedIndex - 1), height: 158)
+                carouselCard(name: image(at: selectedIndex + 1), height: 158)
+            }
+
+            // Front (swipeable)
+            TabView(selection: $selectedIndex) {
+                ForEach(images.indices, id: \.self) { idx in
+                    carouselCard(name: images[idx], height: 200)
+                        .tag(idx)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+        }
+        .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
+        .padding(.horizontal)
+    }
+
+    private func image(at index: Int) -> String {
+        guard !images.isEmpty else { return "" }
+        let safeIndex = (index % images.count + images.count) % images.count
+        return images[safeIndex]
+    }
+
+    private func carouselCard(name: String, height: CGFloat) -> some View {
+        Image(name)
+            .renderingMode(.original)
+            .resizable()
+            .aspectRatio(contentMode: .fill)
+            .aspectRatio(3/4, contentMode: .fit)
+            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .frame(height: height)
+            .clipped()
+    }
+}
+
+// MARK: - Existing Auth Form (refactored)
+private struct LoginFormView: View {
+    @ObservedObject var viewModel: LoginViewModel
+    @Binding var isRegistering: Bool
+    let onBack: () -> Void
+
+    // State for managing focus on different text fields
+    private enum Field: Int, Hashable {
+        case displayName, email, password
+    }
+    @FocusState private var focusedField: Field?
+
+    var body: some View {
+        ZStack {
+            Color.white
+                .ignoresSafeArea()
+                .onTapGesture { focusedField = nil }
+
+            ScrollView {
+                VStack(spacing: 15) {
+                    HStack {
+                        Button(action: onBack) {
+                            Image(systemName: "chevron.left")
+                                .foregroundColor(.black)
+                                .frame(width: 44, height: 44)
+                                .contentShape(Rectangle())
+                        }
+                        Spacer()
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 10)
+
+                    Text(isRegistering ? "Create Account" : "Welcome Back")
+                        .font(.largeTitle)
+                        .fontWeight(.bold)
+                        .foregroundColor(.black)
+                        .multilineTextAlignment(.center)
+
+                    Text("Sign in to sync your progress across devices.")
+                        .font(.headline)
+                        .foregroundColor(.black.opacity(0.6))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 40)
+
+                    if viewModel.isLoading {
+                        ProgressView("Please Wait...")
+                            .progressViewStyle(CircularProgressViewStyle(tint: dynamicPrimaryColor))
+                            .scaleEffect(1.2)
+                            .padding(.vertical, 50)
+                    } else {
+                        VStack(spacing: 14) {
+                            Picker("Login or Register", selection: $isRegistering) {
+                                Text("Sign In").tag(false)
+                                Text("Create Account").tag(true)
+                            }
+                            .pickerStyle(SegmentedPickerStyle())
+                            .padding(.bottom)
+                            .padding(.horizontal, 6)
+
+                            if isRegistering {
+                                AuthTextField(
+                                    title: "Display Name",
+                                    systemImage: "person",
+                                    text: $viewModel.displayNameForRegistration,
+                                    contentType: .nickname,
+                                    keyboardType: .default,
+                                    autocapitalization: .words
+                                )
+                                .focused($focusedField, equals: .displayName)
+                            }
+
+                            AuthTextField(
+                                title: "Email",
+                                systemImage: "envelope",
+                                text: $viewModel.email,
+                                contentType: .emailAddress,
+                                keyboardType: .emailAddress,
+                                autocapitalization: .never,
+                                disableAutocorrection: true
+                            )
+                            .focused($focusedField, equals: .email)
+
+                            AuthSecureField(
+                                title: "Password",
+                                systemImage: "lock",
+                                text: $viewModel.password,
+                                contentType: isRegistering ? .newPassword : .password
+                            )
+                            .focused($focusedField, equals: .password)
+
+                            Button(action: {
+                                focusedField = nil
+                                if isRegistering {
+                                    viewModel.createAccountWithEmailPassword()
+                                } else {
+                                    viewModel.signInWithEmailPassword()
+                                }
+                            }) {
+                                Text(isRegistering ? "Create Account" : "Sign In")
+                                    .fontWeight(.semibold)
+                                    .frame(maxWidth: .infinity)
+                                    .padding()
+                                    .background(dynamicPrimaryColor)
+                                    .foregroundColor(.white)
+                                    .cornerRadius(12)
+                            }
+                            .padding(.top, 5)
+
+                            if !isRegistering {
+                                Button(action: viewModel.sendPasswordResetEmail) {
+                                    Text("Forgot your password?")
+                                        .font(.footnote)
+                                        .foregroundColor(dynamicPrimaryColor)
+                                        .underline()
+                                        .frame(maxWidth: .infinity, alignment: .trailing)
+                                        .padding(.top, 4)
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 20)
+
+                    }
+
+                    if let errorMessage = viewModel.errorMessage {
+                        Text(errorMessage)
+                            .foregroundColor(dynamicDestructiveColor)
+                            .font(.caption)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                            .padding(.top, 10)
+                    }
+
+                    Spacer(minLength: 10)
+
+                    Text("By signing in or creating an account, you agree to our Terms of Service and Privacy Policy.")
+                        .font(.caption2)
+                        .foregroundColor(.black.opacity(0.55))
+                        .multilineTextAlignment(.center)
+                        .padding(.bottom, 10)
+                        .padding(.horizontal)
+                }
+                .padding(.vertical)
+            }
+        }
+    }
+}
+
+// MARK: - Pretty text fields
+private struct AuthTextField: View {
+    let title: String
+    let systemImage: String
+    @Binding var text: String
+    let contentType: UITextContentType?
+    let keyboardType: UIKeyboardType
+    let autocapitalization: TextInputAutocapitalization
+    let disableAutocorrection: Bool
+
+    init(
+        title: String,
+        systemImage: String,
+        text: Binding<String>,
+        contentType: UITextContentType? = nil,
+        keyboardType: UIKeyboardType = .default,
+        autocapitalization: TextInputAutocapitalization = .sentences,
+        disableAutocorrection: Bool = false
+    ) {
+        self.title = title
+        self.systemImage = systemImage
+        self._text = text
+        self.contentType = contentType
+        self.keyboardType = keyboardType
+        self.autocapitalization = autocapitalization
+        self.disableAutocorrection = disableAutocorrection
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: systemImage)
+                .foregroundColor(.black.opacity(0.55))
+                .frame(width: 18)
+
+            TextField(
+                "",
+                text: $text,
+                prompt: Text(title)
+                    .foregroundColor(.black.opacity(0.5))
+            )
+                .textContentType(contentType)
+                .keyboardType(keyboardType)
+                .textInputAutocapitalization(autocapitalization)
+                .autocorrectionDisabled(disableAutocorrection)
+                .foregroundColor(.black)
+                .tint(dynamicPrimaryColor)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.white)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(Color.black.opacity(0.08), lineWidth: 1)
+                )
+        )
+        .shadow(color: Color.black.opacity(0.04), radius: 8, x: 0, y: 2)
+    }
+}
+
+private struct AuthSecureField: View {
+    let title: String
+    let systemImage: String
+    @Binding var text: String
+    let contentType: UITextContentType?
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: systemImage)
+                .foregroundColor(.black.opacity(0.55))
+                .frame(width: 18)
+
+            SecureField(
+                "",
+                text: $text,
+                prompt: Text(title)
+                    .foregroundColor(.black.opacity(0.5))
+            )
+                .textContentType(contentType)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled(true)
+                .foregroundColor(.black)
+                .tint(dynamicPrimaryColor)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.white)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(Color.black.opacity(0.08), lineWidth: 1)
+                )
+        )
+        .shadow(color: Color.black.opacity(0.04), radius: 8, x: 0, y: 2)
     }
 }
