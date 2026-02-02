@@ -48,7 +48,10 @@ struct ProposalMessageCard: View {
 
         // Initialize state from proposal
         let initialStart = proposal.wrappedValue.effectiveStartTime ?? proposal.wrappedValue.startTime ?? Date()
-        let initialDuration = proposal.wrappedValue.effectiveDuration ?? 60
+        // Calculate duration from task estimates if available, otherwise use proposal duration
+        let taskDurations = proposal.wrappedValue.taskDetails?.compactMap { $0.estimatedDuration } ?? []
+        let calculatedDuration = taskDurations.isEmpty ? (proposal.wrappedValue.effectiveDuration ?? 60) : max(15, Int(Double(taskDurations.reduce(0, +)) * 1.1))
+        let initialDuration = proposal.wrappedValue.effectiveDuration ?? calculatedDuration
         _selectedStartTime = State(initialValue: initialStart)
         _adjustedDuration = State(initialValue: initialDuration)
         _originalTasks = State(initialValue: proposal.wrappedValue.tasks)
@@ -59,6 +62,21 @@ struct ProposalMessageCard: View {
         backlogViewModel.backlogItems.filter { item in
             !proposal.tasks.contains(item.title)
         }
+    }
+    
+    // Calculate total estimated duration from all tasks
+    private var totalEstimatedDuration: Int {
+        let durations = proposal.taskDetails?.compactMap { $0.estimatedDuration } ?? []
+        let total = durations.reduce(0, +)
+        // Add 10% buffer for transitions/breaks, minimum 15 minutes
+        return max(15, Int(Double(total) * 1.1))
+    }
+    
+    // Check if current duration matches task estimates
+    private var durationMatchesEstimates: Bool {
+        let estimated = totalEstimatedDuration
+        // Allow 5 minute tolerance
+        return abs(adjustedDuration - estimated) <= 5
     }
 
     private var hasModifications: Bool {
@@ -189,10 +207,37 @@ struct ProposalMessageCard: View {
 
                         DurationStepper(duration: $adjustedDuration, minDuration: 15, maxDuration: 180, step: 5)
 
-                        Text("\(adjustedDuration) min")
-                            .font(.caption)
-                            .fontWeight(.medium)
-                            .foregroundColor(dynamicTextColor)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("\(adjustedDuration) min")
+                                .font(.caption)
+                                .fontWeight(.medium)
+                                .foregroundColor(dynamicTextColor)
+                            
+                            if !durationMatchesEstimates {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .font(.system(size: 8))
+                                        .foregroundColor(.orange)
+                                    Text("Est: \(totalEstimatedDuration) min")
+                                        .font(.caption2)
+                                        .foregroundColor(.orange)
+                                }
+                            }
+                        }
+                        
+                        // Auto-sync button if duration doesn't match
+                        if !durationMatchesEstimates {
+                            Button(action: {
+                                withAnimation {
+                                    adjustedDuration = totalEstimatedDuration
+                                }
+                            }) {
+                                Image(systemName: "arrow.triangle.2.circlepath")
+                                    .font(.caption)
+                                    .foregroundColor(.orange)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
                     }
 
                     // Show effective time range
@@ -376,15 +421,14 @@ struct ProposalMessageCard: View {
         guard proposal.tasks.count > 1, index < proposal.tasks.count else { return }
         let removedTask = proposal.tasks[index]
 
-        // Adjust duration if the removed task had an estimated duration
-        if let taskDetail = proposal.taskDetails?.first(where: { $0.title == removedTask }),
-           let duration = taskDetail.estimatedDuration {
-            adjustedDuration = max(15, adjustedDuration - duration)
-        }
-
         proposal.tasks.remove(at: index)
         proposal.taskDetails?.removeAll { $0.title == removedTask }
         addedTaskTitles.remove(removedTask)
+        
+        // Auto-adjust duration to match remaining task estimates
+        withAnimation {
+            adjustedDuration = totalEstimatedDuration
+        }
     }
 
     private func addTask(_ item: UnifiedBacklogItem) {
@@ -404,10 +448,8 @@ struct ProposalMessageCard: View {
                 proposal.taskDetails?.append(detail)
             }
 
-            // Update duration based on added task
-            if let duration = item.estimatedDuration {
-                adjustedDuration += duration
-            }
+            // Auto-adjust duration to match all task estimates
+            adjustedDuration = totalEstimatedDuration
         }
     }
 

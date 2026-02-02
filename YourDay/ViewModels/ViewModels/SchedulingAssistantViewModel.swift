@@ -750,7 +750,7 @@ class SchedulingAssistantViewModel: ObservableObject {
                     print(String(repeating: "=", count: 80))
                     
                     let vertex = VertexAI.vertexAI()
-                    let model = vertex.generativeModel(modelName: "gemini-2.5-flash")
+                    let model = vertex.generativeModel(modelName: "gemini-2.5-flash-lite")
 
                     let userMessage = ModelContent(role: "user", parts: [TextPart(prompt)])
                     let response = try await model.generateContent([userMessage])
@@ -1042,7 +1042,7 @@ class SchedulingAssistantViewModel: ObservableObject {
                 print(String(repeating: "=", count: 80))
                 
                 let vertex = VertexAI.vertexAI()
-                let model = vertex.generativeModel(modelName: "gemini-2.5-flash")
+                let model = vertex.generativeModel(modelName: "gemini-2.5-flash-lite")
                 
                 let aiMessage = ModelContent(role: "user", parts: [TextPart(prompt)])
                 let response = try await model.generateContent([aiMessage])
@@ -1199,11 +1199,36 @@ class SchedulingAssistantViewModel: ObservableObject {
             let adjustedEndTime = calendar.date(bySettingHour: calendar.component(.hour, from: endTime), minute: calendar.component(.minute, from: endTime), second: 0, of: selectedDateStart) ?? endTime
 
             // Create event title with all tasks
-            let tasksTitle = proposal.tasks.count == 1
-                ? proposal.tasks.first ?? "Working Session"
-                : "Working Session: \(proposal.tasks.count) tasks"
+            let tasksTitle: String
+            switch proposal.tasks.count {
+            case 0:
+                tasksTitle = "Working Session"
+            case 1:
+                tasksTitle = proposal.tasks.first ?? "Working Session"
+            case 2...3:
+                // Join 2-3 tasks with " & "
+                tasksTitle = proposal.tasks.joined(separator: " & ")
+            default:
+                // For 4+ tasks, show first 2 tasks with " & X more"
+                let maxTitleLength = 60
+                let firstTwo = Array(proposal.tasks.prefix(2))
+                var title = firstTwo.joined(separator: ", ")
+                let remaining = proposal.tasks.count - 2
+                let moreText = " & \(remaining) more"
+                
+                // If adding "more" would exceed length, use just first task
+                if title.count + moreText.count > maxTitleLength {
+                    title = firstTwo[0]
+                    let newRemaining = proposal.tasks.count - 1
+                    tasksTitle = "\(title) & \(newRemaining) more"
+                } else {
+                    tasksTitle = title + moreText
+                }
+            }
             let tasksDescription = proposal.tasks.joined(separator: "\n• ")
-            let fullDescription = "Tasks:\n• \(tasksDescription)\n\n\(proposal.reason ?? "")"
+            // Add marker to identify this as a scheduled task from smart scheduling
+            let scheduledTaskMarker = "\n\n[YourDay Scheduled Task]"
+            let fullDescription = "Tasks:\n• \(tasksDescription)\n\n\(proposal.reason ?? "")\(scheduledTaskMarker)"
 
             calendarManager.createCalendarEvent(
                 title: tasksTitle,
@@ -1220,6 +1245,23 @@ class SchedulingAssistantViewModel: ObservableObject {
                         onComplete(proposal.tasks)
                     } else {
                         print("✅ Created working session calendar event")
+                        
+                        // Track this event as a scheduled task for journaling
+                        if let eventId = eventId {
+                            self.firebaseManager.saveScheduledEvent(
+                                eventId: eventId,
+                                taskTitle: tasksTitle,
+                                tasks: proposal.tasks,
+                                startTime: adjustedStartTime,
+                                endTime: adjustedEndTime
+                            ) { error in
+                                if let error = error {
+                                    print("Error saving scheduled event mapping: \(error.localizedDescription)")
+                                } else {
+                                    print("✅ Saved scheduled event mapping for journaling")
+                                }
+                            }
+                        }
 
                         // Record interaction for learning
                         let duration = Int(adjustedEndTime.timeIntervalSince(adjustedStartTime) / 60)
@@ -1435,7 +1477,7 @@ class SchedulingAssistantViewModel: ObservableObject {
                     print(String(repeating: "=", count: 80))
                     
                     let vertex = VertexAI.vertexAI()
-                    let model = vertex.generativeModel(modelName: "gemini-2.5-flash")
+                    let model = vertex.generativeModel(modelName: "gemini-2.5-flash-lite")
                     
                     let analysisMessage = ModelContent(role: "user", parts: [TextPart(analysisPrompt)])
                     let response = try await model.generateContent([analysisMessage])
@@ -1612,7 +1654,7 @@ class SchedulingAssistantViewModel: ObservableObject {
                 print(String(repeating: "=", count: 80))
                 
                 let vertex = VertexAI.vertexAI()
-                let model = vertex.generativeModel(modelName: "gemini-2.5-flash")
+                let model = vertex.generativeModel(modelName: "gemini-2.5-flash-lite")
 
                 let analysisMessage = ModelContent(role: "user", parts: [TextPart(analysisPrompt)])
                 let response = try await model.generateContent([analysisMessage])
@@ -1778,7 +1820,7 @@ class SchedulingAssistantViewModel: ObservableObject {
                 print(String(repeating: "=", count: 80))
                 
                 let vertex = VertexAI.vertexAI()
-                let model = vertex.generativeModel(modelName: "gemini-2.5-flash")
+                let model = vertex.generativeModel(modelName: "gemini-2.5-flash-lite")
 
                 let analysisMessage = ModelContent(role: "user", parts: [TextPart(analysisPrompt)])
                 let response = try await model.generateContent([analysisMessage])
@@ -1907,7 +1949,7 @@ class SchedulingAssistantViewModel: ObservableObject {
                 print(String(repeating: "=", count: 80))
                 
                 let vertex = VertexAI.vertexAI()
-                let model = vertex.generativeModel(modelName: "gemini-2.5-flash")
+                let model = vertex.generativeModel(modelName: "gemini-2.5-flash-lite")
                 
                 let analysisMessage = ModelContent(role: "user", parts: [TextPart(analysisPrompt)])
                 let response = try await model.generateContent([analysisMessage])
@@ -2073,6 +2115,240 @@ class SchedulingAssistantViewModel: ObservableObject {
         }
 
         return calendar.date(byAdding: .day, value: daysToAdd, to: today) ?? today
+    }
+    
+    // MARK: - Journal Entry Analysis
+    
+    func analyzeJournalEntriesBatch() {
+        // Fetch recent journal entries
+        firebaseManager.fetchJournalEntries { [weak self] entries, error in
+            guard let self = self, let entries = entries, !entries.isEmpty else {
+                if let error = error {
+                    print("Error fetching journal entries for analysis: \(error.localizedDescription)")
+                }
+                return
+            }
+            
+            // Use recent entries (last 30 days or last 20 entries, whichever is more)
+            let calendar = Calendar.current
+            let thirtyDaysAgo = calendar.date(byAdding: .day, value: -30, to: Date()) ?? Date()
+            let recentEntries = entries.filter { $0.timestamp >= thirtyDaysAgo }.prefix(20)
+            
+            guard !recentEntries.isEmpty else { return }
+            
+            // Group entries by day of week
+            let grouped = Dictionary(grouping: Array(recentEntries), by: { $0.dayOfWeek.lowercased() })
+            
+            // Build summary for AI analysis
+            let entriesSummary = grouped.keys.sorted().map { day in
+                let dayEntries = grouped[day, default: []]
+                let lines = dayEntries.map { entry in
+                    var line = "- Task: \(entry.taskTitle); "
+                    line += "Scheduled: \(self.formatTimeRange(entry.scheduledStartTime, end: entry.scheduledEndTime)); "
+                    if let actualStart = entry.actualStartTime, let actualEnd = entry.actualEndTime {
+                        line += "Actual: \(self.formatTimeRange(actualStart, end: actualEnd)); "
+                    }
+                    line += "Status: \(entry.completionStatus.rawValue); "
+                    line += "What did: \(entry.whatDid)"
+                    if let howWent = entry.howWent, !howWent.isEmpty {
+                        line += "; How went: \(howWent)"
+                    }
+                    if let learned = entry.learned, !learned.isEmpty {
+                        line += "; Learned: \(learned)"
+                    }
+                    if let distractions = entry.distractions, !distractions.isEmpty {
+                        line += "; Distractions: \(distractions)"
+                    }
+                    return line
+                }.joined(separator: "\n")
+                return "\(day.capitalized):\n\(lines)"
+            }.joined(separator: "\n\n")
+            
+            // Calculate duration accuracy statistics
+            let durationStats = recentEntries.compactMap { entry -> (scheduled: Int, actual: Int)? in
+                guard let actualStart = entry.actualStartTime,
+                      let actualEnd = entry.actualEndTime else { return nil }
+                let scheduledDuration = Int(entry.scheduledEndTime.timeIntervalSince(entry.scheduledStartTime) / 60)
+                let actualDuration = Int(actualEnd.timeIntervalSince(actualStart) / 60)
+                return (scheduledDuration, actualDuration)
+            }
+            
+            let avgScheduledDuration = durationStats.isEmpty ? 0 : durationStats.map { $0.scheduled }.reduce(0, +) / durationStats.count
+            let avgActualDuration = durationStats.isEmpty ? 0 : durationStats.map { $0.actual }.reduce(0, +) / durationStats.count
+            let durationAccuracy = durationStats.isEmpty ? "N/A" : "Average scheduled: \(avgScheduledDuration) min, Average actual: \(avgActualDuration) min"
+            
+            // Calculate completion rates by time of day
+            let completionByHour = Dictionary(grouping: recentEntries, by: { Calendar.current.component(.hour, from: $0.scheduledStartTime) })
+            let completionRates = completionByHour.map { hour, entries in
+                let completed = entries.filter { $0.completionStatus == .completed }.count
+                let rate = Double(completed) / Double(entries.count) * 100
+                return "\(hour):00 - \(completed)/\(entries.count) completed (\(String(format: "%.0f", rate))%)"
+            }.sorted().joined(separator: "\n")
+            
+            let analysisPrompt = """
+            Analyze the user's journal entries to extract productivity patterns, scheduling preferences, and insights that can improve future task scheduling.
+
+            Journal entries grouped by day of week:
+            \(entriesSummary)
+
+            Duration Accuracy:
+            \(durationAccuracy)
+
+            Completion Rates by Hour:
+            \(completionRates.isEmpty ? "No data" : completionRates)
+
+            Return JSON in this format:
+            {
+                "dayOfWeekMemories": {
+                    "monday": ["Memory 1", "Memory 2"],
+                    "tuesday": ["Memory 1"]
+                },
+                "scheduleConstraints": [
+                    {
+                        "reason": "Brief description of the constraint",
+                        "timeRange": "Affected time range if specific (e.g., '14:00-15:00') or null",
+                        "context": "Additional context or null"
+                    }
+                ],
+                "productivityPatterns": {
+                    "bestHours": [9, 10, 14],
+                    "worstHours": [15, 16],
+                    "preferredTaskTypes": ["coding", "writing"],
+                    "commonDistractions": ["phone", "meetings"]
+                },
+                "durationAdjustments": {
+                    "taskType": "general",
+                    "multiplier": 1.2,
+                    "reason": "Users typically need 20% more time than scheduled"
+                }
+            }
+
+            Extract:
+            1. Day-of-week specific patterns (e.g., "User is more productive on Mondays", "User struggles with focus on Fridays")
+            2. Schedule constraints from distractions and completion issues
+            3. Productivity patterns (best/worst hours, preferred task types)
+            4. Duration adjustments based on actual vs scheduled time
+
+            Only include meaningful, actionable insights. Keep memories short and specific.
+            """
+            
+            Task {
+                do {
+                    // DEBUG: Print exact prompt sent to Gemini
+                    print(String(repeating: "=", count: 80))
+                    print("📔 GEMINI PROMPT - analyzeJournalEntriesBatch")
+                    print(String(repeating: "=", count: 80))
+                    print(analysisPrompt)
+                    print(String(repeating: "=", count: 80))
+                    
+                    let vertex = VertexAI.vertexAI()
+                    let model = vertex.generativeModel(modelName: "gemini-2.5-flash-lite")
+                    
+                    let analysisMessage = ModelContent(role: "user", parts: [TextPart(analysisPrompt)])
+                    let response = try await model.generateContent([analysisMessage])
+                    
+                    guard let text = response.text else {
+                        print("⚠️ No response text from Gemini for journal analysis")
+                        return
+                    }
+                    
+                    // Extract JSON from response
+                    guard let jsonText = self.extractJSONFromResponse(text),
+                          let jsonData = jsonText.data(using: .utf8),
+                          let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {
+                        print("⚠️ Failed to parse JSON from journal analysis response")
+                        return
+                    }
+                    
+                    // Update day-of-week memories
+                    if let memories = json["dayOfWeekMemories"] as? [String: [String]] {
+                        var updatedMemories = self.schedulePreference?.dayOfWeekMemories ?? [:]
+                        for (day, dayMemories) in memories {
+                            let normalizedDay = day.lowercased()
+                            let existing = updatedMemories[normalizedDay] ?? []
+                            let merged = existing + dayMemories.filter { !existing.contains($0) }
+                            updatedMemories[normalizedDay] = merged
+                        }
+                        self.updateSchedulePreference(["dayOfWeekMemories": updatedMemories])
+                        await MainActor.run {
+                            self.schedulePreference?.dayOfWeekMemories = updatedMemories
+                        }
+                    }
+                    
+                    // Update schedule constraints
+                    if let constraintsArray = json["scheduleConstraints"] as? [[String: Any]], !constraintsArray.isEmpty {
+                        self.firebaseManager.fetchSchedulePreference { [weak self] preference, _ in
+                            guard let self = self, let pref = preference else { return }
+                            
+                            var constraints = pref.scheduleConstraints
+                            for constraintDict in constraintsArray {
+                                if let reason = constraintDict["reason"] as? String {
+                                    let constraint = ScheduleConstraint(
+                                        reason: reason,
+                                        timeRange: constraintDict["timeRange"] as? String,
+                                        context: constraintDict["context"] as? String
+                                    )
+                                    if !constraints.contains(where: { $0.reason == reason && $0.timeRange == constraint.timeRange }) {
+                                        constraints.append(constraint)
+                                    }
+                                }
+                            }
+                            
+                            let constraintsDicts = constraints.map { c in
+                                var dict: [String: Any] = ["reason": c.reason]
+                                if let timeRange = c.timeRange { dict["timeRange"] = timeRange }
+                                if let context = c.context { dict["context"] = context }
+                                return dict
+                            }
+                            
+                            self.updateSchedulePreference(["scheduleConstraints": constraintsDicts])
+                            DispatchQueue.main.async {
+                                self.schedulePreference?.scheduleConstraints = constraints
+                            }
+                        }
+                    }
+                    
+                    // Store productivity patterns in learned patterns
+                    if let productivityPatterns = json["productivityPatterns"] as? [String: Any] {
+                        var learnedPatterns = self.schedulePreference?.learnedPatterns ?? [:]
+                        if let bestHours = productivityPatterns["bestHours"] as? [Int] {
+                            learnedPatterns["journal_best_hours"] = bestHours.map { String($0) }.joined(separator: ",")
+                        }
+                        if let worstHours = productivityPatterns["worstHours"] as? [Int] {
+                            learnedPatterns["journal_worst_hours"] = worstHours.map { String($0) }.joined(separator: ",")
+                        }
+                        if let preferredTaskTypes = productivityPatterns["preferredTaskTypes"] as? [String] {
+                            learnedPatterns["journal_preferred_task_types"] = preferredTaskTypes.joined(separator: ",")
+                        }
+                        if let commonDistractions = productivityPatterns["commonDistractions"] as? [String] {
+                            learnedPatterns["journal_common_distractions"] = commonDistractions.joined(separator: ",")
+                        }
+                        self.updateSchedulePreference(["learnedPatterns": learnedPatterns])
+                    }
+                    
+                    // Store duration adjustments
+                    if let durationAdjustments = json["durationAdjustments"] as? [String: Any],
+                       let multiplier = durationAdjustments["multiplier"] as? Double {
+                        var learnedPatterns = self.schedulePreference?.learnedPatterns ?? [:]
+                        learnedPatterns["journal_duration_multiplier"] = String(multiplier)
+                        if let reason = durationAdjustments["reason"] as? String {
+                            learnedPatterns["journal_duration_reason"] = reason
+                        }
+                        self.updateSchedulePreference(["learnedPatterns": learnedPatterns])
+                    }
+                    
+                    print("✅ Successfully analyzed journal entries and updated preferences")
+                } catch {
+                    print("Error analyzing journal entries batch: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+    
+    private func formatTimeRange(_ start: Date, end: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        return "\(formatter.string(from: start))-\(formatter.string(from: end))"
     }
     
     // MARK: - Calendar Event Creation

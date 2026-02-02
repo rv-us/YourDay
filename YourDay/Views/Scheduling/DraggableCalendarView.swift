@@ -44,81 +44,88 @@ struct DraggableCalendarView: View {
     
     var body: some View {
         NavigationView {
-            ZStack(alignment: .topLeading) {
-                // Background grid
-                VStack(spacing: 0) {
-                    ForEach(timeSlots, id: \.self) { timeSlot in
-                        ZStack(alignment: .topLeading) {
-                            Rectangle()
-                                .fill(dynamicSecondaryBackgroundColor.opacity(0.3))
-                                .frame(height: hourHeight)
-                                .overlay(
-                                    Rectangle()
-                                        .fill(dynamicSecondaryBackgroundColor.opacity(0.5))
-                                        .frame(height: 1),
-                                    alignment: .bottom
-                                )
+            ScrollView {
+                ZStack(alignment: .topLeading) {
+                    // Background grid with time labels
+                    VStack(spacing: 0) {
+                        ForEach(timeSlots, id: \.self) { timeSlot in
+                            ZStack(alignment: .topLeading) {
+                                // Grid line at the top of each hour
+                                Rectangle()
+                                    .fill(dynamicSecondaryBackgroundColor.opacity(0.3))
+                                    .frame(height: 1)
+                                    .padding(.leading, 80)
+                                
+                                // Time label
+                                Text(CalendarTimeFormatter.formatTime(timeSlot))
+                                    .font(.caption)
+                                    .foregroundColor(dynamicSecondaryTextColor)
+                                    .frame(width: 70, alignment: .trailing)
+                                    .padding(.trailing, 10)
+                            }
+                            .frame(height: hourHeight)
+                        }
+                    }
+                    
+                    // Existing events
+                    ForEach(dayEvents) { event in
+                        if let eventStart = event.start.startDate,
+                           let eventEnd = event.end?.startDate ?? calendar.date(byAdding: .hour, value: 1, to: eventStart) {
+                            DraggableEventBlock(
+                                event: event,
+                                eventStart: eventStart,
+                                eventEnd: eventEnd,
+                                selectedDate: selectedDate,
+                                hourHeight: hourHeight,
+                                isDraggable: false
+                            )
+                        }
+                    }
+                    
+                    // Proposed event (draggable)
+                    DraggableEventBlock(
+                        event: nil,
+                        eventStart: proposedStartTime,
+                        eventEnd: proposedEndTime,
+                        selectedDate: selectedDate,
+                        hourHeight: hourHeight,
+                        isDraggable: true,
+                        dragOffset: $dragOffset,
+                        isDragging: $isDragging,
+                        onDragEnd: { newOffset in
+                            // Calculate new time based on drag offset
+                            let startOfDay = calendar.startOfDay(for: selectedDate)
                             
-                            Text(CalendarTimeFormatter.formatTime(timeSlot))
-                                .font(.caption)
-                                .foregroundColor(dynamicSecondaryTextColor)
-                                .frame(width: 70, alignment: .trailing)
-                                .padding(.trailing, 10)
+                            // Calculate the original position (matching calculateTimeOffset logic)
+                            let originalTimeInterval = proposedStartTime.timeIntervalSince(startOfDay)
+                            let originalHoursFromStart = originalTimeInterval / 3600.0
+                            let originalTopOffset = CGFloat(originalHoursFromStart) * hourHeight + 20
+                            
+                            // Apply drag offset
+                            let newTopOffset = originalTopOffset + newOffset.height
+                            
+                            // Convert back to time (subtract header offset)
+                            let hoursFromStart = (newTopOffset - 20) / hourHeight
+                            
+                            // Ensure valid range (0-23 hours)
+                            let clampedHours = max(0.0, min(23.0, hoursFromStart))
+                            
+                            // Convert to total minutes and snap to nearest 15 minutes
+                            let totalMinutes = Int(clampedHours * 60)
+                            let hours = totalMinutes / 60
+                            let minutes = totalMinutes % 60
+                            let roundedMinutes = (minutes / 15) * 15
+                            
+                            if let snappedTime = calendar.date(bySettingHour: hours, minute: roundedMinutes, second: 0, of: selectedDate) {
+                                proposedStartTime = snappedTime
+                            }
+                            dragOffset = .zero
                         }
-                    }
+                    )
                 }
-                .padding(.leading, 80)
-                
-                // Existing events
-                ForEach(dayEvents) { event in
-                    if let eventStart = event.start.startDate,
-                       let eventEnd = event.end?.startDate ?? calendar.date(byAdding: .hour, value: 1, to: eventStart) {
-                        DraggableEventBlock(
-                            event: event,
-                            eventStart: eventStart,
-                            eventEnd: eventEnd,
-                            selectedDate: selectedDate,
-                            hourHeight: hourHeight,
-                            isDraggable: false
-                        )
-                    }
-                }
-                
-                // Proposed event (draggable)
-                DraggableEventBlock(
-                    event: nil,
-                    eventStart: proposedStartTime,
-                    eventEnd: proposedEndTime,
-                    selectedDate: selectedDate,
-                    hourHeight: hourHeight,
-                    isDraggable: true,
-                    dragOffset: $dragOffset,
-                    isDragging: $isDragging,
-                    onDragEnd: { newOffset in
-                        // Calculate new time based on drag offset
-                        let startOfDay = calendar.startOfDay(for: selectedDate)
-                        let originalTopOffset = proposedStartTime.timeIntervalSince(startOfDay) / 3600.0 * Double(hourHeight) + 20
-                        let newTopOffset = originalTopOffset + Double(newOffset.height)
-                        
-                        // Convert back to time
-                        let hoursFromStart = (newTopOffset - 20) / Double(hourHeight)
-                        let totalMinutes = Int(hoursFromStart * 60)
-                        
-                        // Ensure minutes are within valid range (0-59)
-                        let clampedMinutes = max(0, min(59, totalMinutes % 60))
-                        let hours = max(0, min(23, totalMinutes / 60))
-                        
-                        // Snap to nearest 15 minutes
-                        let roundedMinutes = (clampedMinutes / 15) * 15
-                        
-                        if let snappedTime = calendar.date(bySettingHour: hours, minute: roundedMinutes, second: 0, of: selectedDate) {
-                            proposedStartTime = snappedTime
-                        }
-                        dragOffset = .zero
-                    }
-                )
+                .padding(.horizontal)
+                .frame(minHeight: CGFloat(timeSlots.count) * hourHeight)
             }
-            .padding()
             .background(dynamicBackgroundColor)
             .navigationTitle("Adjust Time")
             .navigationBarTitleDisplayMode(.inline)

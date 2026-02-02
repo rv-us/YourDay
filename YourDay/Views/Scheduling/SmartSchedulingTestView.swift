@@ -15,6 +15,7 @@ struct SmartSchedulingTestView: View {
     
     @StateObject private var backlogViewModel = BacklogViewModel()
     @StateObject private var schedulingViewModel = SchedulingAssistantViewModel()
+    @StateObject private var journalViewModel = JournalViewModel()
     
     @Query(sort: \TodoItem.position) private var todoItems: [TodoItem]
     
@@ -34,6 +35,7 @@ struct SmartSchedulingTestView: View {
     @State private var modificationReason = ""
     @State private var pendingAcceptedTasksAfterModification: [String]? = nil
     @State private var showingRescheduleAlert = false
+    @State private var showingJournalView = false
     
     var body: some View {
         NavigationView {
@@ -66,11 +68,23 @@ struct SmartSchedulingTestView: View {
             .navigationTitle("Smart Scheduling")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Refresh") {
-                        refreshData()
+                    HStack {
+                        Button(action: {
+                            showingJournalView = true
+                        }) {
+                            Image(systemName: "book.fill")
+                                .foregroundColor(dynamicPrimaryColor)
+                        }
+                        
+                        Button("Refresh") {
+                            refreshData()
+                        }
+                        .foregroundColor(dynamicPrimaryColor)
                     }
-                    .foregroundColor(dynamicPrimaryColor)
                 }
+            }
+            .sheet(isPresented: $showingJournalView) {
+                JournalView(journalViewModel: journalViewModel)
             }
             .sheet(isPresented: $showingAddBacklogSheet) {
                 AddBacklogItemSheet(backlogViewModel: backlogViewModel)
@@ -140,8 +154,21 @@ struct SmartSchedulingTestView: View {
             } message: {
                 Text("Would you like me to suggest a different time for these tasks?")
             }
+            .sheet(isPresented: $journalViewModel.showingJournalPrompt) {
+                if let pendingEvent = journalViewModel.pendingJournalPrompt {
+                    JournalPromptView(journalViewModel: journalViewModel, pendingEvent: pendingEvent)
+                        .onDisappear {
+                            // Trigger AI analysis when journal entry is saved
+                            if !journalViewModel.journalEntries.isEmpty {
+                                journalViewModel.triggerJournalAnalysis(schedulingViewModel: schedulingViewModel)
+                            }
+                        }
+                }
+            }
             .onAppear {
                 refreshData()
+                // Start monitoring for ended tasks
+                TaskEndMonitor.shared.startMonitoring()
             }
         }
     }

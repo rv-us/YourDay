@@ -135,8 +135,8 @@ struct UserSchedulePreference: Codable {
     var blockedTimes: [String]? // Array of blocked time ranges
     var learnedPatterns: [String: String]? // Key-value pairs of learned patterns
     var dayOfWeekMemories: [String: [String]]? // Day-of-week memories extracted from modification reasons
-    var scheduleConstraints: [ScheduleConstraint] = [] // General constraints learned from user feedback
-    var recurringCommitments: [RecurringCommitment] = []
+    var scheduleConstraints: [ScheduleConstraint] // General constraints learned from user feedback
+    var recurringCommitments: [RecurringCommitment]
     var dayContexts: [String: DayContext]? // Day-specific contexts keyed by day name (monday, tuesday, etc.)
     var acceptanceStats: AcceptanceStats? // Aggregated stats for learning
 
@@ -153,5 +153,26 @@ struct UserSchedulePreference: Codable {
         self.recurringCommitments = recurringCommitments
         self.dayContexts = dayContexts
         self.acceptanceStats = acceptanceStats
+    }
+    
+    // Custom decoder to handle missing keys with default values
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        
+        id = try container.decodeIfPresent(String.self, forKey: .id)
+        userId = try container.decode(String.self, forKey: .userId)
+        preferredWakeTime = try container.decodeIfPresent(String.self, forKey: .preferredWakeTime)
+        lunchTime = try container.decodeIfPresent(String.self, forKey: .lunchTime)
+        preferredWorkTimes = try container.decodeIfPresent([String].self, forKey: .preferredWorkTimes)
+        blockedTimes = try container.decodeIfPresent([String].self, forKey: .blockedTimes)
+        learnedPatterns = try container.decodeIfPresent([String: String].self, forKey: .learnedPatterns)
+        dayOfWeekMemories = try container.decodeIfPresent([String: [String]].self, forKey: .dayOfWeekMemories)
+        
+        // Use default empty array if key is missing
+        scheduleConstraints = try container.decodeIfPresent([ScheduleConstraint].self, forKey: .scheduleConstraints) ?? []
+        recurringCommitments = try container.decodeIfPresent([RecurringCommitment].self, forKey: .recurringCommitments) ?? []
+        
+        dayContexts = try container.decodeIfPresent([String: DayContext].self, forKey: .dayContexts)
+        acceptanceStats = try container.decodeIfPresent(AcceptanceStats.self, forKey: .acceptanceStats)
     }
 }

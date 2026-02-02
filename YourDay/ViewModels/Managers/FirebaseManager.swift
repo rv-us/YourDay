@@ -1373,4 +1373,198 @@ class FirebaseManager: ObservableObject {
             completion(error)
         }
     }
+    
+    // MARK: - Scheduled Events Tracking
+    
+    func saveScheduledEvent(eventId: String, taskTitle: String, tasks: [String], startTime: Date, endTime: Date, completion: @escaping (Error?) -> Void) {
+        guard let userId = userId else {
+            completion(NSError(domain: "FirebaseManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+        
+        let docRef = db.collection("users").document(userId).collection("scheduledEvents").document(eventId)
+        let data: [String: Any] = [
+            "eventId": eventId,
+            "taskTitle": taskTitle,
+            "tasks": tasks,
+            "startTime": Timestamp(date: startTime),
+            "endTime": Timestamp(date: endTime),
+            "createdAt": FieldValue.serverTimestamp()
+        ]
+        
+        docRef.setData(data, merge: true) { error in
+            completion(error)
+        }
+    }
+    
+    func fetchScheduledEvent(eventId: String, completion: @escaping ([String: Any]?, Error?) -> Void) {
+        guard let userId = userId else {
+            completion(nil, NSError(domain: "FirebaseManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+        
+        db.collection("users").document(userId).collection("scheduledEvents").document(eventId)
+            .getDocument { document, error in
+                if let error = error {
+                    completion(nil, error)
+                    return
+                }
+                
+                if let document = document, document.exists {
+                    completion(document.data(), nil)
+                } else {
+                    completion(nil, nil)
+                }
+            }
+    }
+    
+    func fetchScheduledEventIds(completion: @escaping ([String]?, Error?) -> Void) {
+        guard let userId = userId else {
+            completion(nil, NSError(domain: "FirebaseManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+        
+        db.collection("users").document(userId).collection("scheduledEvents")
+            .getDocuments { snapshot, error in
+                if let error = error {
+                    completion(nil, error)
+                    return
+                }
+                
+                let eventIds = snapshot?.documents.map { $0.documentID } ?? []
+                completion(eventIds, nil)
+            }
+    }
+    
+    func fetchScheduledEvents(completion: @escaping ([[String: Any]]?, Error?) -> Void) {
+        guard let userId = userId else {
+            completion(nil, NSError(domain: "FirebaseManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+        
+        db.collection("users").document(userId).collection("scheduledEvents")
+            .getDocuments { snapshot, error in
+                if let error = error {
+                    completion(nil, error)
+                    return
+                }
+                
+                let events = snapshot?.documents.compactMap { $0.data() } ?? []
+                completion(events, nil)
+            }
+    }
+    
+    // MARK: - Journal Entries
+    
+    func saveJournalEntry(_ entry: JournalEntry, completion: @escaping (Error?) -> Void) {
+        guard let userId = userId else {
+            completion(NSError(domain: "FirebaseManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+        
+        let docRef = db.collection("users").document(userId).collection("journalEntries").document()
+        do {
+            try docRef.setData(from: entry) { error in
+                completion(error)
+            }
+        } catch {
+            completion(error)
+        }
+    }
+    
+    func fetchJournalEntries(completion: @escaping ([JournalEntry]?, Error?) -> Void) {
+        guard let userId = userId else {
+            completion(nil, NSError(domain: "FirebaseManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+        
+        db.collection("users").document(userId).collection("journalEntries")
+            .order(by: "timestamp", descending: true)
+            .getDocuments { snapshot, error in
+                if let error = error {
+                    completion(nil, error)
+                    return
+                }
+                
+                let entries = snapshot?.documents.compactMap { doc -> JournalEntry? in
+                    try? doc.data(as: JournalEntry.self)
+                } ?? []
+                
+                completion(entries, nil)
+            }
+    }
+    
+    func fetchJournalEntries(for date: Date, completion: @escaping ([JournalEntry]?, Error?) -> Void) {
+        guard let userId = userId else {
+            completion(nil, NSError(domain: "FirebaseManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+        
+        let calendar = Calendar.current
+        let startOfDay = calendar.startOfDay(for: date)
+        let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
+        
+        db.collection("users").document(userId).collection("journalEntries")
+            .whereField("scheduledStartTime", isGreaterThanOrEqualTo: Timestamp(date: startOfDay))
+            .whereField("scheduledStartTime", isLessThan: Timestamp(date: endOfDay))
+            .order(by: "scheduledStartTime", descending: false)
+            .getDocuments { snapshot, error in
+                if let error = error {
+                    completion(nil, error)
+                    return
+                }
+                
+                let entries = snapshot?.documents.compactMap { doc -> JournalEntry? in
+                    try? doc.data(as: JournalEntry.self)
+                } ?? []
+                
+                completion(entries, nil)
+            }
+    }
+    
+    func updateJournalEntry(_ entry: JournalEntry, completion: @escaping (Error?) -> Void) {
+        guard let userId = userId, let entryId = entry.id else {
+            completion(NSError(domain: "FirebaseManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated or entry ID missing"]))
+            return
+        }
+        
+        let docRef = db.collection("users").document(userId).collection("journalEntries").document(entryId)
+        do {
+            try docRef.setData(from: entry, merge: true) { error in
+                completion(error)
+            }
+        } catch {
+            completion(error)
+        }
+    }
+    
+    func deleteJournalEntry(_ entryId: String, completion: @escaping (Error?) -> Void) {
+        guard let userId = userId else {
+            completion(NSError(domain: "FirebaseManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+        
+        db.collection("users").document(userId).collection("journalEntries").document(entryId).delete(completion: completion)
+    }
+    
+    func checkJournalEntryExists(eventId: String, completion: @escaping (Bool) -> Void) {
+        guard let userId = userId else {
+            completion(false)
+            return
+        }
+        
+        db.collection("users").document(userId).collection("journalEntries")
+            .whereField("eventId", isEqualTo: eventId)
+            .limit(to: 1)
+            .getDocuments { snapshot, error in
+                if let error = error {
+                    print("Error checking journal entry: \(error.localizedDescription)")
+                    completion(false)
+                    return
+                }
+                
+                let exists = snapshot?.documents.isEmpty == false
+                completion(exists)
+            }
+    }
 }

@@ -220,61 +220,60 @@ struct CompactCalendarPreview: View {
     }
     
     var body: some View {
-        VStack(spacing: 2) {
-            // Time labels on left
-            HStack(spacing: 0) {
-                VStack(spacing: 0) {
-                    ForEach(Array(stride(from: startHour, through: endHour, by: 2)), id: \.self) { hour in
-                        Text(CalendarTimeFormatter.formatHour(hour, date: selectedDate))
-                            .font(.system(size: 6))
-                            .foregroundColor(dynamicSecondaryTextColor)
-                            .frame(height: hourHeight * 2)
-                    }
+        HStack(spacing: 4) {
+            // Time labels on left - aligned with grid
+            VStack(spacing: 0) {
+                ForEach(Array(stride(from: startHour, through: endHour, by: 2)), id: \.self) { hour in
+                    Text(CalendarTimeFormatter.formatHour(hour, date: selectedDate))
+                        .font(.system(size: 6))
+                        .foregroundColor(dynamicSecondaryTextColor)
+                        .frame(height: hourHeight * 2, alignment: .top)
+                        .padding(.top, 1) // Small top padding to align with grid line
                 }
-                .frame(width: 20)
-                
-                // Calendar timeline
-                ZStack(alignment: .topLeading) {
-                    // Background grid
-                    VStack(spacing: 0) {
-                        ForEach(0..<(endHour - startHour + 1), id: \.self) { hourOffset in
-                            Rectangle()
-                                .fill(dynamicSecondaryBackgroundColor.opacity(0.3))
-                                .frame(height: hourHeight)
-                                .overlay(
-                                    Rectangle()
-                                        .fill(dynamicSecondaryBackgroundColor.opacity(0.5))
-                                        .frame(height: 1),
-                                    alignment: .bottom
-                                )
-                        }
-                    }
-                    
-                    // Existing events
-                    ForEach(dayEvents) { event in
-                        if let eventStart = event.start.startDate,
-                           let eventEnd = event.end?.startDate ?? calendar.date(byAdding: .hour, value: 1, to: eventStart) {
-                            EventBar(
-                                start: eventStart,
-                                end: eventEnd,
-                                color: dynamicPrimaryColor.opacity(0.6),
-                                isProposed: false
-                            )
-                        }
-                    }
-                    
-                    // Proposed event
-                    EventBar(
-                        start: proposedStartTime,
-                        end: proposedEndTime,
-                        color: dynamicPrimaryColor,
-                        isProposed: true
-                    )
-                }
-                .frame(width: 40)
             }
+            .frame(width: 20, alignment: .trailing)
+            
+            // Calendar timeline
+            ZStack(alignment: .topLeading) {
+                // Background grid - one rectangle per hour
+                VStack(spacing: 0) {
+                    ForEach(0..<(endHour - startHour + 1), id: \.self) { hourOffset in
+                        Rectangle()
+                            .fill(dynamicSecondaryBackgroundColor.opacity(0.3))
+                            .frame(height: hourHeight)
+                            .overlay(
+                                Rectangle()
+                                    .fill(dynamicSecondaryBackgroundColor.opacity(0.5))
+                                    .frame(height: 1),
+                                alignment: .bottom
+                            )
+                    }
+                }
+                
+                // Existing events
+                ForEach(dayEvents) { event in
+                    if let eventStart = event.start.startDate,
+                       let eventEnd = event.end?.startDate ?? calendar.date(byAdding: .hour, value: 1, to: eventStart) {
+                        EventBar(
+                            start: eventStart,
+                            end: eventEnd,
+                            color: dynamicPrimaryColor.opacity(0.6),
+                            isProposed: false
+                        )
+                    }
+                }
+                
+                // Proposed event
+                EventBar(
+                    start: proposedStartTime,
+                    end: proposedEndTime,
+                    color: dynamicPrimaryColor,
+                    isProposed: true
+                )
+            }
+            .frame(width: 40)
         }
-        .frame(height: CGFloat(endHour - startHour + 1) * hourHeight + 20)
+        .frame(height: CGFloat(endHour - startHour + 1) * hourHeight)
         .padding(4)
         .background(dynamicBackgroundColor)
         .cornerRadius(6)
@@ -283,4 +282,5 @@ struct CompactCalendarPreview: View {
         }
     }
 }
+
 

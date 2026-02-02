@@ -30,6 +30,13 @@ struct ContentView: View {
     
     @State private var showWitheringAlert = false
     @State private var witheringAlertMessage = ""
+    
+    // Daily flow state
+    @State private var showDailyPlanningNote = false
+    @State private var showSchedulingView = false
+    @State private var schedulingAutoStart = false
+    @State private var schedulingDate = Date()
+    @State private var isInDailyFlow = false
 
     @Query private var allTodoItems: [TodoItem]
     @StateObject private var todoViewModel = TodoViewModel()
@@ -81,6 +88,7 @@ struct ContentView: View {
                              !todoItem.isDone || todoItem.subtasks.contains(where: { !$0.isDone })
                          }
                         if !tasksThatNeedReview.isEmpty {
+                            isInDailyFlow = true
                             self.showMigrateTasksView = true
                         }
                     }
@@ -95,12 +103,39 @@ struct ContentView: View {
                     }
                     .environment(\.modelContext, modelContext)
                 }
-                .sheet(isPresented: $showMigrateTasksView) {
+                .sheet(isPresented: $showMigrateTasksView, onDismiss: {
+                    // After migration, show daily planning note if we're in the daily flow
+                    if isInDailyFlow {
+                        showDailyPlanningNote = true
+                    }
+                }) {
                     NavigationView {
                         MigrateTasksView()
                             .environment(\.modelContext, modelContext)
                             .environmentObject(firebaseManager)
                     }
+                }
+                .sheet(isPresented: $showDailyPlanningNote, onDismiss: {
+                    // After planning note, show scheduling view
+                    if isInDailyFlow {
+                        schedulingDate = Calendar.current.startOfDay(for: Date())
+                        schedulingAutoStart = true
+                        showSchedulingView = true
+                    }
+                }) {
+                    DailyPlanningNoteView(isPresented: $showDailyPlanningNote) {
+                        // Completion handler - just dismiss, onDismiss will handle the next step
+                        // The view will set isPresented = false itself
+                    }
+                    .environment(\.modelContext, modelContext)
+                }
+                .sheet(isPresented: $showSchedulingView, onDismiss: {
+                    // Reset daily flow flags when scheduling view dismisses
+                    isInDailyFlow = false
+                    schedulingAutoStart = false
+                }) {
+                    SmartSchedulingView(initialDate: schedulingDate, autoStart: schedulingAutoStart)
+                        .environmentObject(firebaseManager)
                 }
                 .alert("Plant Care Notice", isPresented: $showWitheringAlert) {
                     Button("OK") {}
@@ -262,7 +297,8 @@ struct ContentView: View {
             } else {
                 newDayEvaluationTriggeredLastDayView = false
                 if !tasksThatNeedReview.isEmpty {
-                     showMigrateTasksView = true
+                    isInDailyFlow = true
+                    showMigrateTasksView = true
                 }
             }
             lastSummaryDateString = todayString

@@ -115,7 +115,7 @@
   - Due date picker (graphical calendar)
   - Subtask management (add/remove)
   - Origin selection (Today/Master List)
-  - AI task generation using Gemini 2.5 Flash
+  - AI task generation using Gemini 2.5 Flash Lite
   - Task editing for existing items
   
 - **AI Features**
@@ -180,7 +180,7 @@
   - Create new notes
   - Edit/delete notes
   - Multi-select mode
-  - AI task generation from notes (Gemini 2.5 Flash)
+  - AI task generation from notes (Gemini 2.5 Flash Lite)
   - Origin selection for generated tasks (Today/Master List)
   - Tutorial overlay system
 
@@ -594,7 +594,7 @@
 ✅ Last seen status  
 
 ### Smart Features
-✅ AI task generation (Gemini 2.5 Flash)  
+✅ AI task generation (Gemini 2.5 Flash Lite)  
 ✅ AI note-to-task conversion  
 ✅ Location-based smart reminders  
 ✅ Task-aware notifications  
@@ -625,7 +625,7 @@
 - **Framework:** SwiftUI
 - **Backend:** Firebase (Auth, Firestore)
 - **Local Storage:** SwiftData
-- **AI:** Google Gemini 2.5 Flash (Vertex AI)
+- **AI:** Google Gemini 2.5 Flash Lite (Vertex AI)
 - **Animations:** Lottie
 - **Location:** CoreLocation
 - **Notifications:** UserNotifications
@@ -636,7 +636,7 @@
 
 1. **Hybrid Data Strategy:** Local-first with SwiftData, cloud sync with Firestore
 2. **Real-time Updates:** Extensive use of Firestore listeners for chat, shared tasks, friends
-3. **AI Integration:** Gemini 2.5 Flash for task generation and smart reminders
+3. **AI Integration:** Gemini 2.5 Flash Lite for task generation and smart reminders
 4. **Gamification Depth:** Complex plant system with rarity, themes, seasonal bonuses
 5. **Tutorial System:** Comprehensive onboarding for all major features
 6. **Offline Support:** Guest mode and local data persistence

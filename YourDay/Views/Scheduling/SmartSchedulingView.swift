@@ -10,8 +10,12 @@ import SwiftData
 import FirebaseAuth
 
 struct SmartSchedulingView: View {
+    let initialDate: Date?
+    let autoStart: Bool
+    
     @StateObject private var backlogViewModel = BacklogViewModel()
     @StateObject private var schedulingViewModel = SchedulingAssistantViewModel()
+    @StateObject private var journalViewModel = JournalViewModel()
     
     @Query(sort: \TodoItem.position) private var todoItems: [TodoItem]
     
@@ -31,11 +35,18 @@ struct SmartSchedulingView: View {
     @State private var isCalendarExpanded = false
     @State private var isMemoryExpanded = false
     @State private var isContextExpanded = false
+    @State private var showingJournalView = false
+    @State private var hasAutoStarted = false // Track if auto-start has been triggered
     
     private var defaultProposal: ProposedSession {
         ProposedSession(tasks: [], workingSessionTime: "", startTime: nil, endTime: nil, reason: nil)
     }
 
+    init(initialDate: Date? = nil, autoStart: Bool = false) {
+        self.initialDate = initialDate
+        self.autoStart = autoStart
+    }
+    
     private var proposalBinding: Binding<ProposedSession> {
         Binding(
             get: {
@@ -62,11 +73,23 @@ struct SmartSchedulingView: View {
             .navigationTitle("Smart Scheduling")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Refresh") {
-                        refreshData()
+                    HStack {
+                        Button(action: {
+                            showingJournalView = true
+                        }) {
+                            Image(systemName: "book.fill")
+                                .foregroundColor(dynamicPrimaryColor)
+                        }
+                        
+                        Button("Refresh") {
+                            refreshData()
+                        }
+                        .foregroundColor(dynamicPrimaryColor)
                     }
-                    .foregroundColor(dynamicPrimaryColor)
                 }
+            }
+            .sheet(isPresented: $showingJournalView) {
+                JournalView(journalViewModel: journalViewModel)
             }
             .sheet(isPresented: $showingAddBacklogSheet) {
                 AddBacklogItemSheet(backlogViewModel: backlogViewModel)
@@ -152,10 +175,48 @@ struct SmartSchedulingView: View {
             } message: {
                 Text("Would you like me to suggest a different time for these tasks?")
             }
+            .sheet(isPresented: $journalViewModel.showingJournalPrompt) {
+                if let pendingEvent = journalViewModel.pendingJournalPrompt {
+                    JournalPromptView(journalViewModel: journalViewModel, pendingEvent: pendingEvent)
+                        .onDisappear {
+                            // Trigger AI analysis when journal entry is saved
+                            if !journalViewModel.journalEntries.isEmpty {
+                                journalViewModel.triggerJournalAnalysis(schedulingViewModel: schedulingViewModel)
+                            }
+                        }
+                }
+            }
             .onAppear {
+                // Set initial date if provided
+                if let initialDate = initialDate {
+                    selectedDate = initialDate
+                }
+                
                 refreshData()
                 // Ensure schedule preferences (including memories) are loaded on view appear
                 schedulingViewModel.fetchSchedulePreference()
+                // Start monitoring for ended tasks
+                TaskEndMonitor.shared.startMonitoring()
+                
+                // Auto-start scheduling if requested and not already started
+                if autoStart && !hasAutoStarted {
+                    hasAutoStarted = true
+                    // Delay to ensure view is fully rendered and backlog is loaded
+                    // The backlog fetch happens in refreshData(), so we wait a bit longer
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                        // Check if backlog has items before auto-starting
+                        if !backlogViewModel.backlogItems.isEmpty && !isAgentRunning {
+                            runAgent()
+                        } else if !isAgentRunning {
+                            // If backlog is still empty, try once more after a short delay
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                if !backlogViewModel.backlogItems.isEmpty && !isAgentRunning {
+                                    runAgent()
+                                }
+                            }
+                        }
+                    }
+                }
             }
             .onChange(of: schedulingViewModel.showingDeclineReasonInput) { _, isShowing in
                 if isShowing {
