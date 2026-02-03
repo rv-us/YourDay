@@ -203,11 +203,20 @@ struct JournalPromptView: View {
                     // Action Buttons
                     VStack(spacing: 12) {
                         Button(action: {
+                            // Dismiss immediately
+                            journalViewModel.showingJournalPrompt = false
+                            // Save entry (will format with LLM)
                             saveEntry()
                         }) {
                             HStack {
-                                Text("Save Journal Entry")
-                                Image(systemName: "checkmark.circle.fill")
+                                if journalViewModel.isLoading {
+                                    ProgressView()
+                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                        .scaleEffect(0.8)
+                                } else {
+                                    Text("Save Journal Entry")
+                                    Image(systemName: "checkmark.circle.fill")
+                                }
                             }
                             .font(.headline)
                             .foregroundColor(.white)
@@ -220,6 +229,9 @@ struct JournalPromptView: View {
                         .disabled(whatDid.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || journalViewModel.isLoading)
                         
                         Button(action: {
+                            // Dismiss immediately
+                            journalViewModel.showingJournalPrompt = false
+                            // Skip the prompt
                             journalViewModel.skipJournalPrompt()
                         }) {
                             Text("Skip for now")
@@ -238,6 +250,9 @@ struct JournalPromptView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: {
+                        // Dismiss immediately
+                        journalViewModel.showingJournalPrompt = false
+                        // Skip the prompt
                         journalViewModel.skipJournalPrompt()
                     }) {
                         Image(systemName: "xmark.circle.fill")

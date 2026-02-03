@@ -310,7 +310,7 @@ struct NewItemview: View {
         Task {
             do {
                 let vertex = VertexAI.vertexAI()
-                let model = vertex.generativeModel(modelName: "gemini-2.5-flash-lite")
+                let model = vertex.generativeModel(modelName: "gemini-2.5-flash")
 
                 let userMessage = ModelContent(role: "user", parts: [TextPart(prompt)])
                 let response = try await model.generateContent([userMessage])

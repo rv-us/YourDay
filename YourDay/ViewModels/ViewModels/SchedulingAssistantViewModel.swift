@@ -677,6 +677,7 @@ class SchedulingAssistantViewModel: ObservableObject {
             \(backlogText.isEmpty ? "None" : backlogText)
 
             Calendar Time Slots for \(dateString) (CURRENT - includes all scheduled events):
+            IMPORTANT: Each line shows a time range. Lines ending with ": nothing" indicate FREE time. Lines with any other text (event names, "blocked", "lunch", etc.) indicate BUSY time. You can ONLY propose working sessions during periods marked ": nothing".
             \(timeSlots)
 
             Day-Specific Context for \(dayOfWeek.capitalized):
@@ -719,7 +720,23 @@ class SchedulingAssistantViewModel: ObservableObject {
                - GROUP tasks by category when they're related
                - Keep SINGLE focus tasks that need dedicated attention separate
             2. Consider task priorities (higher number = higher priority) and estimated durations
-            3. Find an available time slot that fits the user's schedule - CHECK THE CALENDAR CAREFULLY to avoid conflicts
+            3. FINDING AN AVAILABLE TIME SLOT - FOLLOW THESE STEPS EXACTLY:
+               STEP 3A: Read the "Calendar Time Slots" section above. Each line shows a time range in the format: "START TIME to END TIME: DESCRIPTION"
+               STEP 3B: Look for lines where the description says "nothing" - these are FREE periods. Lines with event names, "blocked", "lunch", or any other text are BUSY periods.
+               STEP 3C: For each FREE period (marked "nothing"), calculate the duration:
+                 - Example: "2:00 PM to 3:30 PM: nothing" = 90 minutes of free time
+                 - Example: "9:00 AM to 10:15 AM: nothing" = 75 minutes of free time
+               STEP 3D: Compare the FREE period duration to your total task duration needed:
+                 - Add up all estimated durations for the tasks you want to schedule
+                 - Add 15-30 minutes buffer time
+                 - The free period must be LONGER than or EQUAL to this total duration
+               STEP 3E: Verify NO CONFLICTS by checking:
+                 - The proposed start time must be WITHIN a "nothing" period
+                 - The proposed end time must also be WITHIN the same "nothing" period
+                 - DO NOT propose times that overlap with ANY event, blocked time, lunch, or wake time
+               STEP 3F: If today, ensure the start time is AFTER the current time shown above
+               STEP 3G: ONLY propose times that are explicitly shown as "nothing" in the calendar. DO NOT invent or assume free time exists.
+               STEP 3H: If no suitable free period exists, you may need to split tasks or propose a shorter session that fits available time.
             4. Consider their wake time, lunch time, day-specific context, schedule notes, and any decline reasons
             5. LEARN from their interaction history - propose times and durations similar to what they've accepted before
             6. \(isToday ? "CRITICAL: The proposed time MUST be after the current time (\(currentTimeString)). Do NOT propose any time in the past." : "Propose a time that works for the target date.")
@@ -750,7 +767,7 @@ class SchedulingAssistantViewModel: ObservableObject {
                     print(String(repeating: "=", count: 80))
                     
                     let vertex = VertexAI.vertexAI()
-                    let model = vertex.generativeModel(modelName: "gemini-2.5-flash-lite")
+                    let model = vertex.generativeModel(modelName: "gemini-2.5-flash")
 
                     let userMessage = ModelContent(role: "user", parts: [TextPart(prompt)])
                     let response = try await model.generateContent([userMessage])
@@ -1042,7 +1059,7 @@ class SchedulingAssistantViewModel: ObservableObject {
                 print(String(repeating: "=", count: 80))
                 
                 let vertex = VertexAI.vertexAI()
-                let model = vertex.generativeModel(modelName: "gemini-2.5-flash-lite")
+                let model = vertex.generativeModel(modelName: "gemini-2.5-flash")
                 
                 let aiMessage = ModelContent(role: "user", parts: [TextPart(prompt)])
                 let response = try await model.generateContent([aiMessage])
@@ -1477,7 +1494,7 @@ class SchedulingAssistantViewModel: ObservableObject {
                     print(String(repeating: "=", count: 80))
                     
                     let vertex = VertexAI.vertexAI()
-                    let model = vertex.generativeModel(modelName: "gemini-2.5-flash-lite")
+                    let model = vertex.generativeModel(modelName: "gemini-2.5-flash")
                     
                     let analysisMessage = ModelContent(role: "user", parts: [TextPart(analysisPrompt)])
                     let response = try await model.generateContent([analysisMessage])
@@ -1654,7 +1671,7 @@ class SchedulingAssistantViewModel: ObservableObject {
                 print(String(repeating: "=", count: 80))
                 
                 let vertex = VertexAI.vertexAI()
-                let model = vertex.generativeModel(modelName: "gemini-2.5-flash-lite")
+                let model = vertex.generativeModel(modelName: "gemini-2.5-flash")
 
                 let analysisMessage = ModelContent(role: "user", parts: [TextPart(analysisPrompt)])
                 let response = try await model.generateContent([analysisMessage])
@@ -1820,7 +1837,7 @@ class SchedulingAssistantViewModel: ObservableObject {
                 print(String(repeating: "=", count: 80))
                 
                 let vertex = VertexAI.vertexAI()
-                let model = vertex.generativeModel(modelName: "gemini-2.5-flash-lite")
+                let model = vertex.generativeModel(modelName: "gemini-2.5-flash")
 
                 let analysisMessage = ModelContent(role: "user", parts: [TextPart(analysisPrompt)])
                 let response = try await model.generateContent([analysisMessage])
@@ -1949,7 +1966,7 @@ class SchedulingAssistantViewModel: ObservableObject {
                 print(String(repeating: "=", count: 80))
                 
                 let vertex = VertexAI.vertexAI()
-                let model = vertex.generativeModel(modelName: "gemini-2.5-flash-lite")
+                let model = vertex.generativeModel(modelName: "gemini-2.5-flash")
                 
                 let analysisMessage = ModelContent(role: "user", parts: [TextPart(analysisPrompt)])
                 let response = try await model.generateContent([analysisMessage])
@@ -2242,7 +2259,7 @@ class SchedulingAssistantViewModel: ObservableObject {
                     print(String(repeating: "=", count: 80))
                     
                     let vertex = VertexAI.vertexAI()
-                    let model = vertex.generativeModel(modelName: "gemini-2.5-flash-lite")
+                    let model = vertex.generativeModel(modelName: "gemini-2.5-flash")
                     
                     let analysisMessage = ModelContent(role: "user", parts: [TextPart(analysisPrompt)])
                     let response = try await model.generateContent([analysisMessage])
