@@ -32,7 +32,7 @@ struct JournalView: View {
             entries = entries.filter { $0.completionStatus == status }
         }
         
-        return entries
+        return entries.sorted { $0.timestamp > $1.timestamp }
     }
     
     var body: some View {

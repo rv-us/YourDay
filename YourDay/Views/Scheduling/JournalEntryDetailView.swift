@@ -35,7 +35,8 @@ struct JournalEntryDetailView: View {
     }
     
     private var statusColor: Color {
-        switch completionStatus {
+        let status = isEditing ? completionStatus : currentEntry.completionStatus
+        switch status {
         case .completed:
             return .green
         case .partial:
@@ -43,6 +44,18 @@ struct JournalEntryDetailView: View {
         case .notStarted:
             return .red
         }
+    }
+
+    private var currentEntry: JournalEntry {
+        if let entryId = entry.id,
+           let updatedEntry = journalViewModel.journalEntries.first(where: { $0.id == entryId }) {
+            return updatedEntry
+        }
+        if let eventId = entry.eventId,
+           let updatedEntry = journalViewModel.journalEntries.first(where: { $0.eventId == eventId }) {
+            return updatedEntry
+        }
+        return entry
     }
     
     init(journalViewModel: JournalViewModel, entry: JournalEntry) {
@@ -55,24 +68,24 @@ struct JournalEntryDetailView: View {
             VStack(alignment: .leading, spacing: 20) {
                 // Header Card
                 VStack(alignment: .leading, spacing: 12) {
-                    Text(entry.taskTitle)
+                    Text(currentEntry.taskTitle)
                         .font(.title2)
                         .fontWeight(.bold)
                         .foregroundColor(dynamicTextColor)
                     
-                    Text(dateFormatter.string(from: entry.scheduledStartTime))
+                    Text(dateFormatter.string(from: currentEntry.scheduledStartTime))
                         .font(.subheadline)
                         .foregroundColor(dynamicSecondaryTextColor)
                     
                     HStack {
                         Image(systemName: "clock")
                             .foregroundColor(dynamicSecondaryTextColor)
-                        Text("\(timeFormatter.string(from: entry.scheduledStartTime)) - \(timeFormatter.string(from: entry.scheduledEndTime))")
+                        Text("\(timeFormatter.string(from: currentEntry.scheduledStartTime)) - \(timeFormatter.string(from: currentEntry.scheduledEndTime))")
                             .font(.subheadline)
                             .foregroundColor(dynamicSecondaryTextColor)
                     }
                     
-                    if let actualStart = entry.actualStartTime, let actualEnd = entry.actualEndTime {
+                    if let actualStart = currentEntry.actualStartTime, let actualEnd = currentEntry.actualEndTime {
                         HStack {
                             Image(systemName: "clock.arrow.circlepath")
                                 .foregroundColor(dynamicSecondaryTextColor)
@@ -179,7 +192,7 @@ struct JournalEntryDetailView: View {
                             Text("What did you do?")
                                 .font(.headline)
                                 .foregroundColor(dynamicTextColor)
-                            Text(entry.whatDid)
+                            Text(currentEntry.whatDid)
                                 .font(.body)
                                 .foregroundColor(dynamicTextColor)
                                 .padding()
@@ -188,7 +201,7 @@ struct JournalEntryDetailView: View {
                         }
                         
                         // How Went
-                        if let howWent = entry.howWent, !howWent.isEmpty {
+                        if let howWent = currentEntry.howWent, !howWent.isEmpty {
                             VStack(alignment: .leading, spacing: 8) {
                                 HStack {
                                     Image(systemName: "heart.fill")
@@ -207,7 +220,7 @@ struct JournalEntryDetailView: View {
                         }
                         
                         // Learned
-                        if let learned = entry.learned, !learned.isEmpty {
+                        if let learned = currentEntry.learned, !learned.isEmpty {
                             VStack(alignment: .leading, spacing: 8) {
                                 HStack {
                                     Image(systemName: "lightbulb.fill")
@@ -226,7 +239,7 @@ struct JournalEntryDetailView: View {
                         }
                         
                         // Distractions
-                        if let distractions = entry.distractions, !distractions.isEmpty {
+                        if let distractions = currentEntry.distractions, !distractions.isEmpty {
                             VStack(alignment: .leading, spacing: 8) {
                                 HStack {
                                     Image(systemName: "exclamationmark.triangle.fill")
@@ -249,7 +262,7 @@ struct JournalEntryDetailView: View {
                             Text("Status:")
                                 .font(.headline)
                                 .foregroundColor(dynamicTextColor)
-                            Text(entry.completionStatus.rawValue.capitalized)
+                            Text(currentEntry.completionStatus.rawValue.capitalized)
                                 .font(.subheadline)
                                 .fontWeight(.semibold)
                                 .foregroundColor(.white)
@@ -307,11 +320,12 @@ struct JournalEntryDetailView: View {
     }
     
     private func loadEntryData() {
-        whatDid = entry.whatDid
-        howWent = entry.howWent ?? ""
-        learned = entry.learned ?? ""
-        distractions = entry.distractions ?? ""
-        completionStatus = entry.completionStatus
+        let sourceEntry = currentEntry
+        whatDid = sourceEntry.whatDid
+        howWent = sourceEntry.howWent ?? ""
+        learned = sourceEntry.learned ?? ""
+        distractions = sourceEntry.distractions ?? ""
+        completionStatus = sourceEntry.completionStatus
     }
     
     private func startEditing() {
@@ -325,25 +339,26 @@ struct JournalEntryDetailView: View {
     }
     
     private func saveChanges() {
-        guard let entryId = entry.id else { return }
+        let sourceEntry = currentEntry
+        guard let entryId = sourceEntry.id else { return }
         
         // Create a new entry with updated fields
         let updatedEntry = JournalEntry(
             id: entryId,
-            userId: entry.userId,
-            eventId: entry.eventId,
-            taskTitle: entry.taskTitle,
-            scheduledStartTime: entry.scheduledStartTime,
-            scheduledEndTime: entry.scheduledEndTime,
-            actualStartTime: entry.actualStartTime,
-            actualEndTime: entry.actualEndTime,
+            userId: sourceEntry.userId,
+            eventId: sourceEntry.eventId,
+            taskTitle: sourceEntry.taskTitle,
+            scheduledStartTime: sourceEntry.scheduledStartTime,
+            scheduledEndTime: sourceEntry.scheduledEndTime,
+            actualStartTime: sourceEntry.actualStartTime,
+            actualEndTime: sourceEntry.actualEndTime,
             whatDid: whatDid.trimmingCharacters(in: .whitespacesAndNewlines),
             howWent: howWent.isEmpty ? nil : howWent.trimmingCharacters(in: .whitespacesAndNewlines),
             learned: learned.isEmpty ? nil : learned.trimmingCharacters(in: .whitespacesAndNewlines),
             distractions: distractions.isEmpty ? nil : distractions.trimmingCharacters(in: .whitespacesAndNewlines),
             completionStatus: completionStatus,
-            timestamp: entry.timestamp,
-            dayOfWeek: entry.dayOfWeek
+            timestamp: sourceEntry.timestamp,
+            dayOfWeek: sourceEntry.dayOfWeek
         )
         
         journalViewModel.updateJournalEntry(updatedEntry)
@@ -351,9 +366,8 @@ struct JournalEntryDetailView: View {
     }
     
     private func deleteEntry() {
-        guard let entryId = entry.id else { return }
+        guard let entryId = currentEntry.id else { return }
         journalViewModel.deleteJournalEntry(entryId)
         dismiss()
     }
 }
-

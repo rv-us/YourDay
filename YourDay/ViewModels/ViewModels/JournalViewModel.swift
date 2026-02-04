@@ -20,6 +20,9 @@ class JournalViewModel: ObservableObject {
     @Published var showingJournalPrompt = false
     @Published var isLoading = false
     @Published var errorMessage: String?
+
+    // Persisted preference - when user skips, auto-prompts are permanently disabled
+    @AppStorage("autoShowJournalPrompts") var autoShowPrompts = true
     
     // Queue for pending journal events
     private var pendingJournalQueue: [TaskEndMonitor.PendingJournalEvent] = []
@@ -61,8 +64,20 @@ class JournalViewModel: ObservableObject {
             }
             .store(in: &cancellables)
     }
+
+    func clearError() {
+        errorMessage = nil
+    }
     
     private func showNextPendingPrompt() {
+        // Check if user has opted out of auto-prompts
+        guard autoShowPrompts else {
+            // User has permanently opted out of auto-prompts
+            pendingJournalPrompt = nil
+            showingJournalPrompt = false
+            return
+        }
+
         // Remove the next event from queue and show it
         guard !pendingJournalQueue.isEmpty else {
             pendingJournalPrompt = nil
@@ -318,14 +333,18 @@ class JournalViewModel: ObservableObject {
     }
     
     func skipJournalPrompt() {
+        // Dismiss sheet FIRST to avoid black flash (Bug 1 fix)
+        showingJournalPrompt = false
+        // Permanently suppress future auto-prompts (Bug 3 fix)
+        autoShowPrompts = false
+
         if let event = pendingJournalPrompt {
             taskEndMonitor.markEventAsJournaled(eventId: event.eventId)
             // Cancel notification for this event
             notificationManager.cancelJournalPromptNotification(eventId: event.eventId)
         }
         pendingJournalPrompt = nil
-        // Show next prompt from queue
-        showNextPendingPrompt()
+        // DON'T call showNextPendingPrompt() - user has opted out permanently
     }
     
     // Method to show prompt for a specific event (used when notification is tapped)
@@ -487,4 +506,3 @@ class JournalViewModel: ObservableObject {
         return cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
-

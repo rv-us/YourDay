@@ -74,3 +74,4 @@ struct JournalEntry: Identifiable, Codable {
     }
 }
 
+

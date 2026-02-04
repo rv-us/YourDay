@@ -156,7 +156,7 @@ struct SmartSchedulingTestView: View {
             }
             .sheet(isPresented: $journalViewModel.showingJournalPrompt) {
                 if let pendingEvent = journalViewModel.pendingJournalPrompt {
-                    JournalPromptView(journalViewModel: journalViewModel, pendingEvent: pendingEvent)
+                    JournalCompletionFlowView(journalViewModel: journalViewModel, pendingEvent: pendingEvent)
                         .onDisappear {
                             // Trigger AI analysis when journal entry is saved
                             if !journalViewModel.journalEntries.isEmpty {

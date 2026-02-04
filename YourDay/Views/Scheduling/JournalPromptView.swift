@@ -15,7 +15,7 @@ struct JournalPromptView: View {
     @State private var howWent: String = ""
     @State private var learned: String = ""
     @State private var distractions: String = ""
-    @State private var completionStatus: CompletionStatus = .completed
+    @State private var completionStatus: CompletionStatus
     @State private var actualStartTime: Date?
     @State private var actualEndTime: Date?
     @State private var showTimeAdjustment = false
@@ -30,6 +30,38 @@ struct JournalPromptView: View {
         let formatter = DateFormatter()
         formatter.timeStyle = .short
         return formatter
+    }
+
+    private var resolvedActualStartTime: Date? {
+        showTimeAdjustment ? (actualStartTime ?? pendingEvent.scheduledStartTime) : nil
+    }
+
+    private var resolvedActualEndTime: Date? {
+        showTimeAdjustment ? (actualEndTime ?? pendingEvent.scheduledEndTime) : nil
+    }
+
+    private var isTimeValid: Bool {
+        guard showTimeAdjustment else { return true }
+        guard let start = resolvedActualStartTime, let end = resolvedActualEndTime else { return true }
+        return end >= start
+    }
+
+    private var trimmedWhatDid: String {
+        whatDid.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var isSaveDisabled: Bool {
+        trimmedWhatDid.isEmpty || journalViewModel.isLoading || !isTimeValid
+    }
+
+    init(
+        journalViewModel: JournalViewModel,
+        pendingEvent: TaskEndMonitor.PendingJournalEvent,
+        initialCompletionStatus: CompletionStatus = .completed
+    ) {
+        self.journalViewModel = journalViewModel
+        self.pendingEvent = pendingEvent
+        _completionStatus = State(initialValue: initialCompletionStatus)
     }
     
     var body: some View {
@@ -64,7 +96,7 @@ struct JournalPromptView: View {
                     // Task Info Card
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
-                            Text("Task:")
+                            Text("Session:")
                                 .font(.caption)
                                 .foregroundColor(dynamicSecondaryTextColor)
                             Spacer()
@@ -107,6 +139,12 @@ struct JournalPromptView: View {
                                 set: { actualEndTime = $0 }
                             ), displayedComponents: .hourAndMinute)
                             .padding(.horizontal)
+
+                            if !isTimeValid {
+                                Text("Actual end time must be after the start time.")
+                                    .font(.caption)
+                                    .foregroundColor(.red)
+                            }
                         }
                         .padding()
                         .background(dynamicSecondaryBackgroundColor)
@@ -203,8 +241,6 @@ struct JournalPromptView: View {
                     // Action Buttons
                     VStack(spacing: 12) {
                         Button(action: {
-                            // Dismiss immediately
-                            journalViewModel.showingJournalPrompt = false
                             // Save entry (will format with LLM)
                             saveEntry()
                         }) {
@@ -222,19 +258,17 @@ struct JournalPromptView: View {
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
                             .padding()
-                            .background(whatDid.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? dynamicSecondaryTextColor : dynamicPrimaryColor)
+                            .background(isSaveDisabled ? dynamicSecondaryTextColor : dynamicPrimaryColor)
                             .cornerRadius(12)
                         }
                         .buttonStyle(ScaleButtonStyle())
-                        .disabled(whatDid.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || journalViewModel.isLoading)
+                        .disabled(isSaveDisabled)
                         
                         Button(action: {
-                            // Dismiss immediately
-                            journalViewModel.showingJournalPrompt = false
                             // Skip the prompt
                             journalViewModel.skipJournalPrompt()
                         }) {
-                            Text("Skip for now")
+                            Text("Skip")
                                 .font(.subheadline)
                                 .foregroundColor(dynamicSecondaryTextColor)
                         }
@@ -250,14 +284,13 @@ struct JournalPromptView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: {
-                        // Dismiss immediately
-                        journalViewModel.showingJournalPrompt = false
                         // Skip the prompt
                         journalViewModel.skipJournalPrompt()
                     }) {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundColor(dynamicSecondaryTextColor)
                     }
+                    .disabled(journalViewModel.isLoading)
                 }
                 ToolbarItem(placement: .keyboard) {
                     HStack {
@@ -271,16 +304,34 @@ struct JournalPromptView: View {
             }
         }
         .interactiveDismissDisabled(true)
+        .alert("Couldn't Save Entry", isPresented: Binding(
+            get: { journalViewModel.errorMessage != nil },
+            set: { isPresented in
+                if !isPresented {
+                    journalViewModel.clearError()
+                }
+            }
+        )) {
+            Button("OK", role: .cancel) {
+                journalViewModel.clearError()
+            }
+        } message: {
+            Text(journalViewModel.errorMessage ?? "Something went wrong.")
+        }
     }
     
     private func saveEntry() {
+        guard isTimeValid else {
+            journalViewModel.errorMessage = "Actual end time must be after the start time."
+            return
+        }
         journalViewModel.saveJournalEntry(
             eventId: pendingEvent.eventId,
             taskTitle: pendingEvent.taskTitle,
             scheduledStartTime: pendingEvent.scheduledStartTime,
             scheduledEndTime: pendingEvent.scheduledEndTime,
-            actualStartTime: showTimeAdjustment ? actualStartTime : nil,
-            actualEndTime: showTimeAdjustment ? actualEndTime : nil,
+            actualStartTime: resolvedActualStartTime,
+            actualEndTime: resolvedActualEndTime,
             whatDid: whatDid,
             howWent: howWent.isEmpty ? nil : howWent,
             learned: learned.isEmpty ? nil : learned,
@@ -289,4 +340,3 @@ struct JournalPromptView: View {
         )
     }
 }
-

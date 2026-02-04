@@ -145,7 +145,7 @@ struct ContentView: View {
                 }
                 .sheet(isPresented: $journalViewModel.showingJournalPrompt) {
                     if let pendingEvent = journalViewModel.pendingJournalPrompt {
-                        JournalPromptView(journalViewModel: journalViewModel, pendingEvent: pendingEvent)
+                        JournalCompletionFlowView(journalViewModel: journalViewModel, pendingEvent: pendingEvent)
                             .onDisappear {
                                 // Trigger AI analysis when journal entry is saved
                                 // Note: This requires SchedulingAssistantViewModel, which is only available in SmartSchedulingView
