@@ -30,9 +30,17 @@ struct ContentView: View {
     
     @State private var showWitheringAlert = false
     @State private var witheringAlertMessage = ""
+    
+    // Daily flow state
+    @State private var showDailyPlanningNote = false
+    @State private var showSchedulingView = false
+    @State private var schedulingAutoStart = false
+    @State private var schedulingDate = Date()
+    @State private var isInDailyFlow = false
 
     @Query private var allTodoItems: [TodoItem]
     @StateObject private var todoViewModel = TodoViewModel()
+    @ObservedObject private var journalViewModel = JournalViewModel.shared
 
     var body: some View {
         Group {
@@ -48,7 +56,16 @@ struct ContentView: View {
                         .environmentObject(loginViewModel)
                         .environmentObject(firebaseManager)
 
-                    SmartSchedulingTestView()
+                    AddNotesView()
+                        .tabItem { Label("Notes", systemImage: "square.and.pencil") }
+                        .environmentObject(loginViewModel)
+
+                    SocialView()
+                        .tabItem { Label("Social", systemImage: "person.2.fill") }
+                        .environmentObject(loginViewModel)
+                        .environmentObject(firebaseManager)
+
+                    SmartSchedulingView()
                         .tabItem { Label("Scheduling", systemImage: "calendar.badge.clock") }
                         .environmentObject(firebaseManager)
 
@@ -73,6 +90,7 @@ struct ContentView: View {
                              !todoItem.isDone || todoItem.subtasks.contains(where: { !$0.isDone })
                          }
                         if !tasksThatNeedReview.isEmpty {
+                            isInDailyFlow = true
                             self.showMigrateTasksView = true
                         }
                     }
@@ -87,17 +105,64 @@ struct ContentView: View {
                     }
                     .environment(\.modelContext, modelContext)
                 }
-                .sheet(isPresented: $showMigrateTasksView) {
+                .sheet(isPresented: $showMigrateTasksView, onDismiss: {
+                    // After migration, show daily planning note if we're in the daily flow
+                    if isInDailyFlow {
+                        showDailyPlanningNote = true
+                    }
+                }) {
                     NavigationView {
                         MigrateTasksView()
                             .environment(\.modelContext, modelContext)
                             .environmentObject(firebaseManager)
                     }
                 }
+                .sheet(isPresented: $showDailyPlanningNote, onDismiss: {
+                    // After planning note, show scheduling view
+                    if isInDailyFlow {
+                        schedulingDate = Calendar.current.startOfDay(for: Date())
+                        schedulingAutoStart = true
+                        showSchedulingView = true
+                    }
+                }) {
+                    DailyPlanningNoteView(isPresented: $showDailyPlanningNote) {
+                        // Completion handler - just dismiss, onDismiss will handle the next step
+                        // The view will set isPresented = false itself
+                    }
+                    .environment(\.modelContext, modelContext)
+                }
+                .sheet(isPresented: $showSchedulingView, onDismiss: {
+                    // Reset daily flow flags when scheduling view dismisses
+                    isInDailyFlow = false
+                    schedulingAutoStart = false
+                }) {
+                    SmartSchedulingView(initialDate: schedulingDate, autoStart: schedulingAutoStart)
+                        .environmentObject(firebaseManager)
+                }
                 .alert("Plant Care Notice", isPresented: $showWitheringAlert) {
                     Button("OK") {}
                 } message: {
                     Text(witheringAlertMessage)
+                }
+                .sheet(isPresented: $journalViewModel.showingJournalPrompt) {
+                    if let pendingEvent = journalViewModel.pendingJournalPrompt {
+                        JournalCompletionFlowView(journalViewModel: journalViewModel, pendingEvent: pendingEvent)
+                            .onDisappear {
+                                // Trigger AI analysis when journal entry is saved
+                                // Note: This requires SchedulingAssistantViewModel, which is only available in SmartSchedulingView
+                                // For now, we'll trigger it from there if needed
+                            }
+                    }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ShowJournalPrompt"))) { notification in
+                    // Handle notification tap to show journal prompt
+                    if let eventId = notification.userInfo?["eventId"] as? String {
+                        journalViewModel.showPromptForEvent(eventId: eventId)
+                    }
+                }
+                .onAppear {
+                    // Set journal view model in notification delegate
+                    JournalNotificationDelegate.shared.setJournalViewModel(journalViewModel)
                 }
 
             } else {
@@ -254,7 +319,8 @@ struct ContentView: View {
             } else {
                 newDayEvaluationTriggeredLastDayView = false
                 if !tasksThatNeedReview.isEmpty {
-                     showMigrateTasksView = true
+                    isInDailyFlow = true
+                    showMigrateTasksView = true
                 }
             }
             lastSummaryDateString = todayString

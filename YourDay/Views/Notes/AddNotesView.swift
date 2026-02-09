@@ -205,7 +205,7 @@ struct AddNotesView: View {
                 """
 
                 let vertex = VertexAI.vertexAI()
-                // Use latest Gemini 2.5 Flash model
+                // Use latest Gemini 2.5 Flash Lite model
                 let model = vertex.generativeModel(modelName: "gemini-2.5-flash")
 
                 let userMessage = ModelContent(role: "user", parts: [TextPart(prompt)])

@@ -15,6 +15,7 @@ struct SmartSchedulingTestView: View {
     
     @StateObject private var backlogViewModel = BacklogViewModel()
     @StateObject private var schedulingViewModel = SchedulingAssistantViewModel()
+    @ObservedObject private var journalViewModel = JournalViewModel.shared
     
     @Query(sort: \TodoItem.position) private var todoItems: [TodoItem]
     
@@ -28,6 +29,13 @@ struct SmartSchedulingTestView: View {
     @State private var showingDatePicker = false
     @State private var scheduledTasks: Set<String> = [] // Track scheduled task titles
     @State private var planningDate: Date? = nil // Fixed date for current agent session
+    @State private var pendingModifications: [ModificationContext] = [] // Store all modifications to process at end
+    @State private var showingModificationReview = false
+    @State private var currentModificationIndex = 0
+    @State private var modificationReason = ""
+    @State private var pendingAcceptedTasksAfterModification: [String]? = nil
+    @State private var showingRescheduleAlert = false
+    @State private var showingJournalView = false
     
     var body: some View {
         NavigationView {
@@ -43,20 +51,40 @@ struct SmartSchedulingTestView: View {
                 if selectedTab == 0 {
                     // Setup/Configuration Tab
                     setupTabView
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .leading).combined(with: .opacity),
+                            removal: .move(edge: .trailing).combined(with: .opacity)
+                        ))
                 } else {
                     // Chat Tab
                     chatTabView
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .trailing).combined(with: .opacity),
+                            removal: .move(edge: .leading).combined(with: .opacity)
+                        ))
                 }
             }
             .background(dynamicBackgroundColor.edgesIgnoringSafeArea(.all))
             .navigationTitle("Smart Scheduling")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Refresh") {
-                        refreshData()
+                    HStack {
+                        Button(action: {
+                            showingJournalView = true
+                        }) {
+                            Image(systemName: "book.fill")
+                                .foregroundColor(dynamicPrimaryColor)
+                        }
+                        
+                        Button("Refresh") {
+                            refreshData()
+                        }
+                        .foregroundColor(dynamicPrimaryColor)
                     }
-                    .foregroundColor(dynamicPrimaryColor)
                 }
+            }
+            .sheet(isPresented: $showingJournalView) {
+                JournalView(journalViewModel: journalViewModel)
             }
             .sheet(isPresented: $showingAddBacklogSheet) {
                 AddBacklogItemSheet(backlogViewModel: backlogViewModel)
@@ -74,8 +102,73 @@ struct SmartSchedulingTestView: View {
                         }
                     }
             }
+            .sheet(isPresented: $showingModificationReview) {
+                ModificationReviewSheet(
+                    modifications: $pendingModifications,
+                    currentIndex: $currentModificationIndex,
+                    reason: $modificationReason,
+                    onSaveReason: { modification in
+                        let trimmedReason = (modification.reason ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !trimmedReason.isEmpty else { return }
+                        schedulingViewModel.addSessionModificationReason(
+                            reason: trimmedReason,
+                            originalTime: modification.originalTime,
+                            modifiedTime: modification.modifiedTime,
+                            tasks: modification.tasks
+                        )
+                    },
+                    onComplete: {
+                        showingModificationReview = false
+                        modificationReason = ""
+                        if let tasksToAccept = pendingAcceptedTasksAfterModification {
+                            pendingAcceptedTasksAfterModification = nil
+                            handleAcceptedTasks(tasksToAccept)
+                        }
+                        if !isAgentRunning {
+                            processModificationReasonsBatch()
+                            currentModificationIndex = 0
+                        }
+                    }
+                )
+                .interactiveDismissDisabled(true)
+            }
+            .alert("Reschedule?", isPresented: $schedulingViewModel.showingRescheduleConfirmation) {
+                Button("Yes, reschedule") {
+                    schedulingViewModel.confirmReschedule { error in
+                        if let error = error {
+                            print("Error rescheduling: \(error.localizedDescription)")
+                        }
+                    }
+                }
+                Button("No, skip for now", role: .cancel) {
+                    // Mark declined tasks as processed and move to next proposal
+                    let declinedTasks = schedulingViewModel.getDeclinedTasks()
+                    if !declinedTasks.isEmpty {
+                        for taskTitle in declinedTasks {
+                            scheduledTasks.insert(taskTitle)
+                        }
+                    }
+                    schedulingViewModel.cancelReschedule()
+                    proposeNextSession()
+                }
+            } message: {
+                Text("Would you like me to suggest a different time for these tasks?")
+            }
+            .sheet(isPresented: $journalViewModel.showingJournalPrompt) {
+                if let pendingEvent = journalViewModel.pendingJournalPrompt {
+                    JournalCompletionFlowView(journalViewModel: journalViewModel, pendingEvent: pendingEvent)
+                        .onDisappear {
+                            // Trigger AI analysis when journal entry is saved
+                            if !journalViewModel.journalEntries.isEmpty {
+                                journalViewModel.triggerJournalAnalysis(schedulingViewModel: schedulingViewModel)
+                            }
+                        }
+                }
+            }
             .onAppear {
                 refreshData()
+                // Start monitoring for ended tasks
+                TaskEndMonitor.shared.startMonitoring()
             }
         }
     }
@@ -87,406 +180,77 @@ struct SmartSchedulingTestView: View {
     // MARK: - Setup Tab
     
     private var setupTabView: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                // Backlog Section
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        Text("Backlog Items")
-                            .font(.headline)
-                            .foregroundColor(dynamicTextColor)
-                        
-                        Spacer()
-                        
-                        Button(action: {
-                            showingAddBacklogSheet = true
-                        }) {
-                            Image(systemName: "plus.circle.fill")
-                                .foregroundColor(dynamicPrimaryColor)
-                                .font(.title3)
-                        }
-                    }
-                    
-                    if backlogViewModel.isLoading {
-                        ProgressView()
-                            .padding()
-                    } else if backlogViewModel.backlogItems.isEmpty {
-                        Text("No backlog items. Add items or they'll appear from your current tasks.")
-                            .font(.caption)
-                            .foregroundColor(dynamicSecondaryTextColor)
-                            .padding()
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    } else {
-                        ForEach(backlogViewModel.backlogItems) { item in
-                            BacklogItemRow(item: item, backlogViewModel: backlogViewModel)
-                        }
-                    }
-                }
-                .padding()
-                .background(dynamicSecondaryBackgroundColor)
-                .cornerRadius(12)
-                
-                // Day Context Section (expandable)
-                DayContextSection(schedulingViewModel: schedulingViewModel)
-
-                // Schedule Preferences Section
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Schedule Preferences")
-                        .font(.headline)
-                        .foregroundColor(dynamicTextColor)
-
-                    if let preference = schedulingViewModel.schedulePreference {
-                        VStack(alignment: .leading, spacing: 8) {
-                            if let wakeTime = preference.preferredWakeTime {
-                                HStack {
-                                    Text("Wake Time:")
-                                    Spacer()
-                                    Text(wakeTime)
-                                        .foregroundColor(dynamicSecondaryTextColor)
-                                }
-                            }
-
-                            if let lunchTime = preference.lunchTime {
-                                HStack {
-                                    Text("Lunch Time:")
-                                    Spacer()
-                                    Text(lunchTime)
-                                        .foregroundColor(dynamicSecondaryTextColor)
-                                }
-                            }
-
-                            if !preference.recurringCommitments.isEmpty {
-                                Text("Recurring Commitments:")
-                                    .font(.subheadline)
-                                    .padding(.top, 4)
-
-                                ForEach(preference.recurringCommitments.indices, id: \.self) { index in
-                                    let commitment = preference.recurringCommitments[index]
-                                    Text("• \(commitment.eventName): \(commitment.daysOfWeek.joined(separator: ", ")) at \(commitment.time)")
-                                        .font(.caption)
-                                        .foregroundColor(dynamicSecondaryTextColor)
-                                }
-                            }
-
-                            // Show acceptance stats if available
-                            if let stats = preference.acceptanceStats {
-                                Divider()
-                                Text("Learning Stats:")
-                                    .font(.subheadline)
-                                    .padding(.top, 4)
-                                Text("Accepted: \(stats.totalAccepted) | Declined: \(stats.totalDeclined) | Modified: \(stats.totalModified)")
-                                    .font(.caption)
-                                    .foregroundColor(dynamicSecondaryTextColor)
-                                if let avgDuration = stats.averageAcceptedDuration {
-                                    Text("Avg session duration: \(avgDuration) min")
-                                        .font(.caption)
-                                        .foregroundColor(dynamicSecondaryTextColor)
-                                }
-                            }
-                        }
-                    } else {
-                        Text("No preferences set yet. The agent will learn from your responses.")
-                            .font(.caption)
-                            .foregroundColor(dynamicSecondaryTextColor)
-                    }
-                }
-                .padding()
-                .background(dynamicSecondaryBackgroundColor)
-                .cornerRadius(12)
-                
-                // Date Selection Section
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Select Date")
-                        .font(.headline)
-                        .foregroundColor(dynamicTextColor)
-                    
-                    Button(action: {
-                        showingDatePicker = true
-                    }) {
-                        HStack {
-                            Image(systemName: "calendar")
-                            Text(selectedDate, style: .date)
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                        }
-                        .foregroundColor(dynamicTextColor)
-                        .padding()
-                        .background(dynamicSecondaryBackgroundColor)
-                        .cornerRadius(8)
-                    }
-                }
-                .padding()
-                .background(dynamicSecondaryBackgroundColor)
-                .cornerRadius(12)
-                
-                // Calendar Events Section
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        Text("Calendar Events for Selected Date")
-                            .font(.headline)
-                            .foregroundColor(dynamicTextColor)
-                        
-                        Spacer()
-                        
-                        Button(action: {
-                            fetchCalendarForDate()
-                        }) {
-                            Image(systemName: "arrow.clockwise")
-                                .foregroundColor(dynamicPrimaryColor)
-                        }
-                    }
-                    
-                    if schedulingViewModel.calendarEvents.isEmpty {
-                        Text("No events for this date. Tap refresh to check calendar.")
-                            .font(.caption)
-                            .foregroundColor(dynamicSecondaryTextColor)
-                    } else {
-                        ForEach(schedulingViewModel.calendarEvents.prefix(10)) { event in
-                            HStack {
-                                if let startDate = event.start.startDate {
-                                    Text(startDate, style: .time)
-                                        .font(.caption)
-                                        .foregroundColor(dynamicSecondaryTextColor)
-                                        .frame(width: 60, alignment: .leading)
-                                }
-                                Text(event.summary)
-                                    .font(.caption)
-                                    .foregroundColor(dynamicTextColor)
-                                Spacer()
-                            }
-                        }
-                    }
-                }
-                .padding()
-                .background(dynamicSecondaryBackgroundColor)
-                .cornerRadius(12)
-                
-                // Action Buttons
-                VStack(spacing: 12) {
-                    Button(action: {
-                        fetchCalendarForDate()
-                    }) {
-                        HStack {
-                            Image(systemName: "calendar.badge.clock")
-                            Text("Check Calendar for Selected Date")
-                        }
-                        .font(.headline)
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(dynamicPrimaryColor)
-                        .cornerRadius(12)
-                    }
-                    
-                    Button(action: {
-                        runAgent()
-                    }) {
-                        HStack {
-                            Image(systemName: "play.circle.fill")
-                            Text(isAgentRunning ? "Agent Running..." : "Run Agent")
-                        }
-                        .font(.headline)
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(isAgentRunning ? dynamicSecondaryTextColor : dynamicPrimaryColor)
-                        .cornerRadius(12)
-                    }
-                    .disabled(isAgentRunning || backlogViewModel.backlogItems.isEmpty)
-                }
-                .padding(.horizontal)
-                .padding(.top)
+        SchedulingSetupView(
+            backlogViewModel: backlogViewModel,
+            schedulingViewModel: schedulingViewModel,
+            selectedDate: $selectedDate,
+            showingDatePicker: $showingDatePicker,
+            showingAddBacklogSheet: $showingAddBacklogSheet,
+            isAgentRunning: $isAgentRunning,
+            onFetchCalendar: {
+                fetchCalendarForDate()
+            },
+            onRunAgent: {
+                runAgent()
             }
-            .padding()
-        }
+        )
     }
     
     // MARK: - Chat Tab
-    
+
     private var chatTabView: some View {
-        VStack(spacing: 0) {
-            if !isAgentRunning {
-                VStack(spacing: 16) {
-                    Image(systemName: "clock.badge.questionmark")
-                        .font(.system(size: 50))
-                        .foregroundColor(dynamicSecondaryTextColor)
-                    
-                    Text("Agent Not Running")
-                        .font(.headline)
-                        .foregroundColor(dynamicTextColor)
-                    
-                    Text("Go to the Setup tab to configure your data and run the agent.")
-                        .font(.subheadline)
-                        .foregroundColor(dynamicSecondaryTextColor)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
-                    
-                    Button("Go to Setup") {
-                        selectedTab = 0
-                    }
-                    .foregroundColor(dynamicPrimaryColor)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 10) {
-                            ForEach(schedulingViewModel.messages) { message in
-                                HStack {
-                                    if message.role == .user {
-                                        Spacer()
-                                        Text(message.content)
-                                            .padding()
-                                            .background(dynamicPrimaryColor)
-                                            .cornerRadius(12)
-                                            .foregroundColor(.white)
-                                    } else {
-                                        Text(message.content)
-                                            .padding()
-                                            .background(dynamicSecondaryBackgroundColor)
-                                            .cornerRadius(12)
-                                            .foregroundColor(dynamicTextColor)
-                                        Spacer()
-                                    }
-                                }
-                            }
-                            
-                            // Display status message if available
-                            if let statusMessage = schedulingViewModel.statusMessage {
-                                HStack {
-                                    Text(statusMessage)
-                                        .italic()
-                                        .padding()
-                                        .background(dynamicSecondaryBackgroundColor)
-                                        .cornerRadius(12)
-                                        .foregroundColor(dynamicSecondaryTextColor)
-                                    Spacer()
-                                }
-                                .id("status")
-                            }
-                            
-                            // Show current proposal as a message if available
-                            if schedulingViewModel.currentProposal != nil {
-                                HStack {
-                                    ProposalMessageCard(
-                                        proposal: Binding(
-                                            get: { schedulingViewModel.currentProposal ?? ProposedSession(tasks: [], workingSessionTime: "", startTime: nil, endTime: nil, reason: nil) },
-                                            set: { schedulingViewModel.currentProposal = $0 }
-                                        ),
-                                        schedulingViewModel: schedulingViewModel,
-                                        backlogViewModel: backlogViewModel,
-                                        onAccept: { taskTitles in
-                                            // Mark tasks as processed (scheduled or skipped)
-                                            if !taskTitles.isEmpty {
-                                                for taskTitle in taskTitles {
-                                                    scheduledTasks.insert(taskTitle)
-                                                }
-                                            }
-                                            // Clear proposal and propose next session
-                                            schedulingViewModel.currentProposal = nil
-                                            proposeNextSession()
-                                        }
-                                    )
-                                    Spacer()
-                                }
-                            }
-                            
-                            // Show decline reason input if needed
-                            if schedulingViewModel.showingDeclineReasonInput {
-                                HStack {
-                                    Spacer()
-                                    VStack(alignment: .trailing, spacing: 8) {
-                                        Text("Why can't you do this session?")
-                                            .font(.subheadline)
-                                            .foregroundColor(dynamicTextColor)
-                                        
-                                        TextField("Explain why...", text: $schedulingViewModel.declineReason, axis: .vertical)
-                                            .textFieldStyle(RoundedBorderTextFieldStyle())
-                                            .lineLimit(3...6)
-                                        
-                                        HStack {
-                                            Button("Cancel") {
-                                                schedulingViewModel.showingDeclineReasonInput = false
-                                                schedulingViewModel.declineReason = ""
-                                                schedulingViewModel.currentProposal = nil
-                                            }
-                                            .foregroundColor(dynamicSecondaryTextColor)
-                                            
-                                            Button("Submit") {
-                                                let reason = schedulingViewModel.declineReason
-                                                schedulingViewModel.declineReason = ""
-                                                
-                                                // sendMessage() will handle proposing a new session automatically
-                                                schedulingViewModel.sendMessage(reason, backlogItems: backlogViewModel.backlogItems) { error in
-                                                    if let error = error {
-                                                        print("Error sending decline reason: \(error.localizedDescription)")
-                                                    }
-                                                    // Note: sendMessage() already handles proposing a new session, so no need to do it here
-                                                }
-                                            }
-                                            .foregroundColor(dynamicPrimaryColor)
-                                            .disabled(schedulingViewModel.declineReason.trimmingCharacters(in: .whitespaces).isEmpty)
-                                        }
-                                    }
-                                    .padding()
-                                    .background(dynamicSecondaryBackgroundColor)
-                                    .cornerRadius(12)
-                                }
-                            }
-                            
-                            if schedulingViewModel.isLoading {
-                                HStack {
-                                    ProgressView()
-                                        .padding()
-                                    Spacer()
-                                }
-                            }
-                        }
-                        .padding()
-                    }
-                    .onChange(of: schedulingViewModel.messages.count) { oldValue, newValue in
-                        if let last = schedulingViewModel.messages.last?.id {
-                            withAnimation {
-                                proxy.scrollTo(last, anchor: .bottom)
-                            }
-                        }
-                    }
-                    .onChange(of: schedulingViewModel.statusMessage) { oldValue, newValue in
-                        if newValue != nil {
-                            // Scroll to show status message when it appears
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                withAnimation {
-                                    proxy.scrollTo("status", anchor: .bottom)
-                                }
-                            }
-                        }
-                    }
-                    .onChange(of: schedulingViewModel.currentProposal != nil) { oldValue, hasProposal in
-                        if hasProposal {
-                            // Scroll to bottom when proposal appears
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                withAnimation {
-                                    proxy.scrollTo("proposal", anchor: .bottom)
-                                }
-                            }
-                        }
-                    }
-                }
-                
-                if !schedulingViewModel.showingDeclineReasonInput {
-                    HStack {
-                        TextField("Ask about scheduling...", text: $newMessage)
-                            .textFieldStyle(RoundedBorderTextFieldStyle())
-                        
-                        Button("Send") {
-                            sendMessage()
-                        }
-                        .foregroundColor(dynamicPrimaryColor)
-                        .disabled(newMessage.trimmingCharacters(in: .whitespaces).isEmpty || schedulingViewModel.isLoading)
-                    }
-                    .padding()
-                    .background(dynamicBackgroundColor)
-                }
+        SchedulingChatView(
+            schedulingViewModel: schedulingViewModel,
+            backlogViewModel: backlogViewModel,
+            isAgentRunning: $isAgentRunning,
+            selectedTab: $selectedTab,
+            newMessage: $newMessage,
+            onAcceptTasks: { taskTitles in
+                handleAcceptedTasks(taskTitles)
+            },
+            onRequestModificationReason: { context in
+                pendingModifications.append(context)
+                currentModificationIndex = nextPendingModificationIndex() ?? (pendingModifications.count - 1)
+                modificationReason = pendingModifications[currentModificationIndex].reason ?? ""
+                showingModificationReview = true
+                pendingAcceptedTasksAfterModification = context.tasks
+            },
+            onSendMessage: {
+                sendMessage()
+            },
+            onScrollToLastMessage: { proxy in
+                scrollToLastMessage(proxy: proxy)
+            },
+            onScrollToStatus: { proxy in
+                scrollToStatus(proxy: proxy)
+            },
+            onScrollToProposal: { proxy in
+                scrollToProposal(proxy: proxy)
+            }
+        )
+    }
+    
+    private func scrollToLastMessage(proxy: ScrollViewProxy) {
+        let lastIndex = schedulingViewModel.messages.count - 1
+        if lastIndex >= 0 {
+            withAnimation {
+                proxy.scrollTo("message_\(lastIndex)", anchor: .bottom)
+            }
+        }
+    }
+
+    private func scrollToStatus(proxy: ScrollViewProxy) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            withAnimation {
+                proxy.scrollTo("status", anchor: .bottom)
+            }
+        }
+    }
+
+    private func scrollToProposal(proxy: ScrollViewProxy) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            withAnimation {
+                proxy.scrollTo("proposal", anchor: .bottom)
             }
         }
     }
@@ -500,7 +264,7 @@ struct SmartSchedulingTestView: View {
         // Store the selected date at agent start - this will remain fixed during agent operations
         planningDate = selectedDate
         
-        // Reset chat to start fresh
+        // Reset chat to start fresh (this also clears session context)
         schedulingViewModel.resetChat()
         
         // Initialize the agent (without loading history for fresh start)
@@ -512,9 +276,21 @@ struct SmartSchedulingTestView: View {
         refreshData()
         
         // Switch to chat tab
-        selectedTab = 1
+        withAnimation(.easeInOut(duration: 0.25)) {
+            selectedTab = 1
+        }
         
         // Propose first working session using the fixed planning date
+        proposeNextSession()
+    }
+
+    private func handleAcceptedTasks(_ taskTitles: [String]) {
+        if !taskTitles.isEmpty {
+            for taskTitle in taskTitles {
+                scheduledTasks.insert(taskTitle)
+            }
+        }
+        schedulingViewModel.currentProposal = nil
         proposeNextSession()
     }
     
@@ -532,6 +308,10 @@ struct SmartSchedulingTestView: View {
             // All tasks scheduled or skipped
             isAgentRunning = false
             planningDate = nil // Clear planning date when agent stops
+            
+            // Clear session context when session ends
+            schedulingViewModel.clearSessionContext()
+            
             let completionMessage = SchedulingMessage(
                 userId: Auth.auth().currentUser?.uid ?? "",
                 role: .assistant,
@@ -539,6 +319,17 @@ struct SmartSchedulingTestView: View {
             )
             schedulingViewModel.messages.append(completionMessage)
             schedulingViewModel.currentProposal = nil
+
+            // Process modification reasons if there are pending modifications
+            if !pendingModifications.isEmpty {
+                if !showingModificationReview {
+                    processModificationReasonsBatch()
+                    currentModificationIndex = 0
+                }
+            } else {
+                // If no pending modifications, analyze decline reasons immediately
+                analyzeSessionPatterns()
+            }
             return
         }
         
@@ -550,6 +341,8 @@ struct SmartSchedulingTestView: View {
                 DispatchQueue.main.async {
                     self.isAgentRunning = false
                     self.planningDate = nil // Clear planning date on error
+                    // Clear session context on error
+                    self.schedulingViewModel.clearSessionContext()
                 }
             }
         }
@@ -576,136 +369,42 @@ struct SmartSchedulingTestView: View {
         fetchCalendarForDate()
         schedulingViewModel.fetchSchedulePreference()
     }
-}
-
-struct BacklogItemRow: View {
-    let item: UnifiedBacklogItem
-    let backlogViewModel: BacklogViewModel
     
-    var body: some View {
-        HStack {
-            // Icon to distinguish source
-            Image(systemName: backlogViewModel.isFirebaseItem(item) ? "square.and.pencil" : "checkmark.circle")
-                .foregroundColor(backlogViewModel.isFirebaseItem(item) ? dynamicPrimaryColor : dynamicSecondaryTextColor)
-            
-            VStack(alignment: .leading, spacing: 4) {
-                Text(item.title)
-                    .font(.headline)
-                    .foregroundColor(dynamicTextColor)
-                
-                Text(item.description)
-                    .font(.caption)
-                    .foregroundColor(dynamicSecondaryTextColor)
-                    .lineLimit(2)
-                
-                if backlogViewModel.isFirebaseItem(item) {
-                    Text("Backlog Item")
-                        .font(.caption2)
-                        .foregroundColor(dynamicPrimaryColor)
-                } else {
-                    Text("Current Task")
-                        .font(.caption2)
-                        .foregroundColor(dynamicSecondaryTextColor)
-                }
-            }
-            
-            Spacer()
-            
-            if backlogViewModel.isFirebaseItem(item) {
-                Button(action: {
-                    backlogViewModel.deleteBacklogItem(item) { error in
-                        if let error = error {
-                            print("Error deleting backlog item: \(error.localizedDescription)")
-                        }
-                    }
-                }) {
-                    Image(systemName: "trash")
-                        .foregroundColor(dynamicDestructiveColor)
-                }
-            }
+    private func nextPendingModificationIndex() -> Int? {
+        pendingModifications.firstIndex { !$0.isReviewed }
+    }
+
+
+    private func processModificationReasonsBatch() {
+        // Create inputs from pending modifications and clear immediately to avoid duplicates
+        let inputs = pendingModifications.map { modification in
+            ModificationReasonInput(
+                dayOfWeek: modification.dayOfWeek,
+                originalTime: modification.originalTime,
+                modifiedTime: modification.modifiedTime,
+                tasks: modification.tasks,
+                originalTasks: modification.originalTasks,
+                addedTasks: modification.addedTasks,
+                removedTasks: modification.removedTasks,
+                reason: modification.reason ?? ""
+            )
         }
-        .padding()
-        .background(dynamicBackgroundColor)
-        .cornerRadius(8)
+        
+        // Clear pending modifications before processing to prevent duplicate calls
+        pendingModifications.removeAll()
+        
+        // Process modification reasons
+        schedulingViewModel.analyzeModificationReasonsBatch(inputs)
+        
+        // After processing modifications, also analyze decline reasons
+        analyzeSessionPatterns()
+    }
+    
+    private func analyzeSessionPatterns() {
+        // Analyze decline reasons from the session
+        schedulingViewModel.analyzeDeclineReasonsBatch()
+        
+        // Note: Modification reasons are now processed separately in processModificationReasonsBatch()
+        // and cleared before this function is called, so no fallback is needed here
     }
 }
-
-struct AddBacklogItemSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    @ObservedObject var backlogViewModel: BacklogViewModel
-
-    @State private var title = ""
-    @State private var description = ""
-    @State private var priority = 0
-    @State private var estimatedDuration: Int? = nil
-    @State private var category = ""
-    @State private var tagsText = ""
-
-    private let categoryOptions = ["", "work", "personal", "health", "errands", "learning", "creative"]
-
-    var body: some View {
-        NavigationView {
-            Form {
-                Section(header: Text("Basic Info")) {
-                    TextField("Title", text: $title)
-                    TextField("Description", text: $description)
-                }
-
-                Section(header: Text("Scheduling Metadata")) {
-                    Stepper("Priority: \(priority)", value: $priority, in: 0...10)
-
-                    HStack {
-                        Text("Est. Duration")
-                        Spacer()
-                        TextField("min", value: $estimatedDuration, format: .number)
-                            .keyboardType(.numberPad)
-                            .frame(width: 60)
-                            .multilineTextAlignment(.trailing)
-                        Text("min")
-                            .foregroundColor(dynamicSecondaryTextColor)
-                    }
-
-                    Picker("Category", selection: $category) {
-                        ForEach(categoryOptions, id: \.self) { cat in
-                            Text(cat.isEmpty ? "None" : cat.capitalized).tag(cat)
-                        }
-                    }
-
-                    TextField("Tags (comma separated)", text: $tagsText)
-                        .font(.subheadline)
-                }
-            }
-            .navigationTitle("Add Backlog Item")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Save") {
-                        let tags = tagsText.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-
-                        backlogViewModel.addBacklogItem(
-                            title: title,
-                            description: description,
-                            priority: priority,
-                            estimatedDuration: estimatedDuration,
-                            category: category.isEmpty ? nil : category,
-                            tags: tags.isEmpty ? nil : tags
-                        ) { error in
-                            if let error = error {
-                                print("Error adding backlog item: \(error.localizedDescription)")
-                            } else {
-                                dismiss()
-                            }
-                        }
-                    }
-                    .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
-                }
-            }
-        }
-    }
-}
-

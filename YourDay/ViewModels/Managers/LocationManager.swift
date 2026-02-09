@@ -91,7 +91,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
 
     private func evaluateWithGemini(location: CLLocation, taskSummary: String, idleTime: Int, completion: @escaping (Bool, String?) -> Void) {
         let config = GenerationConfig(temperature: 0.7)
-        // Updated to Gemini 2.5 Flash for improved responses
+        // Updated to Gemini 2.5 Flash Lite for improved responses
         let model = GenerativeModel(name: "gemini-2.5-flash", apiKey: "AIzaSyBCi21xH2HVnaSgZebq_WWwsD-553mmVlY", generationConfig: config)
 
         let prompt = """

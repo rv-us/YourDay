@@ -907,39 +907,178 @@ class FirebaseManager: ObservableObject {
             return
         }
         
+        // Ensure userId is set in the preference (in case it's missing)
+        var preferenceToSave = preference
+        // Note: UserSchedulePreference has userId as a let property, so we need to create a new instance
+        // But since we're using setData(from:), it will encode all fields including userId
+        // However, if userId is different, we should use the one from the preference parameter
+        // For safety, we'll use setData with merge to ensure userId is always present
         let docRef = db.collection("users").document(userId).collection("schedulePreferences").document("preferences")
+        
         do {
-            try docRef.setData(from: preference) { error in
+            // Encode the preference to a dictionary
+            let encoder = Firestore.Encoder()
+            var preferenceDict = try encoder.encode(preference)
+            
+            // Explicitly ensure userId is set
+            preferenceDict["userId"] = userId
+            
+            print("🧠 [AGENT MEMORY DEBUG] 💾 Saving schedule preference with userId: \(userId)")
+            
+            // Use setData with merge: false to replace the document, ensuring userId is included
+            docRef.setData(preferenceDict, merge: false) { error in
+                if let error = error {
+                    print("🧠 [AGENT MEMORY DEBUG] ❌ Error saving schedule preference: \(error.localizedDescription)")
+                } else {
+                    print("🧠 [AGENT MEMORY DEBUG] ✅ Successfully saved schedule preference with userId")
+                }
                 completion(error)
             }
         } catch {
+            print("🧠 [AGENT MEMORY DEBUG] ❌ Error encoding schedule preference: \(error.localizedDescription)")
             completion(error)
         }
     }
     
     func fetchSchedulePreference(completion: @escaping (UserSchedulePreference?, Error?) -> Void) {
         guard let userId = userId else {
+            print("🧠 [AGENT MEMORY DEBUG] ❌ User not authenticated - cannot fetch schedule preference")
             completion(nil, NSError(domain: "FirebaseManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
             return
         }
         
+        print("🧠 [AGENT MEMORY DEBUG] 🔍 Fetching agent memories from Firebase for userId: \(userId)")
+        print("🧠 [AGENT MEMORY DEBUG] 📍 Path: users/\(userId)/schedulePreferences/preferences")
+        
         db.collection("users").document(userId).collection("schedulePreferences").document("preferences")
             .getDocument { document, error in
                 if let error = error {
+                    print("🧠 [AGENT MEMORY DEBUG] ❌ Error fetching schedule preference: \(error.localizedDescription)")
                     completion(nil, error)
                     return
                 }
                 
                 if let document = document, document.exists {
+                    print("🧠 [AGENT MEMORY DEBUG] ✅ Document exists - attempting to decode UserSchedulePreference")
+                    
+                    // Log raw document data for debugging
+                    guard let data = document.data() else {
+                        print("🧠 [AGENT MEMORY DEBUG] ⚠️ Document exists but has no data() - creating default preference")
+                        let defaultPreference = UserSchedulePreference(userId: userId)
+                        completion(defaultPreference, nil)
+                        return
+                    }
+                    
+                    print("🧠 [AGENT MEMORY DEBUG] 📄 Raw document data keys: \(data.keys.sorted())")
+                    print("🧠 [AGENT MEMORY DEBUG] 📄 Document data count: \(data.count) fields")
+                    
+                    // Check for required userId field
+                    let hasUserId = data["userId"] != nil
+                    if hasUserId, let docUserId = data["userId"] as? String {
+                        print("🧠 [AGENT MEMORY DEBUG] ✅ userId found in document: \(docUserId)")
+                    } else {
+                        print("🧠 [AGENT MEMORY DEBUG] ⚠️ userId MISSING in document data - will inject during decode")
+                    }
+                    
+                    // Log some key fields for debugging
+                    if let dayMemories = data["dayOfWeekMemories"] {
+                        print("🧠 [AGENT MEMORY DEBUG] 📄 dayOfWeekMemories type: \(type(of: dayMemories))")
+                    }
+                    if let constraints = data["scheduleConstraints"] {
+                        print("🧠 [AGENT MEMORY DEBUG] 📄 scheduleConstraints type: \(type(of: constraints))")
+                    }
+                    if let stats = data["acceptanceStats"] {
+                        print("🧠 [AGENT MEMORY DEBUG] 📄 acceptanceStats type: \(type(of: stats))")
+                    }
+                    
                     do {
-                        let preference = try document.data(as: UserSchedulePreference.self)
+                        var preference: UserSchedulePreference
+                        
+                        // Try to decode normally first
+                        if hasUserId {
+                            preference = try document.data(as: UserSchedulePreference.self)
+                        } else {
+                            // If userId is missing, manually decode fields and construct the object
+                            print("🧠 [AGENT MEMORY DEBUG] 🔧 Manually decoding fields due to missing userId")
+                            
+                            // Helper function to decode nested Firestore data
+                            func decodeField<T: Decodable>(_ field: Any?, as type: T.Type) -> T? {
+                                guard let field = field else { return nil }
+                                // Convert to JSON data for decoding
+                                guard let jsonData = try? JSONSerialization.data(withJSONObject: field) else { return nil }
+                                return try? JSONDecoder().decode(type, from: jsonData)
+                            }
+                            
+                            // Decode nested structures
+                            let dayOfWeekMemories: [String: [String]]? = decodeField(data["dayOfWeekMemories"], as: [String: [String]].self)
+                            let learnedPatterns: [String: String]? = decodeField(data["learnedPatterns"], as: [String: String].self)
+                            let scheduleConstraints: [ScheduleConstraint] = decodeField(data["scheduleConstraints"], as: [ScheduleConstraint].self) ?? []
+                            let recurringCommitments: [RecurringCommitment] = decodeField(data["recurringCommitments"], as: [RecurringCommitment].self) ?? []
+                            let dayContexts: [String: DayContext]? = decodeField(data["dayContexts"], as: [String: DayContext].self)
+                            let acceptanceStats: AcceptanceStats? = decodeField(data["acceptanceStats"], as: AcceptanceStats.self)
+                            
+                            // Construct preference with injected userId
+                            preference = UserSchedulePreference(
+                                id: document.documentID,
+                                userId: userId,
+                                preferredWakeTime: data["preferredWakeTime"] as? String,
+                                lunchTime: data["lunchTime"] as? String,
+                                preferredWorkTimes: data["preferredWorkTimes"] as? [String],
+                                blockedTimes: data["blockedTimes"] as? [String],
+                                learnedPatterns: learnedPatterns,
+                                dayOfWeekMemories: dayOfWeekMemories,
+                                scheduleConstraints: scheduleConstraints,
+                                recurringCommitments: recurringCommitments,
+                                dayContexts: dayContexts,
+                                acceptanceStats: acceptanceStats
+                            )
+                            
+                            print("🧠 [AGENT MEMORY DEBUG] ✅ Successfully decoded schedule preference with injected userId")
+                            
+                            // Update the document in Firebase to include userId for future fetches
+                            print("🧠 [AGENT MEMORY DEBUG] 💾 Updating document to include userId for future fetches")
+                            let docRef = self.db.collection("users").document(userId).collection("schedulePreferences").document("preferences")
+                            docRef.updateData(["userId": userId]) { error in
+                                if let error = error {
+                                    print("🧠 [AGENT MEMORY DEBUG] ⚠️ Failed to update document with userId: \(error.localizedDescription)")
+                                } else {
+                                    print("🧠 [AGENT MEMORY DEBUG] ✅ Successfully updated document with userId")
+                                }
+                            }
+                        }
+                        
+                        print("🧠 [AGENT MEMORY DEBUG] ✅ Successfully decoded schedule preference")
+                        print("🧠 [AGENT MEMORY DEBUG] 📊 Preference details:")
+                        print("   - Day of week memories: \(preference.dayOfWeekMemories?.count ?? 0) days")
+                        print("   - Schedule constraints: \(preference.scheduleConstraints.count)")
+                        print("   - Learned patterns: \(preference.learnedPatterns?.count ?? 0)")
+                        if let stats = preference.acceptanceStats {
+                            print("   - Acceptance stats: \(stats.totalAccepted) accepted, \(stats.totalDeclined) declined, \(stats.totalModified) modified")
+                        }
                         completion(preference, nil)
                     } catch {
+                        print("🧠 [AGENT MEMORY DEBUG] ⚠️ Failed to decode schedule preference: \(error.localizedDescription)")
+                        if let decodingError = error as? DecodingError {
+                            switch decodingError {
+                            case .keyNotFound(let key, let context):
+                                print("🧠 [AGENT MEMORY DEBUG] 🔑 Missing key: \(key.stringValue) - \(context.debugDescription)")
+                            case .typeMismatch(let type, let context):
+                                print("🧠 [AGENT MEMORY DEBUG] 🔄 Type mismatch: expected \(type), found \(context.debugDescription)")
+                            case .valueNotFound(let type, let context):
+                                print("🧠 [AGENT MEMORY DEBUG] 📭 Value not found: \(type) - \(context.debugDescription)")
+                            case .dataCorrupted(let context):
+                                print("🧠 [AGENT MEMORY DEBUG] 💥 Data corrupted: \(context.debugDescription)")
+                            @unknown default:
+                                print("🧠 [AGENT MEMORY DEBUG] ❓ Unknown decoding error: \(decodingError)")
+                            }
+                        }
+                        print("🧠 [AGENT MEMORY DEBUG] 🔄 Creating default preference due to decode failure")
                         // Create default preference if decoding fails
                         let defaultPreference = UserSchedulePreference(userId: userId)
                         completion(defaultPreference, nil)
                     }
                 } else {
+                    print("🧠 [AGENT MEMORY DEBUG] ⚠️ Document does not exist - creating default preference")
                     // Create default preference if doesn't exist
                     let defaultPreference = UserSchedulePreference(userId: userId)
                     completion(defaultPreference, nil)
@@ -953,10 +1092,21 @@ class FirebaseManager: ObservableObject {
             return
         }
         
+        // Ensure userId is always included in updates
+        var updatesWithUserId = updates
+        updatesWithUserId["userId"] = userId
+        
         let docRef = db.collection("users").document(userId).collection("schedulePreferences").document("preferences")
         
+        print("🧠 [AGENT MEMORY DEBUG] 💾 Updating schedule preference with userId: \(userId)")
+        
         // Use setData with merge: true to create document if it doesn't exist, or update if it does
-        docRef.setData(updates, merge: true) { error in
+        docRef.setData(updatesWithUserId, merge: true) { error in
+            if let error = error {
+                print("🧠 [AGENT MEMORY DEBUG] ❌ Error updating schedule preference: \(error.localizedDescription)")
+            } else {
+                print("🧠 [AGENT MEMORY DEBUG] ✅ Successfully updated schedule preference with userId")
+            }
             completion(error)
         }
     }
@@ -1222,5 +1372,199 @@ class FirebaseManager: ObservableObject {
         docRef.setData(["acceptanceStats": statsDict], merge: true) { error in
             completion(error)
         }
+    }
+    
+    // MARK: - Scheduled Events Tracking
+    
+    func saveScheduledEvent(eventId: String, taskTitle: String, tasks: [String], startTime: Date, endTime: Date, completion: @escaping (Error?) -> Void) {
+        guard let userId = userId else {
+            completion(NSError(domain: "FirebaseManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+        
+        let docRef = db.collection("users").document(userId).collection("scheduledEvents").document(eventId)
+        let data: [String: Any] = [
+            "eventId": eventId,
+            "taskTitle": taskTitle,
+            "tasks": tasks,
+            "startTime": Timestamp(date: startTime),
+            "endTime": Timestamp(date: endTime),
+            "createdAt": FieldValue.serverTimestamp()
+        ]
+        
+        docRef.setData(data, merge: true) { error in
+            completion(error)
+        }
+    }
+    
+    func fetchScheduledEvent(eventId: String, completion: @escaping ([String: Any]?, Error?) -> Void) {
+        guard let userId = userId else {
+            completion(nil, NSError(domain: "FirebaseManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+        
+        db.collection("users").document(userId).collection("scheduledEvents").document(eventId)
+            .getDocument { document, error in
+                if let error = error {
+                    completion(nil, error)
+                    return
+                }
+                
+                if let document = document, document.exists {
+                    completion(document.data(), nil)
+                } else {
+                    completion(nil, nil)
+                }
+            }
+    }
+    
+    func fetchScheduledEventIds(completion: @escaping ([String]?, Error?) -> Void) {
+        guard let userId = userId else {
+            completion(nil, NSError(domain: "FirebaseManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+        
+        db.collection("users").document(userId).collection("scheduledEvents")
+            .getDocuments { snapshot, error in
+                if let error = error {
+                    completion(nil, error)
+                    return
+                }
+                
+                let eventIds = snapshot?.documents.map { $0.documentID } ?? []
+                completion(eventIds, nil)
+            }
+    }
+    
+    func fetchScheduledEvents(completion: @escaping ([[String: Any]]?, Error?) -> Void) {
+        guard let userId = userId else {
+            completion(nil, NSError(domain: "FirebaseManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+        
+        db.collection("users").document(userId).collection("scheduledEvents")
+            .getDocuments { snapshot, error in
+                if let error = error {
+                    completion(nil, error)
+                    return
+                }
+                
+                let events = snapshot?.documents.compactMap { $0.data() } ?? []
+                completion(events, nil)
+            }
+    }
+    
+    // MARK: - Journal Entries
+    
+    func saveJournalEntry(_ entry: JournalEntry, completion: @escaping (Error?) -> Void) {
+        guard let userId = userId else {
+            completion(NSError(domain: "FirebaseManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+        
+        let docRef = db.collection("users").document(userId).collection("journalEntries").document()
+        do {
+            try docRef.setData(from: entry) { error in
+                completion(error)
+            }
+        } catch {
+            completion(error)
+        }
+    }
+    
+    func fetchJournalEntries(completion: @escaping ([JournalEntry]?, Error?) -> Void) {
+        guard let userId = userId else {
+            completion(nil, NSError(domain: "FirebaseManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+        
+        db.collection("users").document(userId).collection("journalEntries")
+            .order(by: "timestamp", descending: true)
+            .getDocuments { snapshot, error in
+                if let error = error {
+                    completion(nil, error)
+                    return
+                }
+                
+                let entries = snapshot?.documents.compactMap { doc -> JournalEntry? in
+                    try? doc.data(as: JournalEntry.self)
+                } ?? []
+                
+                completion(entries, nil)
+            }
+    }
+    
+    func fetchJournalEntries(for date: Date, completion: @escaping ([JournalEntry]?, Error?) -> Void) {
+        guard let userId = userId else {
+            completion(nil, NSError(domain: "FirebaseManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+        
+        let calendar = Calendar.current
+        let startOfDay = calendar.startOfDay(for: date)
+        let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
+        
+        db.collection("users").document(userId).collection("journalEntries")
+            .whereField("scheduledStartTime", isGreaterThanOrEqualTo: Timestamp(date: startOfDay))
+            .whereField("scheduledStartTime", isLessThan: Timestamp(date: endOfDay))
+            .order(by: "scheduledStartTime", descending: false)
+            .getDocuments { snapshot, error in
+                if let error = error {
+                    completion(nil, error)
+                    return
+                }
+                
+                let entries = snapshot?.documents.compactMap { doc -> JournalEntry? in
+                    try? doc.data(as: JournalEntry.self)
+                } ?? []
+                
+                completion(entries, nil)
+            }
+    }
+    
+    func updateJournalEntry(_ entry: JournalEntry, completion: @escaping (Error?) -> Void) {
+        guard let userId = userId, let entryId = entry.id else {
+            completion(NSError(domain: "FirebaseManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated or entry ID missing"]))
+            return
+        }
+        
+        let docRef = db.collection("users").document(userId).collection("journalEntries").document(entryId)
+        do {
+            try docRef.setData(from: entry, merge: true) { error in
+                completion(error)
+            }
+        } catch {
+            completion(error)
+        }
+    }
+    
+    func deleteJournalEntry(_ entryId: String, completion: @escaping (Error?) -> Void) {
+        guard let userId = userId else {
+            completion(NSError(domain: "FirebaseManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+        
+        db.collection("users").document(userId).collection("journalEntries").document(entryId).delete(completion: completion)
+    }
+    
+    func checkJournalEntryExists(eventId: String, completion: @escaping (Bool) -> Void) {
+        guard let userId = userId else {
+            completion(false)
+            return
+        }
+        
+        db.collection("users").document(userId).collection("journalEntries")
+            .whereField("eventId", isEqualTo: eventId)
+            .limit(to: 1)
+            .getDocuments { snapshot, error in
+                if let error = error {
+                    print("Error checking journal entry: \(error.localizedDescription)")
+                    completion(false)
+                    return
+                }
+                
+                let exists = snapshot?.documents.isEmpty == false
+                completion(exists)
+            }
     }
 }

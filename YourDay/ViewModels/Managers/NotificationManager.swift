@@ -198,6 +198,44 @@ class NotificationManager: ObservableObject {
         guard total > 0 else { return 0.0 }
         return Double(completed) / Double(total)
     }
+    
+    // MARK: - Journal Prompt Notifications
+    
+    func scheduleJournalPromptNotification(eventId: String, taskTitle: String, scheduledEndTime: Date) {
+        // Check if notifications are enabled
+        let notificationsEnabled = UserDefaults.standard.bool(forKey: "notificationsEnabled")
+        guard notificationsEnabled else { return }
+        
+        let content = UNMutableNotificationContent()
+        content.title = "Time to Journal! 📔"
+        content.body = "Your task '\(taskTitle)' just ended. Reflect on how it went!"
+        content.sound = .default
+        content.userInfo = [
+            "type": "journalPrompt",
+            "eventId": eventId
+        ]
+        
+        // Use nil trigger for immediate notification
+        let request = UNNotificationRequest(
+            identifier: "journalPrompt_\(eventId)",
+            content: content,
+            trigger: nil
+        )
+        
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("Error scheduling journal prompt notification: \(error.localizedDescription)")
+            } else {
+                print("✅ Scheduled journal prompt notification for event: \(eventId)")
+            }
+        }
+    }
+    
+    func cancelJournalPromptNotification(eventId: String) {
+        let identifier = "journalPrompt_\(eventId)"
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [identifier])
+        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [identifier])
+    }
 }
 
 // MARK: - Notification Types
