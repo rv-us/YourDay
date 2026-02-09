@@ -17,7 +17,7 @@ struct ContentView: View {
 
     @StateObject private var loginViewModel = LoginViewModel()
     @StateObject private var firebaseManager = FirebaseManager.shared
-
+    @StateObject private var locationManager = LocationManager()
 
     @State private var showSignOutErrorAlert = false
     @State private var signOutErrorMessage = ""
@@ -42,129 +42,15 @@ struct ContentView: View {
     @StateObject private var todoViewModel = TodoViewModel()
     @ObservedObject private var journalViewModel = JournalViewModel.shared
 
+    private enum Tab: String, CaseIterable {
+        case tasks, garden, dashboard, scheduling, settings
+    }
+    @State private var selectedTab: Tab = .dashboard
+
     var body: some View {
         Group {
             if loginViewModel.isAuthenticated || loginViewModel.isGuest {
-                TabView {
-                                        Todoview()
-                        .tabItem { Label("Tasks", systemImage: "checkmark.circle") }
-                        .environmentObject(loginViewModel)
-                        .environmentObject(firebaseManager)
-                        
-                    GardenView()
-                        .tabItem { Label("Garden", systemImage: "leaf.fill") }
-                        .environmentObject(loginViewModel)
-                        .environmentObject(firebaseManager)
-
-                    AddNotesView()
-                        .tabItem { Label("Notes", systemImage: "square.and.pencil") }
-                        .environmentObject(loginViewModel)
-
-                    SocialView()
-                        .tabItem { Label("Social", systemImage: "person.2.fill") }
-                        .environmentObject(loginViewModel)
-                        .environmentObject(firebaseManager)
-
-                    SmartSchedulingView()
-                        .tabItem { Label("Scheduling", systemImage: "calendar.badge.clock") }
-                        .environmentObject(firebaseManager)
-
-                    MoreView(
-                        todoViewModel: todoViewModel,
-                        loginViewModel: loginViewModel,
-                        onSignOutRequested: {
-                            requestSignOut()
-                        }
-                    )
-                    .tabItem { Label("More", systemImage: "ellipsis.circle") }
-                    .environmentObject(firebaseManager)
-                }
-                .tint(.black)
-                .task {
-                    await processNewDayLogicIfNeeded()
-                }
-                .sheet(isPresented: $showLastDayView, onDismiss: {
-                    if newDayEvaluationTriggeredLastDayView {
-                        newDayEvaluationTriggeredLastDayView = false
-                        let tasksThatNeedReview = allTodoItems.filter { todoItem in
-                             !todoItem.isDone || todoItem.subtasks.contains(where: { !$0.isDone })
-                         }
-                        if !tasksThatNeedReview.isEmpty {
-                            isInDailyFlow = true
-                            self.showMigrateTasksView = true
-                        }
-                    }
-                }) {
-                    NavigationView {
-                        LastDayView(isModal: true)
-                            .toolbar {
-                                ToolbarItem(placement: .cancellationAction) {
-                                    Button("Close") { showLastDayView = false }
-                                }
-                            }
-                    }
-                    .environment(\.modelContext, modelContext)
-                }
-                .sheet(isPresented: $showMigrateTasksView, onDismiss: {
-                    // After migration, show daily planning note if we're in the daily flow
-                    if isInDailyFlow {
-                        showDailyPlanningNote = true
-                    }
-                }) {
-                    NavigationView {
-                        MigrateTasksView()
-                            .environment(\.modelContext, modelContext)
-                            .environmentObject(firebaseManager)
-                    }
-                }
-                .sheet(isPresented: $showDailyPlanningNote, onDismiss: {
-                    // After planning note, show scheduling view
-                    if isInDailyFlow {
-                        schedulingDate = Calendar.current.startOfDay(for: Date())
-                        schedulingAutoStart = true
-                        showSchedulingView = true
-                    }
-                }) {
-                    DailyPlanningNoteView(isPresented: $showDailyPlanningNote) {
-                        // Completion handler - just dismiss, onDismiss will handle the next step
-                        // The view will set isPresented = false itself
-                    }
-                    .environment(\.modelContext, modelContext)
-                }
-                .sheet(isPresented: $showSchedulingView, onDismiss: {
-                    // Reset daily flow flags when scheduling view dismisses
-                    isInDailyFlow = false
-                    schedulingAutoStart = false
-                }) {
-                    SmartSchedulingView(initialDate: schedulingDate, autoStart: schedulingAutoStart)
-                        .environmentObject(firebaseManager)
-                }
-                .alert("Plant Care Notice", isPresented: $showWitheringAlert) {
-                    Button("OK") {}
-                } message: {
-                    Text(witheringAlertMessage)
-                }
-                .sheet(isPresented: $journalViewModel.showingJournalPrompt) {
-                    if let pendingEvent = journalViewModel.pendingJournalPrompt {
-                        JournalCompletionFlowView(journalViewModel: journalViewModel, pendingEvent: pendingEvent)
-                            .onDisappear {
-                                // Trigger AI analysis when journal entry is saved
-                                // Note: This requires SchedulingAssistantViewModel, which is only available in SmartSchedulingView
-                                // For now, we'll trigger it from there if needed
-                            }
-                    }
-                }
-                .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ShowJournalPrompt"))) { notification in
-                    // Handle notification tap to show journal prompt
-                    if let eventId = notification.userInfo?["eventId"] as? String {
-                        journalViewModel.showPromptForEvent(eventId: eventId)
-                    }
-                }
-                .onAppear {
-                    // Set journal view model in notification delegate
-                    JournalNotificationDelegate.shared.setJournalViewModel(journalViewModel)
-                }
-
+                authenticatedView
             } else {
                 LoginView(viewModel: loginViewModel)
             }
@@ -209,6 +95,139 @@ struct ContentView: View {
         } message: {
             Text(signOutErrorMessage)
         }
+    }
+
+    private var authenticatedView: some View {
+        mainTabView
+            .tint(dynamicSecondaryColor)
+            .task {
+                await processNewDayLogicIfNeeded()
+            }
+            .sheet(isPresented: $showLastDayView, onDismiss: {
+                if newDayEvaluationTriggeredLastDayView {
+                    newDayEvaluationTriggeredLastDayView = false
+                    let tasksThatNeedReview = allTodoItems.filter { todoItem in
+                        !todoItem.isDone || todoItem.subtasks.contains(where: { !$0.isDone })
+                    }
+                    if !tasksThatNeedReview.isEmpty {
+                        isInDailyFlow = true
+                        self.showMigrateTasksView = true
+                    }
+                }
+            }) {
+                NavigationView {
+                    LastDayView(isModal: true)
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button("Close") { showLastDayView = false }
+                            }
+                        }
+                }
+                .environment(\.modelContext, modelContext)
+            }
+            .sheet(isPresented: $showMigrateTasksView, onDismiss: {
+                if isInDailyFlow {
+                    showDailyPlanningNote = true
+                }
+            }) {
+                NavigationView {
+                    MigrateTasksView()
+                        .environment(\.modelContext, modelContext)
+                        .environmentObject(firebaseManager)
+                }
+            }
+            .sheet(isPresented: $showDailyPlanningNote, onDismiss: {
+                if isInDailyFlow {
+                    schedulingDate = Calendar.current.startOfDay(for: Date())
+                    schedulingAutoStart = true
+                    showSchedulingView = true
+                }
+            }) {
+                DailyPlanningNoteView(isPresented: $showDailyPlanningNote) { }
+                    .environment(\.modelContext, modelContext)
+            }
+            .sheet(isPresented: $showSchedulingView, onDismiss: {
+                isInDailyFlow = false
+                schedulingAutoStart = false
+            }) {
+                SmartSchedulingView(initialDate: schedulingDate, autoStart: schedulingAutoStart)
+                    .environmentObject(firebaseManager)
+            }
+            .alert("Plant Care Notice", isPresented: $showWitheringAlert) {
+                Button("OK") {}
+            } message: {
+                Text(witheringAlertMessage)
+            }
+            .sheet(isPresented: $journalViewModel.showingJournalPrompt) {
+                if let pendingEvent = journalViewModel.pendingJournalPrompt {
+                    JournalCompletionFlowView(journalViewModel: journalViewModel, pendingEvent: pendingEvent)
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ShowJournalPrompt"))) { notification in
+                if let eventId = notification.userInfo?["eventId"] as? String {
+                    journalViewModel.showPromptForEvent(eventId: eventId)
+                }
+            }
+            .onAppear {
+                JournalNotificationDelegate.shared.setJournalViewModel(journalViewModel)
+            }
+    }
+
+    private var mainTabView: some View {
+        TabView(selection: $selectedTab) {
+            tasksTab
+                .tag(Tab.tasks)
+            gardenTab
+                .tag(Tab.garden)
+            dashboardTab
+                .tag(Tab.dashboard)
+            schedulingTab
+                .tag(Tab.scheduling)
+            moreTab
+                .tag(Tab.settings)
+        }
+    }
+
+    @ViewBuilder
+    private var tasksTab: some View {
+        Todoview()
+            .tabItem { Label("Tasks", systemImage: "checkmark.circle") }
+            .environmentObject(loginViewModel)
+            .environmentObject(firebaseManager)
+    }
+
+    @ViewBuilder
+    private var gardenTab: some View {
+        GardenView()
+            .tabItem { Label("Garden", systemImage: "leaf.fill") }
+            .environmentObject(loginViewModel)
+            .environmentObject(firebaseManager)
+    }
+
+    @ViewBuilder
+    private var dashboardTab: some View {
+        DashboardView()
+            .tabItem { Label("Dashboard", systemImage: "square.grid.2x2") }
+            .environmentObject(loginViewModel)
+            .environmentObject(firebaseManager)
+    }
+
+    @ViewBuilder
+    private var schedulingTab: some View {
+        SmartSchedulingView()
+            .tabItem { Label("Scheduling", systemImage: "calendar.badge.clock") }
+            .environmentObject(firebaseManager)
+    }
+
+    @ViewBuilder
+    private var moreTab: some View {
+        NotificationSettingsView(
+            todoViewModel: todoViewModel,
+            loginViewModel: loginViewModel,
+            onSignOutRequested: { requestSignOut() }
+        )
+        .tabItem { Label("Settings", systemImage: "ellipsis.circle") }
+        .environmentObject(locationManager)
     }
 
     private func requestSignOut() {

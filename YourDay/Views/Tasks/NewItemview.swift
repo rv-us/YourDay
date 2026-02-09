@@ -30,11 +30,39 @@ struct NewItemview: View {
                     .padding(.top, 5)
                 ) {
                     VStack(alignment: .leading, spacing: 12) {
-                        Picker("Add To", selection: $viewModel.origin) {
-                            Text("Today").tag(TaskOrigin.today)
-                            Text("Master List").tag(TaskOrigin.master)
+                        HStack(spacing: 0) {
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.15)) {
+                                    viewModel.origin = .today
+                                }
+                            } label: {
+                                Text("Today")
+                                    .fontWeight(.semibold)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 10)
+                                    .foregroundColor(viewModel.origin == .today ? .white : .black.opacity(0.65))
+                                    .background(viewModel.origin == .today ? dynamicPrimaryColor : Color.clear)
+                                    .clipShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.15)) {
+                                    viewModel.origin = .master
+                                }
+                            } label: {
+                                Text("Master List")
+                                    .fontWeight(.semibold)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 10)
+                                    .foregroundColor(viewModel.origin == .master ? .white : .black.opacity(0.65))
+                                    .background(viewModel.origin == .master ? dynamicPrimaryColor : Color.clear)
+                                    .clipShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .pickerStyle(SegmentedPickerStyle())
+                        .padding(4)
+                        .background(Capsule().fill(Color.black.opacity(0.06)))
                         .padding(.bottom, 4)
 
                         Text("Title")

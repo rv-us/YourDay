@@ -25,146 +25,203 @@ struct AddNotesView: View {
 
     var body: some View {
         NavigationView {
-            VStack {
-                List(selection: isSelecting ? $selectedNotes : .constant([])) {
-                    ForEach(notes) { note in
-                        if isSelecting {
-                            VStack(alignment: .leading, spacing: 5) {
-                                Text(note.content.isEmpty ? "New Note" : note.content)
-                                    .lineLimit(1)
-                                    .font(.body)
-                                    .foregroundColor(dynamicTextColor)
-                                Text(note.createdAt, style: .date)
-                                    .font(.caption)
-                                    .foregroundColor(dynamicSecondaryTextColor)
-                            }
-                            .padding(.vertical, 4)
-                            .tag(note)
-                            .listRowBackground(selectedNotes.contains(note) ? dynamicPrimaryColor.opacity(0.3) : dynamicSecondaryBackgroundColor)
-                        } else {
-                            NavigationLink(destination: NoteDetailView(note: note)) {
-                                VStack(alignment: .leading, spacing: 5) {
-                                    Text(note.content.isEmpty ? "New Note" : note.content)
-                                        .lineLimit(1)
-                                        .font(.headline)
-                                        .foregroundColor(dynamicTextColor)
-                                    Text(note.createdAt, style: .date)
-                                        .font(.caption)
-                                        .foregroundColor(dynamicSecondaryTextColor)
-                                }
-                                .padding(.vertical, 4)
-                            }
-                            .listRowBackground(dynamicSecondaryBackgroundColor)
-                        }
-                    }
-                    .onDelete { indexSet in
-                        for index in indexSet {
-                            context.delete(notes[index])
-                        }
+            notesMainContent
+                .padding(.top, 20)
+                .background(dynamicBackgroundColor.edgesIgnoringSafeArea(.all))
+                .navigationTitle("")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbarBackground(dynamicSecondaryBackgroundColor, for: .navigationBar)
+                .toolbarBackground(.visible, for: .navigationBar)
+                .toolbar { notesToolbarContent }
+                .onChange(of: selectedNotes) { _, newSelection in
+                    if currentNotesTutorialStep == .selectNote && !newSelection.isEmpty {
+                        currentNotesTutorialStep = .generateTasks
                     }
                 }
-                .listStyle(.plain)
-                .background(dynamicBackgroundColor)
-
-                if isSelecting {
-                    Picker("Assign Tasks To", selection: $generatedTaskOrigin) {
-                        Text("Today").tag(TaskOrigin.today)
-                        Text("Master List").tag(TaskOrigin.master)
-                    }
-                    .pickerStyle(SegmentedPickerStyle())
-                    .padding(.horizontal)
-                    .padding(.bottom, 8)
-
-                    Button(action: generateTasksFromSelectedNotes) {
-                        HStack {
-                            if isGenerating {
-                                ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                    .scaleEffect(0.8)
-                                Text("Generating...")
-                            } else {
-                                Text("Generate Tasks")
-                            }
+                .sheet(isPresented: $showingNewNoteView) {
+                    NewNoteView(
+                        isPresented: $showingNewNoteView,
+                        onNoteCreated: handleNoteCreated
+                    )
+                }
+                .sheet(isPresented: $showingConfirmGeneratedTasks) {
+                    ConfirmGeneratedTasksView(tasks: generatedTasks) { selectedTasks in
+                        for task in selectedTasks {
+                            context.insert(task)
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background((selectedNotes.isEmpty || isGenerating) ? dynamicSecondaryTextColor.opacity(0.5) : dynamicPrimaryColor)
-                        .foregroundColor(.white)
-                        .cornerRadius(10)
-                        .padding(.horizontal)
+                        generatedTasks = []
+                        showingConfirmGeneratedTasks = false
                     }
-                    .disabled(selectedNotes.isEmpty || isGenerating)
+                }
+                .onAppear {
+                    if !hasCompletedNotesTutorial {
+                        showNotesTutorial = true
+                    }
+                }
+                .overlay(notesTutorialOverlay)
+        }
+    }
+
+    @ViewBuilder
+    private var notesMainContent: some View {
+        VStack {
+            notesList
+            if isSelecting {
+                assignTasksPickerSection
+                generateTasksButton
+            }
+        }
+    }
+
+    private var notesList: some View {
+        List(selection: isSelecting ? $selectedNotes : .constant([])) {
+            ForEach(notes) { note in
+                noteRow(note: note)
+            }
+            .onDelete { indexSet in
+                for index in indexSet {
+                    context.delete(notes[index])
                 }
             }
-            .padding(.top, 20)
-            .background(dynamicBackgroundColor.edgesIgnoringSafeArea(.all))
-            .navigationTitle("")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(dynamicSecondaryBackgroundColor, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button {
-                        isSelecting.toggle()
-                        selectedNotes.removeAll()
+        }
+        .listStyle(.plain)
+        .background(dynamicBackgroundColor)
+    }
 
-                        if currentNotesTutorialStep == .selectNote {
-                            showNotesTutorial = false
-                        }
-                    } label: {
-                        Text(isSelecting ? "Cancel" : "Select Notes")
-                            .foregroundColor(dynamicPrimaryColor)
-                    }
-                }
-                ToolbarItem(placement: .principal) {
-                    Text("Notes")
-                        .fontWeight(.bold)
+    @ViewBuilder
+    private func noteRow(note: NoteItem) -> some View {
+        if isSelecting {
+            VStack(alignment: .leading, spacing: 5) {
+                Text(note.content.isEmpty ? "New Note" : note.content)
+                    .lineLimit(1)
+                    .font(.body)
+                    .foregroundColor(dynamicTextColor)
+                Text(note.createdAt, style: .date)
+                    .font(.caption)
+                    .foregroundColor(dynamicSecondaryTextColor)
+            }
+            .padding(.vertical, 4)
+            .tag(note)
+            .listRowBackground(selectedNotes.contains(note) ? dynamicPrimaryColor.opacity(0.3) : dynamicSecondaryBackgroundColor)
+        } else {
+            NavigationLink(destination: NoteDetailView(note: note)) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(note.content.isEmpty ? "New Note" : note.content)
+                        .lineLimit(1)
+                        .font(.headline)
                         .foregroundColor(dynamicTextColor)
+                    Text(note.createdAt, style: .date)
+                        .font(.caption)
+                        .foregroundColor(dynamicSecondaryTextColor)
                 }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        showingNewNoteView = true
-                    } label: {
-                        Image(systemName: "square.and.pencil")
-                            .foregroundColor(dynamicPrimaryColor)
+                .padding(.vertical, 4)
+            }
+            .listRowBackground(dynamicSecondaryBackgroundColor)
+        }
+    }
+
+    private var assignTasksPickerSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Assign Tasks To")
+                .font(.subheadline)
+                .fontWeight(.medium)
+                .foregroundColor(dynamicSecondaryTextColor)
+            HStack(spacing: 0) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        generatedTaskOrigin = .today
                     }
+                } label: {
+                    Text("Today")
+                        .fontWeight(.semibold)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .foregroundColor(generatedTaskOrigin == .today ? .white : .black.opacity(0.65))
+                        .background(generatedTaskOrigin == .today ? dynamicPrimaryColor : Color.clear)
+                        .clipShape(Capsule())
                 }
-            }
-            .onChange(of: selectedNotes) { oldValue, newSelection in
-                if currentNotesTutorialStep == .selectNote && !newSelection.isEmpty {
-                    currentNotesTutorialStep = .generateTasks
-                }
-            }
-            .sheet(isPresented: $showingNewNoteView) {
-                NewNoteView(
-                    isPresented: $showingNewNoteView,
-                    onNoteCreated: handleNoteCreated
-                )
-            }
-            .sheet(isPresented: $showingConfirmGeneratedTasks) {
-                ConfirmGeneratedTasksView(tasks: generatedTasks) { selectedTasks in
-                    for task in selectedTasks {
-                        context.insert(task)
+                .buttonStyle(.plain)
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        generatedTaskOrigin = .master
                     }
-                    generatedTasks = []
-                    showingConfirmGeneratedTasks = false
+                } label: {
+                    Text("Master List")
+                        .fontWeight(.semibold)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .foregroundColor(generatedTaskOrigin == .master ? .white : .black.opacity(0.65))
+                        .background(generatedTaskOrigin == .master ? dynamicPrimaryColor : Color.clear)
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(4)
+            .background(Capsule().fill(Color.black.opacity(0.06)))
+        }
+        .padding(.horizontal)
+        .padding(.bottom, 8)
+    }
+
+    private var generateTasksButton: some View {
+        Button(action: generateTasksFromSelectedNotes) {
+            HStack {
+                if isGenerating {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        .scaleEffect(0.8)
+                    Text("Generating...")
+                } else {
+                    Text("Generate Tasks")
                 }
             }
-            .onAppear {
-                if !hasCompletedNotesTutorial {
-                    showNotesTutorial = true
+            .frame(maxWidth: .infinity)
+            .padding()
+            .background((selectedNotes.isEmpty || isGenerating) ? dynamicSecondaryTextColor.opacity(0.5) : dynamicPrimaryColor)
+            .foregroundColor(.white)
+            .cornerRadius(10)
+            .padding(.horizontal)
+        }
+        .disabled(selectedNotes.isEmpty || isGenerating)
+    }
+
+    @ToolbarContentBuilder
+    private var notesToolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .navigationBarLeading) {
+            Button {
+                isSelecting.toggle()
+                selectedNotes.removeAll()
+                if currentNotesTutorialStep == .selectNote {
+                    showNotesTutorial = false
                 }
+            } label: {
+                Text(isSelecting ? "Cancel" : "Select Notes")
+                    .foregroundColor(dynamicPrimaryColor)
             }
-            .overlay(
-                Group {
-                    if showNotesTutorial {
-                        NotesTutorialOverlay(
-                            currentStep: $currentNotesTutorialStep,
-                            isActive: $showNotesTutorial,
-                            hasCompletedTutorial: $hasCompletedNotesTutorial
-                        )
-                    }
-                }
+        }
+        ToolbarItem(placement: .principal) {
+            Text("Notes")
+                .fontWeight(.bold)
+                .foregroundColor(dynamicTextColor)
+        }
+        ToolbarItem(placement: .navigationBarTrailing) {
+            Button {
+                showingNewNoteView = true
+            } label: {
+                Image(systemName: "square.and.pencil")
+                    .foregroundColor(dynamicPrimaryColor)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var notesTutorialOverlay: some View {
+        if showNotesTutorial {
+            NotesTutorialOverlay(
+                currentStep: $currentNotesTutorialStep,
+                isActive: $showNotesTutorial,
+                hasCompletedTutorial: $hasCompletedNotesTutorial
             )
         }
     }

@@ -19,11 +19,11 @@ let gardenViewBackground = Color(hex: "#72b084")
 // MARK: - New Dynamic Color Palette (White theme with Warm Pastel Green/Orange accents)
 struct LightTheme {
     static let primary = Color(hex: "#7BC9A6")           // Warm pastel green - main accent
-    static let secondary = Color(hex: "#F97316")         // Orange - smaller accent
-    static let accent = Color(hex: "#7BC9A6")            // Warm pastel green for highlights
+    static let secondary = Color(hex: "#F97316")         // Orange - accent highlights
+    static let accent = Color(hex: "#7BC9A6")             // Warm pastel green for highlights
     static let destructive = Color(hex: "#EF4444")       // Red for destructive actions
-    static let background = Color(hex: "#FFFFFF")        // Pure white background
-    static let secondaryBackground = Color(hex: "#FFFFFF") // Also white for seamless look
+    static let background = Color(hex: "#FFFBFA")        // Slight warm white
+    static let secondaryBackground = Color(hex: "#FFF8F5") // Warm off-white for cards
     static let text = Color(hex: "#1F2937")              // Dark gray for primary text
     static let secondaryText = Color(hex: "#6B7280")     // Medium gray for secondary text
 }

@@ -57,15 +57,41 @@ struct Todoview: View {
                                 .padding(.horizontal)
                                 .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: highlightFilterButton)
                         }
-                        
-                        Picker("Filter", selection: $selectedFilter) {
-                            Text("Today").tag(TaskListFilter.today)
-                            Text("Master List").tag(TaskListFilter.master)
-                        }
-                        .pickerStyle(SegmentedPickerStyle())
-                        .padding()
-                        .tint(dynamicPrimaryColor)
 
+                        HStack(spacing: 0) {
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.15)) {
+                                    selectedFilter = .today
+                                }
+                            } label: {
+                                Text("Today")
+                                    .fontWeight(.semibold)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 10)
+                                    .foregroundColor(selectedFilter == .today ? .white : .black.opacity(0.65))
+                                    .background(selectedFilter == .today ? dynamicPrimaryColor : Color.clear)
+                                    .clipShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.15)) {
+                                    selectedFilter = .master
+                                }
+                            } label: {
+                                Text("Master List")
+                                    .fontWeight(.semibold)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 10)
+                                    .foregroundColor(selectedFilter == .master ? .white : .black.opacity(0.65))
+                                    .background(selectedFilter == .master ? dynamicPrimaryColor : Color.clear)
+                                    .clipShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(4)
+                        .background(Capsule().fill(Color.black.opacity(0.06)))
+                        .padding()
                     }
 
                     List {
@@ -208,35 +234,6 @@ struct Todoview: View {
                             }
                         }
                         
-                        ZStack(alignment: .center) {
-                            if highlightSummaryButton {
-                                Circle()
-                                    .fill(plantPeach.opacity(0.6))
-                                    .frame(width: 44, height: 44)
-                                    .offset(x: 4)
-                                    .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: highlightSummaryButton)
-                            }
-                            
-                            Button(action: {
-                                // If we're in tutorial and user interacts with star button, progress to next step
-                                if showTodoTutorial && currentTodoTutorialStep == .explainSummary {
-                                    let nextRawValue = currentTodoTutorialStep.rawValue + 1
-                                    if let nextStep = TodoTutorialStep(rawValue: nextRawValue) {
-                                        currentTodoTutorialStep = nextStep
-                                    }
-                                }
-                                viewModel.showingDailySummary = true
-                            }) {
-                                Image(systemName: "star")
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(width: 22, height: 22)
-                                    .foregroundColor(dynamicPrimaryColor)
-                                    .frame(width: 44, height: 44)
-                                    .contentShape(Rectangle())
-                            }
-                        }
-                        
                         Button(action: {
                             showGoogleCalendarView.toggle()
                         }) {
@@ -252,9 +249,6 @@ struct Todoview: View {
                 }
             }
             .overlay(tutorialOverlay)
-            .sheet(isPresented: $viewModel.showingDailySummary) {
-                LastDayView(isModal: true)
-            }
             .sheet(isPresented: $viewModel.showingNewItemView) {
                 NewItemview(newItemPresented: $viewModel.showingNewItemView, selectedOrigin: selectedFilter == .today ? .today : .master)
             }
@@ -299,14 +293,41 @@ struct Todoview: View {
                     .padding(.horizontal)
                     .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: highlightFilterButton)
             }
-            
-            Picker("Filter", selection: $selectedFilter) {
-                Text("Today").tag(TaskListFilter.today)
-                Text("Master List").tag(TaskListFilter.master)
+
+            HStack(spacing: 0) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        selectedFilter = .today
+                    }
+                } label: {
+                    Text("Today")
+                        .fontWeight(.semibold)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .foregroundColor(selectedFilter == .today ? .white : .black.opacity(0.65))
+                        .background(selectedFilter == .today ? dynamicPrimaryColor : Color.clear)
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        selectedFilter = .master
+                    }
+                } label: {
+                    Text("Master List")
+                        .fontWeight(.semibold)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .foregroundColor(selectedFilter == .master ? .white : .black.opacity(0.65))
+                        .background(selectedFilter == .master ? dynamicPrimaryColor : Color.clear)
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
             }
-            .pickerStyle(SegmentedPickerStyle())
+            .padding(4)
+            .background(Capsule().fill(Color.black.opacity(0.06)))
             .padding()
-            .tint(dynamicPrimaryColor)
         }
     }
     
@@ -375,7 +396,6 @@ struct Todoview: View {
     private var toolbarButtons: some View {
         HStack(spacing: -5) {
             addButton
-            summaryButton
             calendarButton
         }
     }
@@ -411,37 +431,6 @@ struct Todoview: View {
         }
     }
     
-    private var summaryButton: some View {
-        ZStack(alignment: .center) {
-            if highlightSummaryButton {
-                Circle()
-                    .fill(plantPeach.opacity(0.6))
-                    .frame(width: 44, height: 44)
-                    .offset(x: 4)
-                    .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: highlightSummaryButton)
-            }
-            
-            Button(action: {
-                // If we're in tutorial and user interacts with star button, progress to next step
-                if showTodoTutorial && currentTodoTutorialStep == .explainSummary {
-                    let nextRawValue = currentTodoTutorialStep.rawValue + 1
-                    if let nextStep = TodoTutorialStep(rawValue: nextRawValue) {
-                        currentTodoTutorialStep = nextStep
-                    }
-                }
-                viewModel.showingDailySummary = true
-            }) {
-                Image(systemName: "star")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 22, height: 22)
-                    .foregroundColor(dynamicPrimaryColor)
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
-            }
-        }
-    }
-    
     private var calendarButton: some View {
         Button(action: {
             navigateToCalendar = true
@@ -450,7 +439,7 @@ struct Todoview: View {
                 .resizable()
                 .scaledToFit()
                 .frame(width: 22, height: 22)
-                .foregroundColor(dynamicPrimaryColor)
+                .foregroundColor(dynamicSecondaryColor)
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
         }
