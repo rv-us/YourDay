@@ -18,15 +18,15 @@ struct UserSearchResult: Identifiable {
 
 final class TaskProofFeedListenerToken {
     fileprivate var friendsListener: ListenerRegistration?
-    fileprivate var postListeners: [ListenerRegistration] = []
-    fileprivate var chunkPosts: [Int: [TaskProofPost]] = [:]
+    fileprivate var postListeners: [String: ListenerRegistration] = [:]
+    fileprivate var authorPosts: [String: [TaskProofPost]] = [:]
     fileprivate var friendSinceMap: [String: Date] = [:]
 
     func remove() {
         friendsListener?.remove()
-        postListeners.forEach { $0.remove() }
+        postListeners.values.forEach { $0.remove() }
         postListeners.removeAll()
-        chunkPosts.removeAll()
+        authorPosts.removeAll()
         friendSinceMap.removeAll()
     }
 }
@@ -1076,7 +1076,7 @@ class FirebaseManager: ObservableObject {
 
         func emitMergedFeed() {
             var uniqueById: [String: TaskProofPost] = [:]
-            for posts in token.chunkPosts.values {
+            for posts in token.authorPosts.values {
                 for post in posts {
                     guard let id = post.id else { continue }
                     uniqueById[id] = post
@@ -1098,37 +1098,42 @@ class FirebaseManager: ObservableObject {
         }
 
         func rebuildPostListeners() {
-            token.postListeners.forEach { $0.remove() }
+            token.postListeners.values.forEach { $0.remove() }
             token.postListeners.removeAll()
-            token.chunkPosts.removeAll()
+            token.authorPosts.removeAll()
 
-            var authorIds = [currentUserId]
-            authorIds.append(contentsOf: token.friendSinceMap.keys)
-            authorIds = Array(Set(authorIds))
+            var authorIds = Set(token.friendSinceMap.keys)
+            authorIds.insert(currentUserId)
 
-            let chunks = authorIds.chunked(into: 10)
-            if chunks.isEmpty {
+            if authorIds.isEmpty {
                 onUpdate([])
                 return
             }
 
-            for (index, chunk) in chunks.enumerated() {
+            for authorId in authorIds {
                 let listener = db.collection("task_proof_posts")
-                    .whereField("authorId", in: chunk)
+                    .whereField("authorId", isEqualTo: authorId)
                     .order(by: "createdAt", descending: true)
                     .limit(to: 200)
                     .addSnapshotListener { snapshot, error in
                         if let error = error {
-                            print("listenToTaskProofFeed chunk error: \(error.localizedDescription)")
-                            token.chunkPosts[index] = []
+                            let nsError = error as NSError
+                            if nsError.code == FirestoreErrorCode.permissionDenied.rawValue {
+                                print("listenToTaskProofFeed permission denied for authorId \(authorId)")
+                            } else {
+                                print("listenToTaskProofFeed error for authorId \(authorId): \(error.localizedDescription)")
+                            }
+                            token.authorPosts[authorId] = []
+                            token.postListeners[authorId]?.remove()
+                            token.postListeners.removeValue(forKey: authorId)
                             emitMergedFeed()
                             return
                         }
                         let posts = snapshot?.documents.compactMap { try? $0.data(as: TaskProofPost.self) } ?? []
-                        token.chunkPosts[index] = posts
+                        token.authorPosts[authorId] = posts
                         emitMergedFeed()
                     }
-                token.postListeners.append(listener)
+                token.postListeners[authorId] = listener
             }
         }
 
@@ -1136,7 +1141,13 @@ class FirebaseManager: ObservableObject {
             .document(currentUserId)
             .collection("friends")
             .whereField("status", isEqualTo: "accepted")
-            .addSnapshotListener { snapshot, _ in
+            .addSnapshotListener { snapshot, error in
+                if let error = error {
+                    print("listenToTaskProofFeed friends listener error: \(error.localizedDescription)")
+                    token.friendSinceMap = [:]
+                    rebuildPostListeners()
+                    return
+                }
                 let docs = snapshot?.documents ?? []
                 var friendSince: [String: Date] = [:]
                 docs.forEach { doc in
@@ -1919,21 +1930,5 @@ class FirebaseManager: ObservableObject {
                 let exists = snapshot?.documents.isEmpty == false
                 completion(exists)
             }
-    }
-}
-
-private extension Array {
-    func chunked(into size: Int) -> [[Element]] {
-        guard size > 0, !isEmpty else { return [] }
-        var chunks: [[Element]] = []
-        chunks.reserveCapacity((count + size - 1) / size)
-
-        var startIndex = 0
-        while startIndex < count {
-            let endIndex = Swift.min(startIndex + size, count)
-            chunks.append(Array(self[startIndex..<endIndex]))
-            startIndex += size
-        }
-        return chunks
     }
 }

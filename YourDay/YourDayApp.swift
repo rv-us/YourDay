@@ -5,10 +5,61 @@ import GoogleSignIn
 import UIKit
 import UserNotifications
 
+private let migrationValidationErrorCode = 134110
+
+private func containsCocoaErrorCode(_ error: Error, code: Int) -> Bool {
+    let nsError = error as NSError
+    if nsError.domain == NSCocoaErrorDomain && nsError.code == code {
+        return true
+    }
+    if let underlyingError = nsError.userInfo[NSUnderlyingErrorKey] as? Error,
+       containsCocoaErrorCode(underlyingError, code: code) {
+        return true
+    }
+    return false
+}
+
+private func resetDefaultSwiftDataStoreFiles() {
+    let fileManager = FileManager.default
+    guard let appSupportURL = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+        return
+    }
+
+    let storeFilenames = ["default.store", "default.store-shm", "default.store-wal"]
+    for filename in storeFilenames {
+        let fileURL = appSupportURL.appendingPathComponent(filename)
+        guard fileManager.fileExists(atPath: fileURL.path) else { continue }
+        do {
+            try fileManager.removeItem(at: fileURL)
+            print("App: Removed SwiftData store file at \(fileURL.path)")
+        } catch {
+            print("App: Failed to remove SwiftData store file at \(fileURL.path): \(error.localizedDescription)")
+        }
+    }
+}
 
 @main
 struct YourDayApp: App {
     @StateObject private var locationManager = LocationManager()
+    
+    private static var sharedModelContainer: ModelContainer = {
+        do {
+            return try ModelContainer(for: TodoItem.self, NoteItem.self, PlayerStats.self, DailySummaryTask.self)
+        } catch {
+            guard containsCocoaErrorCode(error, code: migrationValidationErrorCode) else {
+                fatalError("Unresolved error loading ModelContainer: \(error.localizedDescription)")
+            }
+
+            print("App: Detected CoreData migration validation error (\(migrationValidationErrorCode)). Resetting local SwiftData store and retrying.")
+            resetDefaultSwiftDataStoreFiles()
+
+            do {
+                return try ModelContainer(for: TodoItem.self, NoteItem.self, PlayerStats.self, DailySummaryTask.self)
+            } catch {
+                fatalError("Unresolved error loading ModelContainer after reset: \(error.localizedDescription)")
+            }
+        }
+    }()
 
     init() {
         // Add crash prevention before any other initialization
@@ -109,7 +160,7 @@ struct YourDayApp: App {
             AppRestartView()
                 .environmentObject(locationManager)
         }
-        .modelContainer(for: [TodoItem.self, NoteItem.self, PlayerStats.self, DailySummaryTask.self])
+        .modelContainer(Self.sharedModelContainer)
     }
 }
 

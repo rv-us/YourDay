@@ -10,55 +10,61 @@ struct TaskProofFeedView: View {
     @State private var votesByPostId: [String: [TaskProofVote]] = [:]
 
     var body: some View {
-        ScrollView {
-            if posts.isEmpty {
-                VStack(spacing: 10) {
-                    Image(systemName: "person.3.sequence.fill")
-                        .font(.system(size: 32))
-                        .foregroundColor(dynamicSecondaryTextColor)
-                    Text("No proof posts yet")
-                        .font(.headline)
-                        .foregroundColor(dynamicTextColor)
-                    Text("Complete a task and share a photo proof to get started.")
-                        .font(.subheadline)
-                        .foregroundColor(dynamicSecondaryTextColor)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
-                }
-                .padding(.top, 80)
-            } else {
-                LazyVStack(spacing: 14) {
-                    ForEach(posts) { post in
-                        TaskProofPostCardView(
-                            post: post,
-                            votes: votesByPostId[post.id ?? ""] ?? [],
-                            onVote: { voteType in
-                                guard let postId = post.id else { return }
-                                firebaseManager.setTaskProofVote(postId: postId, voteType: voteType) { error in
-                                    if let error = error {
-                                        print("Failed to set proof vote: \(error.localizedDescription)")
-                                    }
-                                }
-                            },
-                            onDelete: {
-                                guard let postId = post.id else { return }
-                                firebaseManager.deleteTaskProofPost(postId: postId) { error in
-                                    if let error = error {
-                                        print("Failed to delete proof post: \(error.localizedDescription)")
-                                    }
-                                }
-                            }
-                        )
+        ZStack {
+            dynamicBackgroundColor
+                .ignoresSafeArea()
+
+            ScrollView {
+                if posts.isEmpty {
+                    VStack(spacing: 10) {
+                        Image(systemName: "person.3.sequence.fill")
+                            .font(.system(size: 32))
+                            .foregroundColor(dynamicSecondaryTextColor)
+                        Text("No proof posts yet")
+                            .font(.headline)
+                            .foregroundColor(dynamicTextColor)
+                        Text("Complete a task and share a photo proof to get started.")
+                            .font(.subheadline)
+                            .foregroundColor(dynamicSecondaryTextColor)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
                     }
+                    .padding(.top, 80)
+                } else {
+                    LazyVStack(spacing: 14) {
+                        ForEach(posts) { post in
+                            TaskProofPostCardView(
+                                post: post,
+                                votes: votesByPostId[post.id ?? ""] ?? [],
+                                onVote: { voteType in
+                                    guard let postId = post.id else { return }
+                                    firebaseManager.setTaskProofVote(postId: postId, voteType: voteType) { error in
+                                        if let error = error {
+                                            print("Failed to set proof vote: \(error.localizedDescription)")
+                                        }
+                                    }
+                                },
+                                onDelete: {
+                                    guard let postId = post.id else { return }
+                                    firebaseManager.deleteTaskProofPost(postId: postId) { error in
+                                        if let error = error {
+                                            print("Failed to delete proof post: \(error.localizedDescription)")
+                                        }
+                                    }
+                                }
+                            )
+                        }
+                    }
+                    .padding()
                 }
-                .padding()
             }
         }
-        .background(dynamicBackgroundColor.edgesIgnoringSafeArea(.all))
         .navigationTitle("Proof Feed")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(dynamicSecondaryBackgroundColor, for: .navigationBar)
+        .toolbarBackground(dynamicSecondaryBackgroundColor, for: .tabBar)
         .toolbarBackground(.visible, for: .navigationBar)
+        .toolbarBackground(.visible, for: .tabBar)
         .onAppear {
             startFeedListener()
         }

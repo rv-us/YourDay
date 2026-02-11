@@ -7,8 +7,12 @@
 
 import SwiftUI
 import SwiftData
+import FirebaseAuth
+import FirebaseFirestore
 
 struct DashboardView: View {
+    private let friendCardsAutoRotateTimer = Timer.publish(every: 2.8, on: .main, in: .common).autoconnect()
+
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var loginViewModel: LoginViewModel
     @EnvironmentObject private var firebaseManager: FirebaseManager
@@ -30,6 +34,11 @@ struct DashboardView: View {
 
     @State private var showLastDayView = false
     @StateObject private var friendStatsViewModel = DashboardFriendStatsViewModel()
+    @State private var selectedFriendCardIndex = 0
+    @State private var proofFeedToken: TaskProofFeedListenerToken?
+    @State private var proofVoteListeners: [String: ListenerRegistration] = [:]
+    @State private var proofVotesByPostId: [String: [TaskProofVote]] = [:]
+    @State private var proofPosts: [TaskProofPost] = []
 
     private var greeting: String {
         let hour = Calendar.current.component(.hour, from: Date())
@@ -39,6 +48,18 @@ struct DashboardView: View {
         else { timeGreeting = "Good evening" }
         let name = loginViewModel.userDisplayName ?? loginViewModel.userEmail?.components(separatedBy: "@").first ?? "there"
         return "\(timeGreeting), \(name)!"
+    }
+
+    private var unvotedProofCount: Int {
+        guard let currentUserId = Auth.auth().currentUser?.uid else { return 0 }
+        return proofPosts.reduce(into: 0) { count, post in
+            guard post.authorId != currentUserId, let postId = post.id else { return }
+            guard let votes = proofVotesByPostId[postId] else { return }
+            let hasCurrentUserVote = votes.contains { $0.voterId == currentUserId }
+            if !hasCurrentUserVote {
+                count += 1
+            }
+        }
     }
 
     var body: some View {
@@ -58,6 +79,10 @@ struct DashboardView: View {
             .background(dynamicBackgroundColor.edgesIgnoringSafeArea(.all))
             .onAppear {
                 friendStatsViewModel.load()
+                startProofBadgeListeners()
+            }
+            .onDisappear {
+                tearDownProofBadgeListeners()
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(dynamicSecondaryBackgroundColor, for: .navigationBar)
@@ -177,6 +202,19 @@ struct DashboardView: View {
                         .lineLimit(2)
                 }
                 Spacer()
+                if unvotedProofCount > 0 {
+                    HStack(spacing: 4) {
+                        Image(systemName: "bell.fill")
+                            .font(.caption2)
+                        Text("\(unvotedProofCount)")
+                            .font(.caption2.weight(.bold))
+                    }
+                    .foregroundColor(dynamicSecondaryColor)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(dynamicBackgroundColor)
+                    .clipShape(Capsule())
+                }
                 Image(systemName: "chevron.right")
                     .font(.caption)
                     .foregroundColor(dynamicSecondaryTextColor)
@@ -261,15 +299,33 @@ struct DashboardView: View {
                 .background(dynamicSecondaryBackgroundColor)
                 .cornerRadius(12)
             } else {
-                TabView {
-                    ForEach(friendStatsViewModel.cards) { card in
+                TabView(selection: $selectedFriendCardIndex) {
+                    ForEach(Array(friendStatsViewModel.cards.enumerated()), id: \.element.id) { index, card in
                         friendStatsCard(card)
                             .padding(.horizontal, 4)
+                            .tag(index)
                     }
                 }
                 .frame(height: 186)
                 .tabViewStyle(.page(indexDisplayMode: .automatic))
                 .indexViewStyle(.page(backgroundDisplayMode: .interactive))
+                .onReceive(friendCardsAutoRotateTimer) { _ in
+                    let cardCount = friendStatsViewModel.cards.count
+                    guard cardCount > 1 else { return }
+
+                    withAnimation(.easeInOut(duration: 0.45)) {
+                        selectedFriendCardIndex = (selectedFriendCardIndex + 1) % cardCount
+                    }
+                }
+                .onChange(of: friendStatsViewModel.cards.count) { _, newCount in
+                    guard newCount > 0 else {
+                        selectedFriendCardIndex = 0
+                        return
+                    }
+                    if selectedFriendCardIndex >= newCount {
+                        selectedFriendCardIndex = 0
+                    }
+                }
             }
         }
     }
@@ -457,5 +513,53 @@ struct DashboardView: View {
             }
             .buttonStyle(.plain)
         }
+    }
+
+    private func startProofBadgeListeners() {
+        tearDownProofBadgeListeners()
+        proofFeedToken = firebaseManager.listenToTaskProofFeed { updatedPosts in
+            DispatchQueue.main.async {
+                proofPosts = updatedPosts
+                syncProofVoteListeners(for: updatedPosts)
+            }
+        }
+    }
+
+    private func syncProofVoteListeners(for updatedPosts: [TaskProofPost]) {
+        guard let currentUserId = Auth.auth().currentUser?.uid else {
+            proofVoteListeners.values.forEach { $0.remove() }
+            proofVoteListeners.removeAll()
+            proofVotesByPostId.removeAll()
+            return
+        }
+
+        let postIds = Set(updatedPosts.compactMap { post -> String? in
+            guard let postId = post.id else { return nil }
+            return post.authorId == currentUserId ? nil : postId
+        })
+
+        for (postId, listener) in proofVoteListeners where !postIds.contains(postId) {
+            listener.remove()
+            proofVoteListeners.removeValue(forKey: postId)
+            proofVotesByPostId.removeValue(forKey: postId)
+        }
+
+        for postId in postIds where proofVoteListeners[postId] == nil {
+            let listener = firebaseManager.listenToTaskProofVotes(postId: postId) { votes in
+                DispatchQueue.main.async {
+                    proofVotesByPostId[postId] = votes
+                }
+            }
+            proofVoteListeners[postId] = listener
+        }
+    }
+
+    private func tearDownProofBadgeListeners() {
+        proofFeedToken?.remove()
+        proofFeedToken = nil
+        proofVoteListeners.values.forEach { $0.remove() }
+        proofVoteListeners.removeAll()
+        proofVotesByPostId.removeAll()
+        proofPosts.removeAll()
     }
 }

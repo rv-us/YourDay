@@ -158,21 +158,21 @@ struct PlacedPlant: Codable, Identifiable, Hashable {
 @Model
 class PlayerStats {
     var id: UUID = UUID()
-    var totalPoints: Double
+    var totalPoints: Double = 100
     var lastEvaluated: Date? // For daily point summary of TodoItems
     var lastLoginDate: Date? // NEW: To track the last login date for withering
-    var lastDailyPointsEarned: Double
-    var lastDailyCompletedTasks: Int
-    var lastDailyTotalTasks: Int
-    var taskCompletionStreak: Int
+    var lastDailyPointsEarned: Double = 0
+    var lastDailyCompletedTasks: Int = 0
+    var lastDailyTotalTasks: Int = 0
+    var taskCompletionStreak: Int = 0
 
-    var playerLevel: Int
-    var currentXP: Double
-    var gardenValue: Double
-    var unplacedPlantsInventory: [String: Int] // Key is PlantBlueprint.id
-    var placedPlants: [PlacedPlant]
-    var numberOfOwnedPlots: Int
-    var fertilizerCount: Int
+    var playerLevel: Int = 1
+    var currentXP: Double = 0
+    var gardenValue: Double = 0
+    var unplacedPlantsInventory: [String: Int] = [:] // Key is PlantBlueprint.id
+    var placedPlants: [PlacedPlant] = []
+    var numberOfOwnedPlots: Int = 2
+    var fertilizerCount: Int = 1
 
     init(
         totalPoints: Double = 100,
