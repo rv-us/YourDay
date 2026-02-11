@@ -18,6 +18,10 @@ struct PlayerStatsCodable: Codable, Identifiable {
     var totalPoints: Double
     var lastEvaluated: Date?
     var lastLoginDate: Date?
+    var lastDailyPointsEarned: Double
+    var lastDailyCompletedTasks: Int
+    var lastDailyTotalTasks: Int
+    var taskCompletionStreak: Int
     var playerLevel: Int
     var currentXP: Double
     var gardenValue: Double // This will now be taken from the model during conversion
@@ -27,7 +31,7 @@ struct PlayerStatsCodable: Codable, Identifiable {
     var fertilizerCount: Int
     
     // Schema version for future migrations
-    var schemaVersion: Int = 1
+    var schemaVersion: Int = 2
 
     // Default initializer for new users (matches PlayerStats @Model default)
     init(
@@ -35,18 +39,26 @@ struct PlayerStatsCodable: Codable, Identifiable {
         totalPoints: Double = 100,
         lastEvaluated: Date? = nil,
         lastLoginDate: Date? = Calendar.current.startOfDay(for:Date()),
+        lastDailyPointsEarned: Double = 0,
+        lastDailyCompletedTasks: Int = 0,
+        lastDailyTotalTasks: Int = 0,
+        taskCompletionStreak: Int = 0,
         playerLevel: Int = 1,
         currentXP: Double = 0,
         unplacedPlantsInventory: [String: Int] = [:],
         placedPlants: [PlacedPlant] = [], // Ensure PlacedPlant has its getCurrentDynamicValue()
         numberOfOwnedPlots: Int = 2,
         fertilizerCount: Int = 1,
-        schemaVersion: Int = 1
+        schemaVersion: Int = 2
     ) {
         self.id = id
         self.totalPoints = totalPoints
         self.lastEvaluated = lastEvaluated
         self.lastLoginDate = lastLoginDate
+        self.lastDailyPointsEarned = lastDailyPointsEarned
+        self.lastDailyCompletedTasks = lastDailyCompletedTasks
+        self.lastDailyTotalTasks = lastDailyTotalTasks
+        self.taskCompletionStreak = taskCompletionStreak
         self.playerLevel = playerLevel
         self.currentXP = currentXP
         self.unplacedPlantsInventory = unplacedPlantsInventory
@@ -70,6 +82,10 @@ struct PlayerStatsCodable: Codable, Identifiable {
         self.totalPoints = model.totalPoints
         self.lastEvaluated = model.lastEvaluated
         self.lastLoginDate = model.lastLoginDate
+        self.lastDailyPointsEarned = model.lastDailyPointsEarned
+        self.lastDailyCompletedTasks = model.lastDailyCompletedTasks
+        self.lastDailyTotalTasks = model.lastDailyTotalTasks
+        self.taskCompletionStreak = model.taskCompletionStreak
         self.playerLevel = model.playerLevel
         self.currentXP = model.currentXP
         self.gardenValue = model.gardenValue // Take the calculated value from the model
@@ -77,7 +93,7 @@ struct PlayerStatsCodable: Codable, Identifiable {
         self.placedPlants = model.placedPlants // Assumes PlacedPlant struct is Codable
         self.numberOfOwnedPlots = model.numberOfOwnedPlots
         self.fertilizerCount = model.fertilizerCount
-        self.schemaVersion = 1 // Current schema version
+        self.schemaVersion = 2 // Current schema version
     }
     
     // Custom decoding to handle schema migrations
@@ -92,6 +108,10 @@ struct PlayerStatsCodable: Codable, Identifiable {
         totalPoints = try container.decode(Double.self, forKey: .totalPoints)
         lastEvaluated = try container.decodeIfPresent(Date.self, forKey: .lastEvaluated)
         lastLoginDate = try container.decodeIfPresent(Date.self, forKey: .lastLoginDate)
+        lastDailyPointsEarned = try container.decodeIfPresent(Double.self, forKey: .lastDailyPointsEarned) ?? 0
+        lastDailyCompletedTasks = try container.decodeIfPresent(Int.self, forKey: .lastDailyCompletedTasks) ?? 0
+        lastDailyTotalTasks = try container.decodeIfPresent(Int.self, forKey: .lastDailyTotalTasks) ?? 0
+        taskCompletionStreak = try container.decodeIfPresent(Int.self, forKey: .taskCompletionStreak) ?? 0
         playerLevel = try container.decode(Int.self, forKey: .playerLevel)
         currentXP = try container.decode(Double.self, forKey: .currentXP)
         gardenValue = try container.decode(Double.self, forKey: .gardenValue)
@@ -101,12 +121,12 @@ struct PlayerStatsCodable: Codable, Identifiable {
         fertilizerCount = try container.decode(Int.self, forKey: .fertilizerCount)
         
         // Apply schema migrations if needed
-        if version < 1 {
+        if version < 2 {
             // Future migrations can be added here
             // For now, just set the current version
         }
         
-        schemaVersion = 1
+        schemaVersion = 2
     }
     
     // Custom encoding to ensure schema version is always included
@@ -117,6 +137,10 @@ struct PlayerStatsCodable: Codable, Identifiable {
         try container.encode(totalPoints, forKey: .totalPoints)
         try container.encodeIfPresent(lastEvaluated, forKey: .lastEvaluated)
         try container.encodeIfPresent(lastLoginDate, forKey: .lastLoginDate)
+        try container.encode(lastDailyPointsEarned, forKey: .lastDailyPointsEarned)
+        try container.encode(lastDailyCompletedTasks, forKey: .lastDailyCompletedTasks)
+        try container.encode(lastDailyTotalTasks, forKey: .lastDailyTotalTasks)
+        try container.encode(taskCompletionStreak, forKey: .taskCompletionStreak)
         try container.encode(playerLevel, forKey: .playerLevel)
         try container.encode(currentXP, forKey: .currentXP)
         try container.encode(gardenValue, forKey: .gardenValue)
@@ -128,7 +152,9 @@ struct PlayerStatsCodable: Codable, Identifiable {
     }
     
     private enum CodingKeys: String, CodingKey {
-        case id, totalPoints, lastEvaluated, lastLoginDate, playerLevel, currentXP
+        case id, totalPoints, lastEvaluated, lastLoginDate
+        case lastDailyPointsEarned, lastDailyCompletedTasks, lastDailyTotalTasks, taskCompletionStreak
+        case playerLevel, currentXP
         case gardenValue, unplacedPlantsInventory, placedPlants, numberOfOwnedPlots, fertilizerCount, schemaVersion
     }
 
@@ -137,6 +163,7 @@ struct PlayerStatsCodable: Codable, Identifiable {
     // The actual insertion/update into ModelContext happens where this is called.
     func toPlayerStatsModelProperties() -> (
         id: UUID, totalPoints: Double, lastEvaluated: Date?, lastLoginDate: Date?,
+        lastDailyPointsEarned: Double, lastDailyCompletedTasks: Int, lastDailyTotalTasks: Int, taskCompletionStreak: Int,
                 playerLevel: Int, currentXP: Double,
         gardenValue: Double, unplacedPlantsInventory: [String: Int], placedPlants: [PlacedPlant],
         numberOfOwnedPlots: Int, fertilizerCount: Int
@@ -146,6 +173,10 @@ struct PlayerStatsCodable: Codable, Identifiable {
             totalPoints: self.totalPoints,
             lastEvaluated: self.lastEvaluated,
             lastLoginDate: self.lastLoginDate,
+            lastDailyPointsEarned: self.lastDailyPointsEarned,
+            lastDailyCompletedTasks: self.lastDailyCompletedTasks,
+            lastDailyTotalTasks: self.lastDailyTotalTasks,
+            taskCompletionStreak: self.taskCompletionStreak,
             playerLevel: self.playerLevel,
             currentXP: self.currentXP,
             gardenValue: self.gardenValue, 

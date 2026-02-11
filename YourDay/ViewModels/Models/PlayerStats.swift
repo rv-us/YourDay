@@ -161,6 +161,10 @@ class PlayerStats {
     var totalPoints: Double
     var lastEvaluated: Date? // For daily point summary of TodoItems
     var lastLoginDate: Date? // NEW: To track the last login date for withering
+    var lastDailyPointsEarned: Double
+    var lastDailyCompletedTasks: Int
+    var lastDailyTotalTasks: Int
+    var taskCompletionStreak: Int
 
     var playerLevel: Int
     var currentXP: Double
@@ -174,6 +178,10 @@ class PlayerStats {
         totalPoints: Double = 100,
         lastEvaluated: Date? = nil,
         lastLoginDate: Date? = Calendar.current.startOfDay(for:Date()),
+        lastDailyPointsEarned: Double = 0,
+        lastDailyCompletedTasks: Int = 0,
+        lastDailyTotalTasks: Int = 0,
+        taskCompletionStreak: Int = 0,
         playerLevel: Int = 1,
         currentXP: Double = 0,
         unplacedPlantsInventory: [String: Int] = [:],
@@ -185,6 +193,10 @@ class PlayerStats {
         self.totalPoints = totalPoints
         self.lastEvaluated = lastEvaluated
         self.lastLoginDate = lastLoginDate
+        self.lastDailyPointsEarned = lastDailyPointsEarned
+        self.lastDailyCompletedTasks = lastDailyCompletedTasks
+        self.lastDailyTotalTasks = lastDailyTotalTasks
+        self.taskCompletionStreak = taskCompletionStreak
         self.playerLevel = playerLevel
         self.currentXP = currentXP
         self.gardenValue = 0

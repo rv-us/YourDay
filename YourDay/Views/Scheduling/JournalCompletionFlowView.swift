@@ -491,6 +491,12 @@ struct JournalCompletionFlowView: View {
                     ) { saveError in
                         if let saveError = saveError {
                             print("Error saving rescheduled event mapping: \(saveError.localizedDescription)")
+                        } else {
+                            NotificationManager.shared.scheduleJournalPromptNotification(
+                                eventId: eventId,
+                                taskTitle: title,
+                                scheduledEndTime: endTime
+                            )
                         }
                     }
                 }

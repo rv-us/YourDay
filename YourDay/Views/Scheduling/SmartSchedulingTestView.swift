@@ -162,7 +162,23 @@ struct SmartSchedulingTestView: View {
                             if !journalViewModel.journalEntries.isEmpty {
                                 journalViewModel.triggerJournalAnalysis(schedulingViewModel: schedulingViewModel)
                             }
+                    }
+                }
+            }
+            .sheet(isPresented: $journalViewModel.showingTaskProofCapture, onDismiss: {
+                journalViewModel.completeScheduledProofCaptureFlow()
+            }) {
+                if let captureContext = journalViewModel.pendingTaskProofCapture {
+                    TaskProofCaptureView(
+                        context: captureContext,
+                        onSkip: {
+                            journalViewModel.completeScheduledProofCaptureFlow()
+                        },
+                        onPosted: { _ in
+                            journalViewModel.completeScheduledProofCaptureFlow()
                         }
+                    )
+                    .environmentObject(firebaseManager)
                 }
             }
             .onAppear {

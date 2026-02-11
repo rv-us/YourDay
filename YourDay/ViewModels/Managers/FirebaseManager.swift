@@ -8,11 +8,27 @@
 import Foundation
 import FirebaseFirestore
 import FirebaseAuth
+import FirebaseStorage
 
 struct UserSearchResult: Identifiable {
     var id: String { userId }
     let userId: String
     let displayName: String
+}
+
+final class TaskProofFeedListenerToken {
+    fileprivate var friendsListener: ListenerRegistration?
+    fileprivate var postListeners: [ListenerRegistration] = []
+    fileprivate var chunkPosts: [Int: [TaskProofPost]] = [:]
+    fileprivate var friendSinceMap: [String: Date] = [:]
+
+    func remove() {
+        friendsListener?.remove()
+        postListeners.forEach { $0.remove() }
+        postListeners.removeAll()
+        chunkPosts.removeAll()
+        friendSinceMap.removeAll()
+    }
 }
 
 class FirebaseManager: ObservableObject {
@@ -526,6 +542,73 @@ class FirebaseManager: ObservableObject {
         }
     }
 
+    func fetchFriendDashboardStats(completion: @escaping ([FriendDashboardStats]) -> Void) {
+        guard userId != nil else {
+            DispatchQueue.main.async { completion([]) }
+            return
+        }
+
+        fetchAcceptedFriends { [weak self] friends in
+            guard let self else {
+                DispatchQueue.main.async { completion([]) }
+                return
+            }
+            guard !friends.isEmpty else {
+                DispatchQueue.main.async { completion([]) }
+                return
+            }
+
+            let group = DispatchGroup()
+            let lock = NSLock()
+            var statsCards: [FriendDashboardStats] = []
+
+            for friend in friends {
+                group.enter()
+                self.db.collection("users")
+                    .document(friend.userId)
+                    .collection("playerData")
+                    .document("playerStats")
+                    .getDocument { snapshot, error in
+                        defer { group.leave() }
+
+                        let mapped: FriendDashboardStats
+                        if let snapshot = snapshot,
+                           snapshot.exists,
+                           error == nil,
+                           let playerStats = try? snapshot.data(as: PlayerStatsCodable.self) {
+                            mapped = FriendDashboardStats(
+                                userId: friend.userId,
+                                displayName: friend.displayName,
+                                yesterdayPoints: playerStats.lastDailyPointsEarned,
+                                completedTasksYesterday: playerStats.lastDailyCompletedTasks,
+                                totalTasksYesterday: playerStats.lastDailyTotalTasks,
+                                taskStreak: playerStats.taskCompletionStreak,
+                                lastEvaluated: playerStats.lastEvaluated
+                            )
+                        } else {
+                            mapped = FriendDashboardStats(
+                                userId: friend.userId,
+                                displayName: friend.displayName,
+                                yesterdayPoints: 0,
+                                completedTasksYesterday: 0,
+                                totalTasksYesterday: 0,
+                                taskStreak: 0,
+                                lastEvaluated: nil
+                            )
+                        }
+
+                        lock.lock()
+                        statsCards.append(mapped)
+                        lock.unlock()
+                    }
+            }
+
+            group.notify(queue: .main) {
+                completion(statsCards)
+            }
+        }
+    }
+
     // Remove a friend (unfriend)
     func removeFriend(friendUserId: String, completion: @escaping (Error?) -> Void) {
         guard let currentUserId = userId else {
@@ -833,6 +916,276 @@ class FirebaseManager: ObservableObject {
             }
             completion(error, docRef.documentID)
         }
+    }
+
+    // MARK: - Task Proof Feed
+
+    func createTaskProofPost(
+        taskTitle: String,
+        sourceType: TaskProofSourceType,
+        scheduledEventId: String?,
+        localTaskId: String?,
+        sharedTaskId: String?,
+        completedAt: Date,
+        imageData: Data,
+        completion: @escaping (Error?, String?) -> Void
+    ) {
+        guard let currentUserId = Auth.auth().currentUser?.uid else {
+            completion(NSError(domain: "", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]), nil)
+            return
+        }
+
+        let postRef = db.collection("task_proof_posts").document()
+        let postId = postRef.documentID
+        let storagePath = "taskProofPhotos/\(currentUserId)/\(postId).jpg"
+        let storageRef = Storage.storage().reference(withPath: storagePath)
+        let metadata = StorageMetadata()
+        metadata.contentType = "image/jpeg"
+
+        storageRef.putData(imageData, metadata: metadata) { [weak self] _, uploadError in
+            guard let self = self else { return }
+            if let uploadError = uploadError {
+                completion(uploadError, nil)
+                return
+            }
+
+            storageRef.downloadURL { url, urlError in
+                if let urlError = urlError {
+                    completion(urlError, nil)
+                    return
+                }
+                guard let downloadURL = url?.absoluteString else {
+                    completion(NSError(domain: "", code: 500, userInfo: [NSLocalizedDescriptionKey: "Could not generate photo URL"]), nil)
+                    return
+                }
+
+                let payload: [String: Any] = [
+                    "authorId": currentUserId,
+                    "authorDisplayName": Auth.auth().currentUser?.displayName ?? "Anonymous Gardener",
+                    "taskTitle": taskTitle,
+                    "sourceType": sourceType.rawValue,
+                    "scheduledEventId": scheduledEventId ?? NSNull(),
+                    "localTaskId": localTaskId ?? NSNull(),
+                    "sharedTaskId": sharedTaskId ?? NSNull(),
+                    "completedAt": Timestamp(date: completedAt),
+                    "createdAt": FieldValue.serverTimestamp(),
+                    "photoURL": downloadURL,
+                    "photoStoragePath": storagePath
+                ]
+
+                postRef.setData(payload) { error in
+                    completion(error, error == nil ? postId : nil)
+                }
+            }
+        }
+    }
+
+    func deleteTaskProofPost(postId: String, completion: @escaping (Error?) -> Void) {
+        guard let currentUserId = Auth.auth().currentUser?.uid else {
+            completion(NSError(domain: "", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+
+        let postRef = db.collection("task_proof_posts").document(postId)
+        postRef.getDocument { [weak self] snapshot, error in
+            guard let self = self else { return }
+            if let error = error {
+                completion(error)
+                return
+            }
+            guard let snapshot = snapshot, snapshot.exists else {
+                completion(nil)
+                return
+            }
+
+            let data = snapshot.data() ?? [:]
+            let authorId = data["authorId"] as? String
+            guard authorId == currentUserId else {
+                completion(NSError(domain: "", code: 403, userInfo: [NSLocalizedDescriptionKey: "Only the author can delete this post"]))
+                return
+            }
+            let storagePath = data["photoStoragePath"] as? String
+
+            postRef.collection("votes").getDocuments { voteSnapshot, voteError in
+                if let voteError = voteError {
+                    completion(voteError)
+                    return
+                }
+
+                let batch = self.db.batch()
+                voteSnapshot?.documents.forEach { batch.deleteDocument($0.reference) }
+                batch.deleteDocument(postRef)
+
+                batch.commit { batchError in
+                    if let batchError = batchError {
+                        completion(batchError)
+                        return
+                    }
+
+                    guard let storagePath = storagePath, !storagePath.isEmpty else {
+                        completion(nil)
+                        return
+                    }
+
+                    Storage.storage().reference(withPath: storagePath).delete { storageError in
+                        if let nsError = storageError as NSError?,
+                           nsError.domain == StorageErrorDomain,
+                           nsError.code == StorageErrorCode.objectNotFound.rawValue {
+                            completion(nil)
+                            return
+                        }
+                        completion(storageError)
+                    }
+                }
+            }
+        }
+    }
+
+    func fetchAcceptedFriendsWithSince(completion: @escaping ([FriendWithSince]) -> Void) {
+        guard let currentUserId = Auth.auth().currentUser?.uid else {
+            completion([])
+            return
+        }
+
+        db.collection("users")
+            .document(currentUserId)
+            .collection("friends")
+            .whereField("status", isEqualTo: "accepted")
+            .getDocuments { snapshot, _ in
+                let docs = snapshot?.documents ?? []
+                let entries: [FriendWithSince] = docs.map { doc in
+                    let rawTimestamp = doc.data()["timestamp"]
+                    let since: Date
+                    if let timestamp = rawTimestamp as? Timestamp {
+                        since = timestamp.dateValue()
+                    } else if let date = rawTimestamp as? Date {
+                        since = date
+                    } else {
+                        since = Date()
+                    }
+                    return FriendWithSince(userId: doc.documentID, since: since)
+                }
+                completion(entries)
+            }
+    }
+
+    func listenToTaskProofFeed(onUpdate: @escaping ([TaskProofPost]) -> Void) -> TaskProofFeedListenerToken? {
+        guard let currentUserId = Auth.auth().currentUser?.uid else { return nil }
+
+        let token = TaskProofFeedListenerToken()
+
+        func emitMergedFeed() {
+            var uniqueById: [String: TaskProofPost] = [:]
+            for posts in token.chunkPosts.values {
+                for post in posts {
+                    guard let id = post.id else { continue }
+                    uniqueById[id] = post
+                }
+            }
+
+            let filtered: [TaskProofPost] = uniqueById.values.filter { post in
+                if post.authorId == currentUserId {
+                    return true
+                }
+                guard let friendshipStart = token.friendSinceMap[post.authorId] else {
+                    return false
+                }
+                return post.createdAt >= friendshipStart
+            }
+            .sorted { $0.createdAt > $1.createdAt }
+
+            onUpdate(filtered)
+        }
+
+        func rebuildPostListeners() {
+            token.postListeners.forEach { $0.remove() }
+            token.postListeners.removeAll()
+            token.chunkPosts.removeAll()
+
+            var authorIds = [currentUserId]
+            authorIds.append(contentsOf: token.friendSinceMap.keys)
+            authorIds = Array(Set(authorIds))
+
+            let chunks = authorIds.chunked(into: 10)
+            if chunks.isEmpty {
+                onUpdate([])
+                return
+            }
+
+            for (index, chunk) in chunks.enumerated() {
+                let listener = db.collection("task_proof_posts")
+                    .whereField("authorId", in: chunk)
+                    .order(by: "createdAt", descending: true)
+                    .limit(to: 200)
+                    .addSnapshotListener { snapshot, error in
+                        if let error = error {
+                            print("listenToTaskProofFeed chunk error: \(error.localizedDescription)")
+                            token.chunkPosts[index] = []
+                            emitMergedFeed()
+                            return
+                        }
+                        let posts = snapshot?.documents.compactMap { try? $0.data(as: TaskProofPost.self) } ?? []
+                        token.chunkPosts[index] = posts
+                        emitMergedFeed()
+                    }
+                token.postListeners.append(listener)
+            }
+        }
+
+        token.friendsListener = db.collection("users")
+            .document(currentUserId)
+            .collection("friends")
+            .whereField("status", isEqualTo: "accepted")
+            .addSnapshotListener { snapshot, _ in
+                let docs = snapshot?.documents ?? []
+                var friendSince: [String: Date] = [:]
+                docs.forEach { doc in
+                    let rawTimestamp = doc.data()["timestamp"]
+                    if let timestamp = rawTimestamp as? Timestamp {
+                        friendSince[doc.documentID] = timestamp.dateValue()
+                    } else if let date = rawTimestamp as? Date {
+                        friendSince[doc.documentID] = date
+                    } else {
+                        friendSince[doc.documentID] = Date()
+                    }
+                }
+                token.friendSinceMap = friendSince
+                rebuildPostListeners()
+            }
+
+        return token
+    }
+
+    func listenToTaskProofVotes(postId: String, onUpdate: @escaping ([TaskProofVote]) -> Void) -> ListenerRegistration {
+        db.collection("task_proof_posts")
+            .document(postId)
+            .collection("votes")
+            .order(by: "updatedAt", descending: true)
+            .addSnapshotListener { snapshot, _ in
+                let votes = snapshot?.documents.compactMap { try? $0.data(as: TaskProofVote.self) } ?? []
+                onUpdate(votes)
+            }
+    }
+
+    func setTaskProofVote(postId: String, voteType: TaskProofVoteType, completion: @escaping (Error?) -> Void) {
+        guard let currentUserId = Auth.auth().currentUser?.uid else {
+            completion(NSError(domain: "", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+
+        let voteRef = db.collection("task_proof_posts")
+            .document(postId)
+            .collection("votes")
+            .document(currentUserId)
+
+        let payload: [String: Any] = [
+            "voterId": currentUserId,
+            "voterDisplayName": Auth.auth().currentUser?.displayName ?? "Friend",
+            "voteType": voteType.rawValue,
+            "updatedAt": FieldValue.serverTimestamp()
+        ]
+
+        voteRef.setData(payload, merge: true, completion: completion)
     }
 
     func removeAllListeners() {
@@ -1566,5 +1919,21 @@ class FirebaseManager: ObservableObject {
                 let exists = snapshot?.documents.isEmpty == false
                 completion(exists)
             }
+    }
+}
+
+private extension Array {
+    func chunked(into size: Int) -> [[Element]] {
+        guard size > 0, !isEmpty else { return [] }
+        var chunks: [[Element]] = []
+        chunks.reserveCapacity((count + size - 1) / size)
+
+        var startIndex = 0
+        while startIndex < count {
+            let endIndex = Swift.min(startIndex + size, count)
+            chunks.append(Array(self[startIndex..<endIndex]))
+            startIndex += size
+        }
+        return chunks
     }
 }

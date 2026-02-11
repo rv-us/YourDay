@@ -15,6 +15,7 @@ enum TaskOrigin: String, Codable {
 
 @Model
 class TodoItem {
+    var localTaskId: String = UUID().uuidString
     var title: String
     var detail: String
     var dueDate: Date
@@ -25,8 +26,10 @@ class TodoItem {
     var position: Int = 0
     var sharedTaskId: String? = nil
     var isSharedPending: Bool = false
+    var proofPostId: String? = nil
 
-    init(title: String, detail: String, dueDate: Date, isDone: Bool = false, subtasks: [Subtask] = [], position: Int = 0, origin: TaskOrigin = TaskOrigin.today, sharedTaskId: String? = nil, isSharedPending: Bool = false) {
+    init(localTaskId: String = UUID().uuidString, title: String, detail: String, dueDate: Date, isDone: Bool = false, subtasks: [Subtask] = [], position: Int = 0, origin: TaskOrigin = TaskOrigin.today, sharedTaskId: String? = nil, isSharedPending: Bool = false, proofPostId: String? = nil) {
+        self.localTaskId = localTaskId
         self.title = title
         self.detail = detail
         self.dueDate = dueDate
@@ -36,6 +39,6 @@ class TodoItem {
         self.origin = origin
         self.sharedTaskId = sharedTaskId
         self.isSharedPending = isSharedPending
+        self.proofPostId = proofPostId
     }
 }
-

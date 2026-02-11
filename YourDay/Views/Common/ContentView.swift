@@ -163,6 +163,22 @@ struct ContentView: View {
                     JournalCompletionFlowView(journalViewModel: journalViewModel, pendingEvent: pendingEvent)
                 }
             }
+            .sheet(isPresented: $journalViewModel.showingTaskProofCapture, onDismiss: {
+                journalViewModel.completeScheduledProofCaptureFlow()
+            }) {
+                if let captureContext = journalViewModel.pendingTaskProofCapture {
+                    TaskProofCaptureView(
+                        context: captureContext,
+                        onSkip: {
+                            journalViewModel.completeScheduledProofCaptureFlow()
+                        },
+                        onPosted: { _ in
+                            journalViewModel.completeScheduledProofCaptureFlow()
+                        }
+                    )
+                    .environmentObject(firebaseManager)
+                }
+            }
             .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ShowJournalPrompt"))) { notification in
                 if let eventId = notification.userInfo?["eventId"] as? String {
                     journalViewModel.showPromptForEvent(eventId: eventId)
@@ -273,6 +289,7 @@ struct ContentView: View {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
         let todayString = formatter.string(from: today)
+        var shouldSyncStats = false
 
         if todayString != lastAppOpenDateForWitheringCheckString {
             if let lastLoginActual = stats.lastLoginDate {
@@ -313,16 +330,12 @@ struct ContentView: View {
                 }
             }
             lastAppOpenDateForWitheringCheckString = todayString
-            
-            do {
-                try modelContext.save()
-                loginViewModel.syncLocalPlayerStatsToFirestore(playerStatsModel: stats)
-            } catch {
-                // Error saving PlayerStats
-            }
+            shouldSyncStats = true
         }
+        
         stats.lastLoginDate = Date()
         print("🕒 [DEBUG] Saving lastLoginDate: \(String(describing: stats.lastLoginDate))")
+        shouldSyncStats = true
 
         if todayString != lastSummaryDateString {
             let (points, _) = PointManager.evaluateDailyPoints(context: modelContext, tasks: allTodoItems)
@@ -343,8 +356,18 @@ struct ContentView: View {
                 }
             }
             lastSummaryDateString = todayString
+            shouldSyncStats = true
         } else {
             newDayEvaluationTriggeredLastDayView = false
+        }
+        
+        do {
+            try modelContext.save()
+            if shouldSyncStats {
+                loginViewModel.syncLocalPlayerStatsToFirestore(playerStatsModel: stats)
+            }
+        } catch {
+            // Error saving PlayerStats
         }
     }
 

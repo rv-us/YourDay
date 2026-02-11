@@ -207,22 +207,37 @@ class NotificationManager: ObservableObject {
         guard notificationsEnabled else { return }
         
         let content = UNMutableNotificationContent()
-        content.title = "Time to Journal! 📔"
-        content.body = "Your task '\(taskTitle)' just ended. Reflect on how it went!"
+        content.title = "Task Check-In"
+        content.body = "Did you complete '\(taskTitle)'? Tap to journal or reschedule."
         content.sound = .default
         content.userInfo = [
             "type": "journalPrompt",
             "eventId": eventId
         ]
         
-        // Use nil trigger for immediate notification
+        let identifier = "journalPrompt_\(eventId)"
+        let center = UNUserNotificationCenter.current()
+
+        // Ensure we keep one notification per event id.
+        center.removePendingNotificationRequests(withIdentifiers: [identifier])
+        center.removeDeliveredNotifications(withIdentifiers: [identifier])
+
+        let trigger: UNNotificationTrigger?
+        if scheduledEndTime > Date() {
+            let components = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute, .second], from: scheduledEndTime)
+            trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
+        } else {
+            // If the end time has already passed, prompt immediately.
+            trigger = nil
+        }
+
         let request = UNNotificationRequest(
-            identifier: "journalPrompt_\(eventId)",
+            identifier: identifier,
             content: content,
-            trigger: nil
+            trigger: trigger
         )
         
-        UNUserNotificationCenter.current().add(request) { error in
+        center.add(request) { error in
             if let error = error {
                 print("Error scheduling journal prompt notification: \(error.localizedDescription)")
             } else {
@@ -235,6 +250,26 @@ class NotificationManager: ObservableObject {
         let identifier = "journalPrompt_\(eventId)"
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [identifier])
         UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [identifier])
+    }
+
+    func cancelAllJournalPromptNotifications() {
+        let center = UNUserNotificationCenter.current()
+
+        center.getPendingNotificationRequests { requests in
+            let identifiers = requests
+                .map(\.identifier)
+                .filter { $0.hasPrefix("journalPrompt_") }
+            guard !identifiers.isEmpty else { return }
+            center.removePendingNotificationRequests(withIdentifiers: identifiers)
+        }
+
+        center.getDeliveredNotifications { notifications in
+            let identifiers = notifications
+                .map { $0.request.identifier }
+                .filter { $0.hasPrefix("journalPrompt_") }
+            guard !identifiers.isEmpty else { return }
+            center.removeDeliveredNotifications(withIdentifiers: identifiers)
+        }
     }
 }
 

@@ -1276,6 +1276,11 @@ class SchedulingAssistantViewModel: ObservableObject {
                                     print("Error saving scheduled event mapping: \(error.localizedDescription)")
                                 } else {
                                     print("✅ Saved scheduled event mapping for journaling")
+                                    NotificationManager.shared.scheduleJournalPromptNotification(
+                                        eventId: eventId,
+                                        taskTitle: tasksTitle,
+                                        scheduledEndTime: adjustedEndTime
+                                    )
                                 }
                             }
                         }

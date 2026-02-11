@@ -6,7 +6,6 @@
 //
 
 import Foundation
-import Combine
 import FirebaseAuth
 import FirebaseFirestore
 
@@ -17,9 +16,7 @@ class TaskEndMonitor: ObservableObject {
     @Published var pendingJournalEvents: [PendingJournalEvent] = []
     
     private let firebaseManager = FirebaseManager.shared
-    private let calendarManager = GoogleCalendarManager.shared
     private var timer: Timer?
-    private var cancellables = Set<AnyCancellable>()
     
     private init() {
         startMonitoring()
@@ -54,7 +51,7 @@ class TaskEndMonitor: ObservableObject {
     }
     
     func checkForEndedTasks() async {
-        guard let userId = Auth.auth().currentUser?.uid else { return }
+        guard Auth.auth().currentUser?.uid != nil else { return }
         
         // Fetch all scheduled events
         await withCheckedContinuation { continuation in
@@ -77,8 +74,6 @@ class TaskEndMonitor: ObservableObject {
                 
                 let now = Date()
                 let checkWindow: TimeInterval = 24 * 60 * 60 // 24 hours (expanded from 5 minutes to catch missed events)
-                
-                var newPendingEvents: [PendingJournalEvent] = []
                 
                 for eventData in events {
                     guard let eventId = eventData["eventId"] as? String,
@@ -115,12 +110,6 @@ class TaskEndMonitor: ObservableObject {
                                     DispatchQueue.main.async {
                                         if !self.pendingJournalEvents.contains(where: { $0.eventId == eventId }) {
                                             self.pendingJournalEvents.append(pendingEvent)
-                                            // Schedule notification for this pending event
-                                            NotificationManager.shared.scheduleJournalPromptNotification(
-                                                eventId: eventId,
-                                                taskTitle: taskTitle,
-                                                scheduledEndTime: scheduledEndTime
-                                            )
                                         }
                                     }
                                 }
@@ -151,4 +140,3 @@ class TaskEndMonitor: ObservableObject {
         }
     }
 }
-

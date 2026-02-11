@@ -21,6 +21,28 @@ struct TaskPointResult: Identifiable {
 
 class PointManager {
     static let maxPerTaskPercentage: Double = 0.20
+    
+    static func calculateTaskCompletionStreak(
+        completedMainTasksForYesterday: Int,
+        previousLastEvaluated: Date?,
+        yesterday: Date,
+        previousCompletedTasks: Int,
+        previousStreak: Int,
+        calendar: Calendar = .current
+    ) -> Int {
+        guard completedMainTasksForYesterday > 0 else { return 0 }
+        guard let previousLastEvaluated else { return 1 }
+        
+        guard let dayBeforeYesterday = calendar.date(byAdding: .day, value: -1, to: yesterday) else {
+            return 1
+        }
+        
+        let wasPreviousDayEvaluated = calendar.isDate(previousLastEvaluated, inSameDayAs: dayBeforeYesterday)
+        if wasPreviousDayEvaluated && previousCompletedTasks > 0 {
+            return max(previousStreak, 0) + 1
+        }
+        return 1
+    }
 
     static func evaluateDailyPoints(context: ModelContext, tasks: [TodoItem], on date: Date = Date()) -> (total: Double, breakdown: [TaskPointResult]) {
         let calendar = Calendar.current
@@ -48,8 +70,20 @@ class PointManager {
             playerGardenValue: stats.gardenValue
         )
 
+        let previousLastEvaluated = stats.lastEvaluated
+        let previousCompletedTasks = stats.lastDailyCompletedTasks
+        let previousStreak = stats.taskCompletionStreak
+
         let completedMainTasksForYesterday = breakdown.filter { $0.mainTaskCompletedOnTargetDay }.count
         let totalTasksWhenEvaluated = tasks.count
+        let updatedStreak = calculateTaskCompletionStreak(
+            completedMainTasksForYesterday: completedMainTasksForYesterday,
+            previousLastEvaluated: previousLastEvaluated,
+            yesterday: yesterday,
+            previousCompletedTasks: previousCompletedTasks,
+            previousStreak: previousStreak,
+            calendar: calendar
+        )
 
         // Store player's state *before* adding today's XP
         let levelBeforeXP = stats.playerLevel
@@ -93,6 +127,10 @@ class PointManager {
             context.insert(summary)
         }
         
+        stats.lastDailyPointsEarned = earnedPoints
+        stats.lastDailyCompletedTasks = completedMainTasksForYesterday
+        stats.lastDailyTotalTasks = totalTasksWhenEvaluated
+        stats.taskCompletionStreak = updatedStreak
         stats.lastEvaluated = yesterday
         // No need to call context.insert(stats) again if it was already inserted or fetched.
         // SwiftData tracks changes to managed objects.

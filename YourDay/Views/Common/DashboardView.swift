@@ -29,6 +29,7 @@ struct DashboardView: View {
     }
 
     @State private var showLastDayView = false
+    @StateObject private var friendStatsViewModel = DashboardFriendStatsViewModel()
 
     private var greeting: String {
         let hour = Calendar.current.component(.hour, from: Date())
@@ -47,12 +48,17 @@ struct DashboardView: View {
                     headerSection
                     todayCard
                     summaryCardsRow
+                    proofFeedCard
+                    friendsActivitySection
                     notesSection
                     lastDaySection
                 }
                 .padding()
             }
             .background(dynamicBackgroundColor.edgesIgnoringSafeArea(.all))
+            .onAppear {
+                friendStatsViewModel.load()
+            }
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(dynamicSecondaryBackgroundColor, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
@@ -152,6 +158,36 @@ struct DashboardView: View {
         }
     }
 
+    private var proofFeedCard: some View {
+        NavigationLink(destination: TaskProofFeedView().environmentObject(firebaseManager)) {
+            HStack(spacing: 12) {
+                Image(systemName: "photo.badge.checkmark")
+                    .font(.title2)
+                    .foregroundColor(dynamicPrimaryColor)
+                    .frame(width: 42, height: 42)
+                    .background(dynamicBackgroundColor)
+                    .clipShape(Circle())
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Proof Feed")
+                        .font(.headline)
+                        .foregroundColor(dynamicTextColor)
+                    Text("See friends' completion photos and vote check or X.")
+                        .font(.caption)
+                        .foregroundColor(dynamicSecondaryTextColor)
+                        .lineLimit(2)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundColor(dynamicSecondaryTextColor)
+            }
+            .padding()
+            .background(dynamicSecondaryBackgroundColor)
+            .cornerRadius(14)
+        }
+        .buttonStyle(.plain)
+    }
+
     private func summaryCard(icon: String, value: String, label: String, useOrange: Bool = false) -> some View {
         VStack(spacing: 6) {
             Image(systemName: icon)
@@ -170,6 +206,172 @@ struct DashboardView: View {
         .padding(.vertical, 12)
         .background(dynamicSecondaryBackgroundColor)
         .cornerRadius(12)
+    }
+
+    private var friendsActivitySection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 6) {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(dynamicSecondaryColor)
+                    .frame(width: 4, height: 20)
+                Text("Friends Activity")
+                    .font(.headline)
+                    .fontWeight(.bold)
+                    .foregroundColor(dynamicTextColor)
+                Spacer()
+                if friendStatsViewModel.hasLoadedOnce {
+                    Button(action: { friendStatsViewModel.refresh() }) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.caption)
+                            .foregroundColor(dynamicPrimaryColor)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            if friendStatsViewModel.isLoading && !friendStatsViewModel.hasLoadedOnce {
+                loadingFriendsActivityCard
+            } else if let errorMessage = friendStatsViewModel.errorMessage {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(errorMessage)
+                        .font(.subheadline)
+                        .foregroundColor(dynamicDestructiveColor)
+                    Button("Retry") {
+                        friendStatsViewModel.refresh()
+                    }
+                    .font(.subheadline)
+                    .foregroundColor(dynamicPrimaryColor)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding()
+                .background(dynamicSecondaryBackgroundColor)
+                .cornerRadius(12)
+            } else if friendStatsViewModel.cards.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("No friend activity yet")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(dynamicTextColor)
+                    Text("Add friends to see their points, streaks, and completed tasks.")
+                        .font(.caption)
+                        .foregroundColor(dynamicSecondaryTextColor)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding()
+                .background(dynamicSecondaryBackgroundColor)
+                .cornerRadius(12)
+            } else {
+                TabView {
+                    ForEach(friendStatsViewModel.cards) { card in
+                        friendStatsCard(card)
+                            .padding(.horizontal, 4)
+                    }
+                }
+                .frame(height: 186)
+                .tabViewStyle(.page(indexDisplayMode: .automatic))
+                .indexViewStyle(.page(backgroundDisplayMode: .interactive))
+            }
+        }
+    }
+
+    private var loadingFriendsActivityCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ProgressView()
+                .tint(dynamicPrimaryColor)
+            Text("Loading friend activity...")
+                .font(.caption)
+                .foregroundColor(dynamicSecondaryTextColor)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+        .background(dynamicSecondaryBackgroundColor)
+        .cornerRadius(12)
+    }
+
+    private func friendStatsCard(_ card: FriendDashboardStats) -> some View {
+        let isMuted = card.isNoActivityYesterday
+
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(card.displayName)
+                    .font(.headline)
+                    .fontWeight(.bold)
+                    .foregroundColor(dynamicTextColor)
+                    .lineLimit(1)
+                Spacer()
+                if isMuted {
+                    Label("No activity yesterday", systemImage: "moon.zzz.fill")
+                        .font(.caption2)
+                        .foregroundColor(dynamicSecondaryTextColor)
+                } else {
+                    Label("Active", systemImage: "bolt.fill")
+                        .font(.caption2)
+                        .foregroundColor(dynamicSecondaryColor)
+                }
+            }
+
+            HStack(spacing: 8) {
+                friendMetricChip(
+                    icon: "sparkles",
+                    value: "\(Int(card.yesterdayPoints))",
+                    label: "Points",
+                    muted: isMuted
+                )
+                friendMetricChip(
+                    icon: "flame.fill",
+                    value: "\(card.taskStreak)",
+                    label: "Streak",
+                    muted: isMuted
+                )
+                friendMetricChip(
+                    icon: "checkmark.circle.fill",
+                    value: card.totalTasksYesterday > 0 ? "\(card.completedTasksYesterday)/\(card.totalTasksYesterday)" : "\(card.completedTasksYesterday)",
+                    label: "Tasks",
+                    muted: isMuted
+                )
+            }
+
+            if card.isStale {
+                Text("Waiting for their daily sync")
+                    .font(.caption2)
+                    .foregroundColor(dynamicSecondaryTextColor)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+        .background(
+            isMuted ? dynamicSecondaryBackgroundColor.opacity(0.65) : dynamicSecondaryBackgroundColor
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(
+                    isMuted ? dynamicSecondaryTextColor.opacity(0.3) : dynamicPrimaryColor.opacity(0.2),
+                    lineWidth: 1
+                )
+        )
+        .cornerRadius(14)
+        .opacity(isMuted ? 0.82 : 1.0)
+    }
+
+    private func friendMetricChip(icon: String, value: String, label: String, muted: Bool) -> some View {
+        VStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.caption)
+                .foregroundColor(muted ? dynamicSecondaryTextColor : dynamicPrimaryColor)
+            Text(value)
+                .font(.subheadline)
+                .fontWeight(.bold)
+                .foregroundColor(dynamicTextColor)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+            Text(label)
+                .font(.caption2)
+                .foregroundColor(dynamicSecondaryTextColor)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .background(dynamicBackgroundColor.opacity(muted ? 0.4 : 0.9))
+        .cornerRadius(10)
     }
 
     private var notesSection: some View {

@@ -10,6 +10,7 @@ import SwiftUI
 import FirebaseAuth
 import Combine
 import FirebaseVertexAI
+import FirebaseFirestore
 
 @MainActor
 class JournalViewModel: ObservableObject {
@@ -18,6 +19,8 @@ class JournalViewModel: ObservableObject {
     @Published var journalEntries: [JournalEntry] = []
     @Published var pendingJournalPrompt: TaskEndMonitor.PendingJournalEvent?
     @Published var showingJournalPrompt = false
+    @Published var pendingTaskProofCapture: TaskProofCaptureContext?
+    @Published var showingTaskProofCapture = false
     @Published var isLoading = false
     @Published var errorMessage: String?
 
@@ -35,30 +38,19 @@ class JournalViewModel: ObservableObject {
     private let taskEndMonitor = TaskEndMonitor.shared
     private let notificationManager = NotificationManager.shared
     private var cancellables = Set<AnyCancellable>()
+    private var awaitingScheduledProofCaptureResolution = false
     
     private init() {
         // Observe pending journal events from TaskEndMonitor
         taskEndMonitor.$pendingJournalEvents
             .sink { [weak self] events in
                 guard let self = self else { return }
-                // Add all new events to queue (avoid duplicates)
-                let existingEventIds = Set(self.pendingJournalQueue.map { $0.eventId })
-                let newEvents = events.filter { !existingEventIds.contains($0.eventId) }
-                
-                // Add new events to queue
+                // Add all new events to queue (avoid duplicates with current prompt + queue)
+                let newEvents = events.filter { !self.hasEventInPromptOrQueue(eventId: $0.eventId) }
                 self.pendingJournalQueue.append(contentsOf: newEvents)
-                
-                // Schedule notifications for new events
-                for event in newEvents {
-                    self.notificationManager.scheduleJournalPromptNotification(
-                        eventId: event.eventId,
-                        taskTitle: event.taskTitle,
-                        scheduledEndTime: event.scheduledEndTime
-                    )
-                }
-                
+
                 // Show next prompt if not already showing one
-                if !self.showingJournalPrompt {
+                if !self.showingJournalPrompt && !self.showingTaskProofCapture {
                     self.showNextPendingPrompt()
                 }
             }
@@ -70,6 +62,8 @@ class JournalViewModel: ObservableObject {
     }
     
     private func showNextPendingPrompt() {
+        guard !showingTaskProofCapture else { return }
+
         // Check if user has opted out of auto-prompts
         guard autoShowPrompts else {
             // User has permanently opted out of auto-prompts
@@ -260,20 +254,28 @@ class JournalViewModel: ObservableObject {
                     // Add to local entries
                     self.journalEntries.insert(entry, at: 0)
                     
-                    // Clear current prompt and show next one
-                    // Only clear if this was the prompt we were journaling
-                    if let promptEventId = currentPromptEventId,
-                       let savedId = savedEventId,
-                       promptEventId == savedId {
-                        self.pendingJournalPrompt = nil
-                        self.showNextPendingPrompt()
-                    } else if savedEventId == nil || savedEventId?.isEmpty == true {
-                        // If no eventId, just clear and show next (shouldn't happen but handle gracefully)
-                        self.pendingJournalPrompt = nil
-                        self.showNextPendingPrompt()
+                    if completionStatus == .completed {
+                        self.queueScheduledProofCapture(
+                            taskTitle: taskTitle,
+                            eventId: savedEventId,
+                            completedAt: actualEndTime ?? Date()
+                        )
                     } else {
-                        // EventId doesn't match - this shouldn't happen, but don't clear to be safe
-                        print("⚠️ Warning: Not clearing prompt - saved eventId (\(savedEventId ?? "nil")) doesn't match prompt eventId (\(currentPromptEventId ?? "nil"))")
+                        // Clear current prompt and show next one
+                        // Only clear if this was the prompt we were journaling
+                        if let promptEventId = currentPromptEventId,
+                           let savedId = savedEventId,
+                           promptEventId == savedId {
+                            self.pendingJournalPrompt = nil
+                            self.showNextPendingPrompt()
+                        } else if savedEventId == nil || savedEventId?.isEmpty == true {
+                            // If no eventId, just clear and show next (shouldn't happen but handle gracefully)
+                            self.pendingJournalPrompt = nil
+                            self.showNextPendingPrompt()
+                        } else {
+                            // EventId doesn't match - this shouldn't happen, but don't clear to be safe
+                            print("⚠️ Warning: Not clearing prompt - saved eventId (\(savedEventId ?? "nil")) doesn't match prompt eventId (\(currentPromptEventId ?? "nil"))")
+                        }
                     }
                     
                     // Post notification to trigger AI analysis (SmartSchedulingView will listen)
@@ -346,9 +348,25 @@ class JournalViewModel: ObservableObject {
         pendingJournalPrompt = nil
         // DON'T call showNextPendingPrompt() - user has opted out permanently
     }
+
+    func completeScheduledProofCaptureFlow() {
+        guard awaitingScheduledProofCaptureResolution else { return }
+        awaitingScheduledProofCaptureResolution = false
+        showingTaskProofCapture = false
+        pendingTaskProofCapture = nil
+        showNextPendingPrompt()
+    }
     
     // Method to show prompt for a specific event (used when notification is tapped)
     func showPromptForEvent(eventId: String) {
+        guard !eventId.isEmpty else { return }
+        if showingTaskProofCapture {
+            if let monitorEvent = taskEndMonitor.pendingJournalEvents.first(where: { $0.eventId == eventId }) {
+                enqueueEventIfNeeded(monitorEvent, prioritize: true)
+            }
+            return
+        }
+
         // Check if it's the current prompt
         if let current = pendingJournalPrompt, current.eventId == eventId {
             showingJournalPrompt = true
@@ -360,11 +378,135 @@ class JournalViewModel: ObservableObject {
             // Move it to the front of the queue
             let event = pendingJournalQueue.remove(at: index)
             pendingJournalQueue.insert(event, at: 0)
-            // Show it if not already showing another
             if !showingJournalPrompt {
-                showNextPendingPrompt()
+                presentQueuedEvent(eventId: eventId)
+                return
+            }
+            return
+        }
+
+        if let monitorEvent = taskEndMonitor.pendingJournalEvents.first(where: { $0.eventId == eventId }) {
+            enqueueEventIfNeeded(monitorEvent, prioritize: true)
+            if !showingJournalPrompt {
+                presentQueuedEvent(eventId: eventId)
+            }
+            return
+        }
+
+        // Cold-start/background fallback: resolve event from Firestore.
+        firebaseManager.checkJournalEntryExists(eventId: eventId) { [weak self] exists in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                guard !exists else {
+                    print("⚠️ Journal entry already exists for event \(eventId), skipping prompt")
+                    return
+                }
+
+                self.firebaseManager.fetchScheduledEvent(eventId: eventId) { [weak self] eventData, error in
+                    DispatchQueue.main.async {
+                        guard let self = self else { return }
+
+                        if let error = error {
+                            print("Error fetching scheduled event for journal prompt: \(error.localizedDescription)")
+                            return
+                        }
+
+                        guard let pendingEvent = self.makePendingEvent(from: eventData, fallbackEventId: eventId) else {
+                            print("⚠️ Unable to resolve pending journal event for eventId: \(eventId)")
+                            return
+                        }
+
+                        self.enqueueEventIfNeeded(pendingEvent, prioritize: true)
+                        if !self.showingJournalPrompt {
+                            self.presentQueuedEvent(eventId: eventId)
+                        }
+                    }
+                }
             }
         }
+    }
+
+    private func hasEventInPromptOrQueue(eventId: String) -> Bool {
+        if pendingJournalPrompt?.eventId == eventId {
+            return true
+        }
+        return pendingJournalQueue.contains(where: { $0.eventId == eventId })
+    }
+
+    private func enqueueEventIfNeeded(_ event: TaskEndMonitor.PendingJournalEvent, prioritize: Bool = false) {
+        guard !hasEventInPromptOrQueue(eventId: event.eventId) else { return }
+        if prioritize {
+            pendingJournalQueue.insert(event, at: 0)
+        } else {
+            pendingJournalQueue.append(event)
+        }
+    }
+
+    private func presentQueuedEvent(eventId: String) {
+        guard let index = pendingJournalQueue.firstIndex(where: { $0.eventId == eventId }) else { return }
+        let event = pendingJournalQueue.remove(at: index)
+        pendingJournalPrompt = event
+        showingJournalPrompt = true
+    }
+
+    private func makePendingEvent(from scheduledEventData: [String: Any]?, fallbackEventId: String) -> TaskEndMonitor.PendingJournalEvent? {
+        guard let scheduledEventData = scheduledEventData else { return nil }
+
+        let resolvedEventId: String
+        if let storedEventId = scheduledEventData["eventId"] as? String, !storedEventId.isEmpty {
+            resolvedEventId = storedEventId
+        } else {
+            resolvedEventId = fallbackEventId
+        }
+        guard let taskTitle = scheduledEventData["taskTitle"] as? String,
+              let scheduledStartTime = dateValue(from: scheduledEventData["startTime"]),
+              let scheduledEndTime = dateValue(from: scheduledEventData["endTime"]) else {
+            return nil
+        }
+
+        let tasks = scheduledEventData["tasks"] as? [String] ?? [taskTitle]
+        let dayOfWeek = dayOfWeekString(from: scheduledStartTime)
+
+        return TaskEndMonitor.PendingJournalEvent(
+            eventId: resolvedEventId,
+            taskTitle: taskTitle,
+            tasks: tasks,
+            scheduledStartTime: scheduledStartTime,
+            scheduledEndTime: scheduledEndTime,
+            dayOfWeek: dayOfWeek
+        )
+    }
+
+    private func dateValue(from rawValue: Any?) -> Date? {
+        if let timestamp = rawValue as? Timestamp {
+            return timestamp.dateValue()
+        }
+        if let date = rawValue as? Date {
+            return date
+        }
+        return nil
+    }
+
+    private func dayOfWeekString(from date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEEE"
+        return formatter.string(from: date).lowercased()
+    }
+
+    private func queueScheduledProofCapture(taskTitle: String, eventId: String?, completedAt: Date) {
+        pendingTaskProofCapture = TaskProofCaptureContext(
+            taskTitle: taskTitle,
+            sourceType: .scheduled,
+            scheduledEventId: eventId,
+            localTaskId: nil,
+            sharedTaskId: nil,
+            completedAt: completedAt
+        )
+
+        awaitingScheduledProofCaptureResolution = true
+        showingJournalPrompt = false
+        pendingJournalPrompt = nil
+        showingTaskProofCapture = true
     }
     
     // Helper to trigger AI analysis - will be called from integration

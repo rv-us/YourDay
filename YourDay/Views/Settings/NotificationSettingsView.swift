@@ -151,6 +151,7 @@ struct NotificationSettingsView: View {
                                 if !newValue {
                                     UNUserNotificationCenter.current()
                                         .removePendingNotificationRequests(withIdentifiers: scheduledReminderIDs)
+                                    NotificationManager.shared.cancelAllJournalPromptNotifications()
                                 }
                             }
                             .listRowBackground(dynamicSecondaryBackgroundColor)
@@ -485,6 +486,7 @@ struct NotificationSettingsView: View {
         } else {
             UNUserNotificationCenter.current()
                 .removePendingNotificationRequests(withIdentifiers: scheduledReminderIDs)
+            NotificationManager.shared.cancelAllJournalPromptNotifications()
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {

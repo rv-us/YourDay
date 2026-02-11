@@ -489,6 +489,10 @@ class LoginViewModel: ObservableObject {
             existingLocalStats.totalPoints = codableStats.totalPoints
             existingLocalStats.lastEvaluated = codableStats.lastEvaluated
             existingLocalStats.lastLoginDate = codableStats.lastLoginDate
+            existingLocalStats.lastDailyPointsEarned = codableStats.lastDailyPointsEarned
+            existingLocalStats.lastDailyCompletedTasks = codableStats.lastDailyCompletedTasks
+            existingLocalStats.lastDailyTotalTasks = codableStats.lastDailyTotalTasks
+            existingLocalStats.taskCompletionStreak = codableStats.taskCompletionStreak
             existingLocalStats.playerLevel = codableStats.playerLevel
             existingLocalStats.currentXP = codableStats.currentXP
             existingLocalStats.unplacedPlantsInventory = codableStats.unplacedPlantsInventory
@@ -504,6 +508,10 @@ class LoginViewModel: ObservableObject {
                 totalPoints: codableStats.totalPoints,
                 lastEvaluated: codableStats.lastEvaluated,
                 lastLoginDate: codableStats.lastLoginDate,
+                lastDailyPointsEarned: codableStats.lastDailyPointsEarned,
+                lastDailyCompletedTasks: codableStats.lastDailyCompletedTasks,
+                lastDailyTotalTasks: codableStats.lastDailyTotalTasks,
+                taskCompletionStreak: codableStats.taskCompletionStreak,
                 playerLevel: codableStats.playerLevel,
                 currentXP: codableStats.currentXP,
                 unplacedPlantsInventory: codableStats.unplacedPlantsInventory,

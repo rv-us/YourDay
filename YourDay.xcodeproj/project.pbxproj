@@ -12,6 +12,7 @@
 		C9BF6B8D2DE6EF75007D4B0F /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = C9BF6B8C2DE6EF75007D4B0F /* Lottie */; };
 		C9FE7D0C2DDB10F4005E5576 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = C9FE7D0B2DDB10F4005E5576 /* FirebaseAuth */; };
 		C9FE7D0E2DDB10F4005E5576 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = C9FE7D0D2DDB10F4005E5576 /* FirebaseFirestore */; };
+		E11A00012E00000100AAA001 /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = E11A00022E00000100AAA001 /* FirebaseStorage */; };
 		C9FE7D102DDB10F4005E5576 /* FirebaseFirestoreCombine-Community in Frameworks */ = {isa = PBXBuildFile; productRef = C9FE7D0F2DDB10F4005E5576 /* FirebaseFirestoreCombine-Community */; };
 		C9FE7D1D2DDB1C1C005E5576 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = C9FE7D1C2DDB1C1C005E5576 /* GoogleSignIn */; };
 		C9FE7D1F2DDB1C1C005E5576 /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = C9FE7D1E2DDB1C1C005E5576 /* GoogleSignInSwift */; };
@@ -83,6 +84,7 @@
 				C94CCFEB2DE3ED0000249A99 /* GoogleGenerativeAI in Frameworks */,
 				C9FE7D0C2DDB10F4005E5576 /* FirebaseAuth in Frameworks */,
 				C9FE7D0E2DDB10F4005E5576 /* FirebaseFirestore in Frameworks */,
+				E11A00012E00000100AAA001 /* FirebaseStorage in Frameworks */,
 				C9BF6B8D2DE6EF75007D4B0F /* Lottie in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -147,6 +149,7 @@
 				C9A89A192DBF16EE00D2C382 /* FirebaseVertexAI */,
 				C9FE7D0B2DDB10F4005E5576 /* FirebaseAuth */,
 				C9FE7D0D2DDB10F4005E5576 /* FirebaseFirestore */,
+				E11A00022E00000100AAA001 /* FirebaseStorage */,
 				C9FE7D0F2DDB10F4005E5576 /* FirebaseFirestoreCombine-Community */,
 				C9FE7D1C2DDB1C1C005E5576 /* GoogleSignIn */,
 				C9FE7D1E2DDB1C1C005E5576 /* GoogleSignInSwift */,
@@ -444,8 +447,10 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = YourDay/Info.plist;
 				INFOPLIST_KEY_NSCalendarsUsageDescription = "YourDay needs access to your calendar to sync your tasks and help you stay organized.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Attach photo proof to completed tasks.";
 				INFOPLIST_KEY_NSLocationAlwaysUsageDescription = "We use your location to send smart reminders based on where you are.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "We use your location to send smart reminders based on where you are.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Attach photo proof to completed tasks.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -461,7 +466,7 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.7;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "rv-rg";
+				PRODUCT_BUNDLE_IDENTIFIER = "rv-rg2";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
@@ -487,8 +492,10 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = YourDay/Info.plist;
 				INFOPLIST_KEY_NSCalendarsUsageDescription = "YourDay needs access to your calendar to sync your tasks and help you stay organized.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Attach photo proof to completed tasks.";
 				INFOPLIST_KEY_NSLocationAlwaysUsageDescription = "We use your location to send smart reminders based on where you are.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "We use your location to send smart reminders based on where you are.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Attach photo proof to completed tasks.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -504,7 +511,7 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.7;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "rv-rg";
+				PRODUCT_BUNDLE_IDENTIFIER = "rv-rg2";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
@@ -706,6 +713,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = C9A89A182DBF16EE00D2C382 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseFirestore;
+		};
+		E11A00022E00000100AAA001 /* FirebaseStorage */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C9A89A182DBF16EE00D2C382 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseStorage;
 		};
 		C9FE7D0F2DDB10F4005E5576 /* FirebaseFirestoreCombine-Community */ = {
 			isa = XCSwiftPackageProductDependency;

@@ -4,6 +4,9 @@ import SwiftData
 struct TodoListItemView: View {
     @Bindable var item: TodoItem
     @State private var showingEditView = false
+    @State private var showingProofCapture = false
+    @State private var pendingProofContext: TaskProofCaptureContext?
+    @State private var proofErrorMessage: String?
     @Environment(\.modelContext) private var _modelContext
     @ObservedObject var todoViewModel: TodoViewModel
     @EnvironmentObject var firebaseManager: FirebaseManager
@@ -29,26 +32,8 @@ struct TodoListItemView: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 10) {
                     Button(action: {
-                    withAnimation {
-                        item.isDone.toggle()
-                        item.completedAt = item.isDone ? Date() : nil
-                    }
-                    print("Main item '\(item.title)' toggled to \(item.isDone), completedAt: \(String(describing: item.completedAt))")
-                    
-                    // Sync shared task progress if linked
-                    if let sharedId = item.sharedTaskId {
-                        firebaseManager.updateSharedTaskProgress(sharedTaskId: sharedId, isCompleted: item.isDone) { error in
-                            if let error = error {
-                                print("Failed to sync shared task progress: \(error.localizedDescription)")
-                            }
-                        }
-                    }
-                    
-                    // Reschedule notifications to reflect current task state
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        todoViewModel.rescheduleNotificationsIfNeeded(context: _modelContext)
-                    }
-                }) {
+                        toggleCompletion()
+                    }) {
                     Image(systemName: item.isDone ? "checkmark.circle.fill" : "circle")
                         .foregroundColor(item.isDone ? dynamicPrimaryColor : dynamicSecondaryTextColor)
                         .frame(width: 24, height: 24)
@@ -123,6 +108,90 @@ struct TodoListItemView: View {
         .sheet(isPresented: $showingEditView) {
             NewItemview(newItemPresented: $showingEditView, editingItem: item)
                 .environment(\.modelContext, _modelContext)
+        }
+        .sheet(isPresented: $showingProofCapture, onDismiss: {
+            pendingProofContext = nil
+        }) {
+            if let pendingProofContext = pendingProofContext {
+                TaskProofCaptureView(
+                    context: pendingProofContext,
+                    onSkip: {},
+                    onPosted: { postId in
+                        item.proofPostId = postId
+                        saveModelContext()
+                    }
+                )
+                .environmentObject(firebaseManager)
+            }
+        }
+        .alert("Proof Update Failed", isPresented: Binding(
+            get: { proofErrorMessage != nil },
+            set: { isPresented in
+                if !isPresented {
+                    proofErrorMessage = nil
+                }
+            }
+        )) {
+            Button("OK", role: .cancel) {
+                proofErrorMessage = nil
+            }
+        } message: {
+            Text(proofErrorMessage ?? "Something went wrong while updating your proof post.")
+        }
+    }
+
+    private func toggleCompletion() {
+        let wasDone = item.isDone
+
+        withAnimation {
+            item.isDone.toggle()
+            item.completedAt = item.isDone ? Date() : nil
+        }
+
+        print("Main item '\(item.title)' toggled to \(item.isDone), completedAt: \(String(describing: item.completedAt))")
+
+        if let sharedId = item.sharedTaskId {
+            firebaseManager.updateSharedTaskProgress(sharedTaskId: sharedId, isCompleted: item.isDone) { error in
+                if let error = error {
+                    print("Failed to sync shared task progress: \(error.localizedDescription)")
+                }
+            }
+        }
+
+        if !wasDone && item.isDone {
+            pendingProofContext = TaskProofCaptureContext(
+                taskTitle: item.title,
+                sourceType: item.sharedTaskId == nil ? .unscheduled : .shared,
+                scheduledEventId: nil,
+                localTaskId: item.localTaskId,
+                sharedTaskId: item.sharedTaskId,
+                completedAt: item.completedAt ?? Date()
+            )
+            showingProofCapture = true
+        } else if wasDone && !item.isDone, let proofPostId = item.proofPostId {
+            item.proofPostId = nil
+            firebaseManager.deleteTaskProofPost(postId: proofPostId) { error in
+                DispatchQueue.main.async {
+                    if let error = error {
+                        proofErrorMessage = error.localizedDescription
+                    }
+                }
+            }
+        }
+
+        saveModelContext()
+
+        // Reschedule notifications to reflect current task state
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            todoViewModel.rescheduleNotificationsIfNeeded(context: _modelContext)
+        }
+    }
+
+    private func saveModelContext() {
+        do {
+            try _modelContext.save()
+        } catch {
+            print("Failed to save Todo item changes: \(error)")
         }
     }
 }
