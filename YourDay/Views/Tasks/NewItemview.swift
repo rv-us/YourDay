@@ -69,15 +69,14 @@ struct NewItemview: View {
                             .font(.subheadline)
                             .foregroundColor(dynamicSecondaryTextColor)
 
-                        TextField("Enter task title", text: $viewModel.title)
+                        AppTextField(placeholder: "Enter task title", text: $viewModel.title)
                             .padding(10)
-                            .background(dynamicSecondaryBackgroundColor.opacity(0.3))
+                            .background(dynamicSecondaryBackgroundColor)
                             .cornerRadius(10)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 10)
                                     .stroke(dynamicSecondaryTextColor.opacity(0.5), lineWidth: 1)
                             )
-                            .foregroundColor(dynamicTextColor)
                             .autocorrectionDisabled()
                             .textInputAutocapitalization(.sentences)
 
@@ -88,13 +87,14 @@ struct NewItemview: View {
                         TextEditor(text: $viewModel.description)
                             .frame(minHeight: 100)
                             .padding(10)
-                            .background(dynamicSecondaryBackgroundColor.opacity(0.3))
+                            .background(dynamicSecondaryBackgroundColor)
                             .cornerRadius(10)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 10)
                                     .stroke(dynamicSecondaryTextColor.opacity(0.5), lineWidth: 1)
                             )
                             .foregroundColor(dynamicTextColor)
+                            .tint(dynamicPrimaryColor)
                             .textInputAutocapitalization(.sentences)
                             .scrollContentBackground(.hidden)
 
@@ -103,7 +103,7 @@ struct NewItemview: View {
                                 .padding()
                         }
                     }
-                    .listRowBackground(dynamicBackgroundColor)
+                    .listRowBackground(dynamicSecondaryBackgroundColor)
                 }
 
                 Section(header: Text("Subtasks")
@@ -112,18 +112,17 @@ struct NewItemview: View {
                     .padding(.top, 5)
                 ) {
                     ForEach($viewModel.subtasks) { $subtask in
-                        TextField("Subtask", text: $subtask.title)
+                        AppTextField(placeholder: "Subtask", text: $subtask.title)
                             .padding(8)
-                            .background(dynamicSecondaryBackgroundColor.opacity(0.3))
+                            .background(dynamicSecondaryBackgroundColor)
                             .cornerRadius(8)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 8)
                                     .stroke(dynamicSecondaryTextColor.opacity(0.5), lineWidth: 1)
                             )
-                            .foregroundColor(dynamicTextColor)
                             .autocorrectionDisabled()
                             .textInputAutocapitalization(.sentences)
-                            .listRowBackground(dynamicBackgroundColor)
+                            .listRowBackground(dynamicSecondaryBackgroundColor)
                     }
                     .onDelete { indexSet in
                         viewModel.subtasks.remove(atOffsets: indexSet)
@@ -133,7 +132,7 @@ struct NewItemview: View {
                         Label("Add Subtask", systemImage: "plus.circle.fill")
                             .foregroundColor(dynamicPrimaryColor)
                     }
-                    .listRowBackground(dynamicBackgroundColor)
+                    .listRowBackground(dynamicSecondaryBackgroundColor)
                 }
 
                 Section(header: Text("Due Date")
@@ -142,17 +141,17 @@ struct NewItemview: View {
                     .padding(.top, 5)
                 ) {
                     DatePicker("Select Due Date", selection: $viewModel.donebye)
-                        .datePickerStyle(GraphicalDatePickerStyle())
+                        .datePickerStyle(.graphical)
                         .tint(dynamicPrimaryColor)
                         .foregroundColor(dynamicTextColor)
-                        .background(dynamicSecondaryBackgroundColor.opacity(0.5))
+                        .background(dynamicSecondaryBackgroundColor)
                         .cornerRadius(10)
                         .overlay(
                             RoundedRectangle(cornerRadius: 10)
                                 .stroke(dynamicPrimaryColor, lineWidth: 1.5)
                         )
                         .padding(.vertical, 5)
-                        .listRowBackground(dynamicBackgroundColor)
+                        .listRowBackground(dynamicSecondaryBackgroundColor)
                 }
 
                 Section {

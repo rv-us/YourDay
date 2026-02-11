@@ -622,12 +622,10 @@ struct ModificationReasonSheet: View {
                             .font(.caption)
                             .foregroundColor(dynamicSecondaryTextColor)
 
-                        TextField("e.g., I have a meeting at that time, I prefer mornings...", text: $reason, axis: .vertical)
-                            .textFieldStyle(.plain)
+                        AppTextField(placeholder: "e.g., I have a meeting at that time, I prefer mornings...", text: $reason, axis: .vertical, lineLimit: 3...6)
                             .padding()
                             .background(dynamicSecondaryBackgroundColor)
                             .cornerRadius(12)
-                            .lineLimit(3...6)
                             .focused($isTextFieldFocused)
                             .submitLabel(.done)
                             .onSubmit {

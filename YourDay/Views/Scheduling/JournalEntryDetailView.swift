@@ -108,12 +108,10 @@ struct JournalEntryDetailView: View {
                             Text("What did you do?")
                                 .font(.headline)
                                 .foregroundColor(dynamicTextColor)
-                            TextField("", text: $whatDid, axis: .vertical)
-                                .textFieldStyle(.plain)
+                            AppTextField(placeholder: "Describe what you did...", text: $whatDid, axis: .vertical, lineLimit: 3...8)
                                 .padding()
-                                .background(dynamicBackgroundColor)
+                                .background(dynamicSecondaryBackgroundColor)
                                 .cornerRadius(8)
-                                .lineLimit(3...8)
                         }
                         
                         // How Went
@@ -121,12 +119,10 @@ struct JournalEntryDetailView: View {
                             Text("How did it go?")
                                 .font(.headline)
                                 .foregroundColor(dynamicTextColor)
-                            TextField("", text: $howWent, axis: .vertical)
-                                .textFieldStyle(.plain)
+                            AppTextField(placeholder: "Satisfaction, challenges...", text: $howWent, axis: .vertical, lineLimit: 2...6)
                                 .padding()
-                                .background(dynamicBackgroundColor)
+                                .background(dynamicSecondaryBackgroundColor)
                                 .cornerRadius(8)
-                                .lineLimit(2...6)
                         }
                         
                         // Learned
@@ -134,12 +130,10 @@ struct JournalEntryDetailView: View {
                             Text("What did you learn?")
                                 .font(.headline)
                                 .foregroundColor(dynamicTextColor)
-                            TextField("", text: $learned, axis: .vertical)
-                                .textFieldStyle(.plain)
+                            AppTextField(placeholder: "Insights, discoveries...", text: $learned, axis: .vertical, lineLimit: 2...6)
                                 .padding()
-                                .background(dynamicBackgroundColor)
+                                .background(dynamicSecondaryBackgroundColor)
                                 .cornerRadius(8)
-                                .lineLimit(2...6)
                         }
                         
                         // Distractions
@@ -147,25 +141,24 @@ struct JournalEntryDetailView: View {
                             Text("Distractions?")
                                 .font(.headline)
                                 .foregroundColor(dynamicTextColor)
-                            TextField("", text: $distractions, axis: .vertical)
-                                .textFieldStyle(.plain)
+                            AppTextField(placeholder: "What interrupted focus...", text: $distractions, axis: .vertical, lineLimit: 2...6)
                                 .padding()
-                                .background(dynamicBackgroundColor)
+                                .background(dynamicSecondaryBackgroundColor)
                                 .cornerRadius(8)
-                                .lineLimit(2...6)
                         }
                         
-                        // Completion Status
+                        // Completion Status (pill style)
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Completion Status")
                                 .font(.headline)
                                 .foregroundColor(dynamicTextColor)
-                            Picker("Status", selection: $completionStatus) {
-                                Text("Completed").tag(CompletionStatus.completed)
-                                Text("Partial").tag(CompletionStatus.partial)
-                                Text("Not Started").tag(CompletionStatus.notStarted)
+                            HStack(spacing: 0) {
+                                detailCompletionPill(title: "Completed", status: .completed)
+                                detailCompletionPill(title: "Partial", status: .partial)
+                                detailCompletionPill(title: "Not Started", status: .notStarted)
                             }
-                            .pickerStyle(.segmented)
+                            .padding(4)
+                            .background(Capsule().fill(Color.black.opacity(0.06)))
                         }
                         
                         // Save Button
@@ -278,9 +271,15 @@ struct JournalEntryDetailView: View {
             .padding(.vertical)
         }
         .background(dynamicBackgroundColor)
-        .navigationTitle("Journal Entry")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(dynamicSecondaryBackgroundColor, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
         .toolbar {
+            ToolbarItem(placement: .principal) {
+                Text("Journal Entry")
+                    .fontWeight(.bold)
+                    .foregroundColor(dynamicTextColor)
+            }
             ToolbarItem(placement: .navigationBarTrailing) {
                 HStack {
                     if !isEditing {
@@ -317,6 +316,22 @@ struct JournalEntryDetailView: View {
         .onAppear {
             loadEntryData()
         }
+    }
+    
+    private func detailCompletionPill(title: String, status: CompletionStatus) -> some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.15)) { completionStatus = status }
+        } label: {
+            Text(title)
+                .fontWeight(.semibold)
+                .font(.caption)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .foregroundColor(completionStatus == status ? .white : .black.opacity(0.65))
+                .background(completionStatus == status ? dynamicPrimaryColor : Color.clear)
+                .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
     }
     
     private func loadEntryData() {

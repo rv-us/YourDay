@@ -161,12 +161,10 @@ struct JournalPromptView: View {
                             + Text(" *")
                             .foregroundColor(.red)
                         
-                        TextField("Describe what you accomplished...", text: $whatDid, axis: .vertical)
-                            .textFieldStyle(.plain)
+                        AppTextField(placeholder: "Describe what you accomplished...", text: $whatDid, axis: .vertical, lineLimit: 3...6)
                             .padding()
                             .background(dynamicSecondaryBackgroundColor)
                             .cornerRadius(12)
-                            .lineLimit(3...6)
                             .focused($focusedField, equals: .whatDid)
                     }
                     .padding(.horizontal)
@@ -178,12 +176,10 @@ struct JournalPromptView: View {
                             .fontWeight(.medium)
                             .foregroundColor(dynamicTextColor)
                         
-                        TextField("Satisfaction, challenges, feelings...", text: $howWent, axis: .vertical)
-                            .textFieldStyle(.plain)
+                        AppTextField(placeholder: "Satisfaction, challenges, feelings...", text: $howWent, axis: .vertical, lineLimit: 2...4)
                             .padding()
                             .background(dynamicSecondaryBackgroundColor)
                             .cornerRadius(12)
-                            .lineLimit(2...4)
                             .focused($focusedField, equals: .howWent)
                     }
                     .padding(.horizontal)
@@ -195,12 +191,10 @@ struct JournalPromptView: View {
                             .fontWeight(.medium)
                             .foregroundColor(dynamicTextColor)
                         
-                        TextField("Insights, discoveries, patterns...", text: $learned, axis: .vertical)
-                            .textFieldStyle(.plain)
+                        AppTextField(placeholder: "Insights, discoveries, patterns...", text: $learned, axis: .vertical, lineLimit: 2...4)
                             .padding()
                             .background(dynamicSecondaryBackgroundColor)
                             .cornerRadius(12)
-                            .lineLimit(2...4)
                             .focused($focusedField, equals: .learned)
                     }
                     .padding(.horizontal)
@@ -212,12 +206,10 @@ struct JournalPromptView: View {
                             .fontWeight(.medium)
                             .foregroundColor(dynamicTextColor)
                         
-                        TextField("What interrupted your focus...", text: $distractions, axis: .vertical)
-                            .textFieldStyle(.plain)
+                        AppTextField(placeholder: "What interrupted your focus...", text: $distractions, axis: .vertical, lineLimit: 2...4)
                             .padding()
                             .background(dynamicSecondaryBackgroundColor)
                             .cornerRadius(12)
-                            .lineLimit(2...4)
                             .focused($focusedField, equals: .distractions)
                     }
                     .padding(.horizontal)
@@ -229,12 +221,13 @@ struct JournalPromptView: View {
                             .fontWeight(.medium)
                             .foregroundColor(dynamicTextColor)
                         
-                        Picker("Status", selection: $completionStatus) {
-                            Text("Completed").tag(CompletionStatus.completed)
-                            Text("Partial").tag(CompletionStatus.partial)
-                            Text("Not Started").tag(CompletionStatus.notStarted)
+                        HStack(spacing: 0) {
+                            completionPill(title: "Completed", status: .completed)
+                            completionPill(title: "Partial", status: .partial)
+                            completionPill(title: "Not Started", status: .notStarted)
                         }
-                        .pickerStyle(.segmented)
+                        .padding(4)
+                        .background(Capsule().fill(Color.black.opacity(0.06)))
                     }
                     .padding(.horizontal)
                     
@@ -318,6 +311,22 @@ struct JournalPromptView: View {
         } message: {
             Text(journalViewModel.errorMessage ?? "Something went wrong.")
         }
+    }
+    
+    private func completionPill(title: String, status: CompletionStatus) -> some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.15)) { completionStatus = status }
+        } label: {
+            Text(title)
+                .fontWeight(.semibold)
+                .font(.caption)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .foregroundColor(completionStatus == status ? .white : .black.opacity(0.65))
+                .background(completionStatus == status ? dynamicPrimaryColor : Color.clear)
+                .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
     }
     
     private func saveEntry() {

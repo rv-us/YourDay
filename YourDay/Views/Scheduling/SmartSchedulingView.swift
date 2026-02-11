@@ -70,8 +70,15 @@ struct SmartSchedulingView: View {
                 .padding()
             }
             .background(dynamicBackgroundColor.edgesIgnoringSafeArea(.all))
-            .navigationTitle("Smart Scheduling")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(dynamicSecondaryBackgroundColor, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text("Smart Scheduling")
+                        .fontWeight(.bold)
+                        .foregroundColor(dynamicTextColor)
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     HStack {
                         Button(action: {
@@ -1060,12 +1067,10 @@ struct ModificationReviewSheet: View {
                                 .font(.caption)
                                 .foregroundColor(dynamicSecondaryTextColor)
 
-                            TextField("e.g., I have a meeting at that time...", text: $reason, axis: .vertical)
-                                .textFieldStyle(.plain)
+                            AppTextField(placeholder: "e.g., I have a meeting at that time...", text: $reason, axis: .vertical, lineLimit: 2...4)
                                 .padding()
                                 .background(dynamicSecondaryBackgroundColor)
                                 .cornerRadius(12)
-                                .lineLimit(2...4)
                                 .focused($isTextFieldFocused)
                                 .submitLabel(.done)
                                 .onSubmit {
@@ -1267,12 +1272,10 @@ struct DeclineReasonSheet: View {
                             .font(.caption)
                             .foregroundColor(dynamicSecondaryTextColor)
 
-                        TextField("e.g., I have a meeting then...", text: $reason, axis: .vertical)
-                            .textFieldStyle(.plain)
+                        AppTextField(placeholder: "e.g., I have a meeting then...", text: $reason, axis: .vertical, lineLimit: 2...4)
                             .padding()
                             .background(dynamicSecondaryBackgroundColor)
                             .cornerRadius(12)
-                            .lineLimit(2...4)
                             .focused($isTextFieldFocused)
                             .submitLabel(.done)
                             .onSubmit {

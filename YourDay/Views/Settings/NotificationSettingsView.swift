@@ -97,8 +97,10 @@ struct NotificationSettingsView: View {
                             VStack(alignment: .leading) {
                                 Text("Display Name: (\(editableDisplayName.count)/\(displayNameCharacterLimit))").fontWeight(.semibold)
                                     .foregroundColor(dynamicTextColor)
-                                TextField("Enter display name", text: $editableDisplayName)
-                                    .textFieldStyle(.roundedBorder)
+                                AppTextField(placeholder: "Enter display name", text: $editableDisplayName)
+                                    .padding(8)
+                                    .background(dynamicSecondaryBackgroundColor)
+                                    .cornerRadius(8)
                                     .disabled(!loginViewModel.isNetworkAvailable || isSavingName)
                                     .textContentType(.name)
                                     .autocapitalization(.words)

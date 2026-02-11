@@ -44,22 +44,22 @@ struct JournalView: View {
                     HStack {
                         Image(systemName: "magnifyingglass")
                             .foregroundColor(dynamicSecondaryTextColor)
-                        TextField("Search journal entries...", text: $searchText)
-                            .textFieldStyle(.plain)
+                        AppTextField(placeholder: "Search journal entries...", text: $searchText)
                     }
                     .padding()
                     .background(dynamicSecondaryBackgroundColor)
                     .cornerRadius(10)
                     .padding(.horizontal)
                     
-                    // Filter Picker
-                    Picker("Status", selection: $filterStatus) {
-                        Text("All").tag(CompletionStatus?.none)
-                        Text("Completed").tag(CompletionStatus?.some(.completed))
-                        Text("Partial").tag(CompletionStatus?.some(.partial))
-                        Text("Not Started").tag(CompletionStatus?.some(.notStarted))
+                    // Filter Picker (pill style like Todoview)
+                    HStack(spacing: 0) {
+                        statusPillButton(title: "All", isSelected: filterStatus == nil) { filterStatus = nil }
+                        statusPillButton(title: "Completed", isSelected: filterStatus == .completed) { filterStatus = .completed }
+                        statusPillButton(title: "Partial", isSelected: filterStatus == .partial) { filterStatus = .partial }
+                        statusPillButton(title: "Not Started", isSelected: filterStatus == .notStarted) { filterStatus = .notStarted }
                     }
-                    .pickerStyle(.segmented)
+                    .padding(4)
+                    .background(Capsule().fill(Color.black.opacity(0.06)))
                     .padding(.horizontal)
                 }
                 .padding(.vertical, 12)
@@ -102,8 +102,15 @@ struct JournalView: View {
                 }
             }
             .background(dynamicBackgroundColor)
-            .navigationTitle("Journal")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(dynamicSecondaryBackgroundColor, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text("Journal")
+                        .fontWeight(.bold)
+                        .foregroundColor(dynamicTextColor)
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: {
                         journalViewModel.fetchJournalEntries()
@@ -119,6 +126,22 @@ struct JournalView: View {
                 }
             }
         }
+    }
+    
+    private func statusPillButton(title: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: {
+            withAnimation(.easeInOut(duration: 0.15)) { action() }
+        }) {
+            Text(title)
+                .fontWeight(.semibold)
+                .font(.caption)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .foregroundColor(isSelected ? .white : .black.opacity(0.65))
+                .background(isSelected ? dynamicPrimaryColor : Color.clear)
+                .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
     }
 }
 

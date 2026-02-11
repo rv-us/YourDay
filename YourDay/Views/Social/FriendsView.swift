@@ -24,9 +24,8 @@ struct FriendsView: View {
                                 Image(systemName: "magnifyingglass")
                                     .foregroundColor(dynamicSecondaryTextColor)
                                 
-                                TextField("Search for friends...", text: $searchName)
+                                AppTextField(placeholder: "Search for friends...", text: $searchName)
                                     .autocapitalization(.none)
-                                    .foregroundColor(dynamicTextColor)
                                     .onChange(of: searchName) { _, newValue in
                                         performSearch(searchTerm: newValue)
                                     }

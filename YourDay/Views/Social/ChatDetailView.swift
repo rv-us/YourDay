@@ -92,8 +92,7 @@ struct ChatDetailView: View {
             }
 
             HStack {
-                TextField("Message...", text: $newMessage)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                AppTextField(placeholder: "Message...", text: $newMessage)
                 Button("Send") {
                     guard !newMessage.trimmingCharacters(in: .whitespaces).isEmpty,
                           let currentId = Auth.auth().currentUser?.uid else { return }

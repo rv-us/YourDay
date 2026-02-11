@@ -80,8 +80,8 @@ struct AddBacklogItemSheet: View {
         NavigationView {
             Form {
                 Section(header: Text("Basic Info")) {
-                    TextField("Title", text: $title)
-                    TextField("Description", text: $description)
+                    AppTextField(placeholder: "Title", text: $title)
+                    AppTextField(placeholder: "Description", text: $description)
                 }
 
                 Section(header: Text("Scheduling Metadata")) {
@@ -104,7 +104,7 @@ struct AddBacklogItemSheet: View {
                         }
                     }
 
-                    TextField("Tags (comma separated)", text: $tagsText)
+                    AppTextField(placeholder: "Tags (comma separated)", text: $tagsText)
                         .font(.subheadline)
                 }
             }

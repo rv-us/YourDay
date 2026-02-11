@@ -195,9 +195,10 @@ struct SchedulingChatView: View {
                 .font(.subheadline)
                 .foregroundColor(dynamicTextColor)
 
-            TextField("Explain why...", text: $schedulingViewModel.declineReason, axis: .vertical)
-                .textFieldStyle(RoundedBorderTextFieldStyle())
-                .lineLimit(3...6)
+            AppTextField(placeholder: "Explain why...", text: $schedulingViewModel.declineReason, axis: .vertical, lineLimit: 3...6)
+                .padding(8)
+                .background(dynamicSecondaryBackgroundColor)
+                .cornerRadius(8)
 
             declineReasonButtons
         }
@@ -276,8 +277,7 @@ struct SchedulingChatView: View {
     private var chatInputView: some View {
         if !schedulingViewModel.showingDeclineReasonInput {
             HStack {
-                TextField("Ask about scheduling...", text: $newMessage)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                AppTextField(placeholder: "Ask about scheduling...", text: $newMessage)
 
                 Button("Send") {
                     onSendMessage()

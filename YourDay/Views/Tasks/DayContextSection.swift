@@ -204,8 +204,7 @@ struct DayContextEditor: View {
                     .foregroundColor(dynamicTextColor)
 
                 HStack {
-                    TextField("e.g., gym morning, errands afternoon", text: $activityText)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                    AppTextField(placeholder: "e.g., gym morning, errands afternoon", text: $activityText)
                         .font(.caption)
 
                     Button(action: addActivity) {
@@ -257,8 +256,7 @@ struct DayContextEditor: View {
                                 .labelsHidden()
                         }
 
-                        TextField("Label (optional)", text: $blockedLabel)
-                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                        AppTextField(placeholder: "Label (optional)", text: $blockedLabel)
                             .font(.caption)
 
                         Button("Add Blocked Time") {
