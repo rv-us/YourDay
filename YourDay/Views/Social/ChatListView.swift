@@ -17,10 +17,19 @@ struct ChatListView: View {
     @AppStorage("readChatIds") private var readChatIdsRaw: String = ""
     @State private var openedChats: Set<String> = [] // tracks read messages persistently
 
+    /// Friends ordered by most recent chat message first.
+    private var sortedFriends: [FriendEntry] {
+        friends.sorted { f1, f2 in
+            let t1 = lastMessages[f1.userId]?.timestamp ?? .distantPast
+            let t2 = lastMessages[f2.userId]?.timestamp ?? .distantPast
+            return t1 > t2
+        }
+    }
+
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 12) {
-                ForEach(friends) { friend in
+                ForEach(sortedFriends) { friend in
                     NavigationLink(destination: ChatDetailView(friend: friend)
                         .onAppear {
                             openedChats.insert(friend.userId)

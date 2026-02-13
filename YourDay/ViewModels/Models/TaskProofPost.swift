@@ -22,7 +22,8 @@ struct TaskProofPost: Identifiable, Codable {
     let photoStoragePath: String
 }
 
-struct TaskProofCaptureContext {
+struct TaskProofCaptureContext: Identifiable {
+    var id: String { "\(taskTitle)-\(localTaskId)-\(completedAt.timeIntervalSince1970)" }
     let taskTitle: String
     let sourceType: TaskProofSourceType
     let scheduledEventId: String?

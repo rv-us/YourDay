@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import GoogleSignIn
+import FirebaseFirestore
 
 
 struct ContentView: View {
@@ -46,6 +47,7 @@ struct ContentView: View {
         case tasks, garden, dashboard, scheduling, settings
     }
     @State private var selectedTab: Tab = .dashboard
+    @State private var incomingChatListener: ListenerRegistration?
 
     var body: some View {
         Group {
@@ -74,11 +76,19 @@ struct ContentView: View {
         .onChange(of: loginViewModel.isAuthenticated) { _, userIsAuthenticated in
             if userIsAuthenticated {
                 loginViewModel.handleUserSession(localPlayerStats: localPlayerStatsList.first, modelContext: modelContext)
-            } else if !loginViewModel.isGuest { // Only clear data on explicit sign-out, not when entering guest mode
-                clearAllLocalUserDataOnLogout()
+            } else {
+                if !loginViewModel.isGuest {
+                    clearAllLocalUserDataOnLogout()
+                }
+                incomingChatListener?.remove()
+                incomingChatListener = nil
             }
         }
         .onChange(of: loginViewModel.isGuest) { _, isGuestNow in
+            if isGuestNow {
+                incomingChatListener?.remove()
+                incomingChatListener = nil
+            }
             if isGuestNow && localPlayerStatsList.isEmpty {
                 // If entering guest mode and no local data exists, create it.
                 loginViewModel.handleUserSession(localPlayerStats: nil, modelContext: modelContext)
@@ -150,8 +160,12 @@ struct ContentView: View {
                 isInDailyFlow = false
                 schedulingAutoStart = false
             }) {
-                SmartSchedulingView(initialDate: schedulingDate, autoStart: schedulingAutoStart)
-                    .environmentObject(firebaseManager)
+                SmartSchedulingView(
+                    initialDate: schedulingDate,
+                    autoStart: schedulingAutoStart,
+                    onSkip: { showSchedulingView = false }
+                )
+                .environmentObject(firebaseManager)
             }
             .alert("Plant Care Notice", isPresented: $showWitheringAlert) {
                 Button("OK") {}
@@ -186,7 +200,21 @@ struct ContentView: View {
             }
             .onAppear {
                 JournalNotificationDelegate.shared.setJournalViewModel(journalViewModel)
+                startIncomingChatListenerIfNeeded()
             }
+    }
+
+    private func startIncomingChatListenerIfNeeded() {
+        guard loginViewModel.isAuthenticated, !loginViewModel.isGuest, incomingChatListener == nil else { return }
+        incomingChatListener = firebaseManager.listenToIncomingChatMessages { message, senderName in
+            if loginViewModel.currentChatFriendId != message.senderId {
+                NotificationManager.shared.scheduleChatMessageNotification(
+                    senderName: senderName,
+                    messagePreview: message.content,
+                    senderId: message.senderId
+                )
+            }
+        }
     }
 
     private var mainTabView: some View {
@@ -222,7 +250,9 @@ struct ContentView: View {
 
     @ViewBuilder
     private var dashboardTab: some View {
-        DashboardView()
+        DashboardView(onSwitchToTasks: {
+            selectedTab = .tasks
+        })
             .tabItem { Label("Dashboard", systemImage: "square.grid.2x2") }
             .environmentObject(loginViewModel)
             .environmentObject(firebaseManager)

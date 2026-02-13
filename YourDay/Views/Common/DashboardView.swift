@@ -12,6 +12,8 @@ import FirebaseFirestore
 
 struct DashboardView: View {
     private let friendCardsAutoRotateTimer = Timer.publish(every: 2.8, on: .main, in: .common).autoconnect()
+    
+    var onSwitchToTasks: (() -> Void)?
 
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var loginViewModel: LoginViewModel
@@ -33,6 +35,7 @@ struct DashboardView: View {
     }
 
     @State private var showLastDayView = false
+    @State private var greetingText: String = "Hello!"
     @StateObject private var friendStatsViewModel = DashboardFriendStatsViewModel()
     @State private var selectedFriendCardIndex = 0
     @State private var proofFeedToken: TaskProofFeedListenerToken?
@@ -40,14 +43,14 @@ struct DashboardView: View {
     @State private var proofVotesByPostId: [String: [TaskProofVote]] = [:]
     @State private var proofPosts: [TaskProofPost] = []
 
-    private var greeting: String {
+    private func updateGreeting() {
         let hour = Calendar.current.component(.hour, from: Date())
         let timeGreeting: String
         if hour < 12 { timeGreeting = "Good morning" }
         else if hour < 17 { timeGreeting = "Good afternoon" }
         else { timeGreeting = "Good evening" }
         let name = loginViewModel.userDisplayName ?? loginViewModel.userEmail?.components(separatedBy: "@").first ?? "there"
-        return "\(timeGreeting), \(name)!"
+        greetingText = "\(timeGreeting), \(name)!"
     }
 
     private var unvotedProofCount: Int {
@@ -78,6 +81,7 @@ struct DashboardView: View {
             }
             .background(dynamicBackgroundColor.edgesIgnoringSafeArea(.all))
             .onAppear {
+                updateGreeting()
                 friendStatsViewModel.load()
                 startProofBadgeListeners()
             }
@@ -111,7 +115,7 @@ struct DashboardView: View {
 
     private var headerSection: some View {
         HStack {
-            Text(greeting)
+            Text(greetingText)
                 .font(.title2)
                 .fontWeight(.bold)
                 .foregroundColor(dynamicTextColor)
@@ -122,43 +126,48 @@ struct DashboardView: View {
     }
 
     private var todayCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(dynamicSecondaryColor)
-                    .frame(width: 4, height: 20)
-                Text("Today")
-                    .font(.headline)
-                    .fontWeight(.bold)
-                    .foregroundColor(dynamicTextColor)
-            }
-            if todayTasks.isEmpty {
-                Text("No tasks due today")
-                    .font(.subheadline)
-                    .foregroundColor(dynamicSecondaryTextColor)
-            } else {
-                ForEach(todayTasks.prefix(3)) { item in
-                    HStack(spacing: 8) {
-                        Image(systemName: "circle")
+        Button(action: {
+            onSwitchToTasks?()
+        }) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(dynamicSecondaryColor)
+                        .frame(width: 4, height: 20)
+                    Text("Today")
+                        .font(.headline)
+                        .fontWeight(.bold)
+                        .foregroundColor(dynamicTextColor)
+                }
+                if todayTasks.isEmpty {
+                    Text("No tasks due today")
+                        .font(.subheadline)
+                        .foregroundColor(dynamicSecondaryTextColor)
+                } else {
+                    ForEach(todayTasks.prefix(3)) { item in
+                        HStack(spacing: 8) {
+                            Image(systemName: "circle")
+                                .font(.caption)
+                                .foregroundColor(dynamicPrimaryColor)
+                            Text(item.title)
+                                .font(.subheadline)
+                                .foregroundColor(dynamicTextColor)
+                                .lineLimit(1)
+                        }
+                    }
+                    if todayTasks.count > 3 {
+                        Text("+\(todayTasks.count - 3) more")
                             .font(.caption)
-                            .foregroundColor(dynamicPrimaryColor)
-                        Text(item.title)
-                            .font(.subheadline)
-                            .foregroundColor(dynamicTextColor)
-                            .lineLimit(1)
+                            .foregroundColor(dynamicSecondaryTextColor)
                     }
                 }
-                if todayTasks.count > 3 {
-                    Text("+\(todayTasks.count - 3) more")
-                        .font(.caption)
-                        .foregroundColor(dynamicSecondaryTextColor)
-                }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding()
+            .background(dynamicSecondaryBackgroundColor)
+            .cornerRadius(16)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding()
-        .background(dynamicSecondaryBackgroundColor)
-        .cornerRadius(16)
+        .buttonStyle(.plain)
     }
 
     private var summaryCardsRow: some View {

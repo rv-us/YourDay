@@ -690,6 +690,56 @@ class FirebaseManager: ObservableObject {
                 completion(msg)
             }
     }
+
+    /// Fetches the display name for a friend from the current user's friends subcollection.
+    func fetchDisplayNameForFriend(userId: String, completion: @escaping (String?) -> Void) {
+        guard let currentUserId = Auth.auth().currentUser?.uid else {
+            completion(nil)
+            return
+        }
+        db.collection("users").document(currentUserId).collection("friends").document(userId)
+            .getDocument { snapshot, _ in
+                guard let data = snapshot?.data(),
+                      let displayName = data["displayName"] as? String else {
+                    completion(nil)
+                    return
+                }
+                completion(displayName)
+            }
+    }
+
+    /// Listens for new chat messages where the current user is the receiver. Calls onNewMessage for each new message with the message and sender's display name. Skips the initial snapshot so existing messages do not trigger notifications.
+    func listenToIncomingChatMessages(onNewMessage: @escaping (ChatMessage, String) -> Void) -> ListenerRegistration? {
+        guard let currentUserId = Auth.auth().currentUser?.uid else { return nil }
+
+        var hasSeenInitialSnapshot = false
+        return db.collection("chat_messages")
+            .whereField("receiverId", isEqualTo: currentUserId)
+            .order(by: "timestamp", descending: false)
+            .addSnapshotListener { [weak self] snapshot, error in
+                guard let self = self,
+                      let snapshot = snapshot,
+                      error == nil else { return }
+
+                if !hasSeenInitialSnapshot {
+                    hasSeenInitialSnapshot = true
+                    return
+                }
+
+                for change in snapshot.documentChanges {
+                    guard change.type == .added else { continue }
+                    guard let message = try? change.document.data(as: ChatMessage.self) else { continue }
+
+                    self.fetchDisplayNameForFriend(userId: message.senderId) { displayName in
+                        let name = displayName ?? "Someone"
+                        DispatchQueue.main.async {
+                            onNewMessage(message, name)
+                        }
+                    }
+                }
+            }
+    }
+
     func fetchLastLoginDate(for userId: String, completion: @escaping (Date?) -> Void) {
         db.collection("users")
           .document(userId)

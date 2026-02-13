@@ -12,6 +12,7 @@ import FirebaseAuth
 struct SmartSchedulingView: View {
     let initialDate: Date?
     let autoStart: Bool
+    var onSkip: (() -> Void)? = nil
     
     @StateObject private var backlogViewModel = BacklogViewModel()
     @StateObject private var schedulingViewModel = SchedulingAssistantViewModel()
@@ -37,14 +38,16 @@ struct SmartSchedulingView: View {
     @State private var isContextExpanded = false
     @State private var showingJournalView = false
     @State private var hasAutoStarted = false // Track if auto-start has been triggered
+    @State private var showingNoTasksAlert = false
     
     private var defaultProposal: ProposedSession {
         ProposedSession(tasks: [], workingSessionTime: "", startTime: nil, endTime: nil, reason: nil)
     }
 
-    init(initialDate: Date? = nil, autoStart: Bool = false) {
+    init(initialDate: Date? = nil, autoStart: Bool = false, onSkip: (() -> Void)? = nil) {
         self.initialDate = initialDate
         self.autoStart = autoStart
+        self.onSkip = onSkip
     }
     
     private var proposalBinding: Binding<ProposedSession> {
@@ -74,6 +77,14 @@ struct SmartSchedulingView: View {
             .toolbarBackground(dynamicSecondaryBackgroundColor, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
+                if onSkip != nil {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Skip") {
+                            onSkip?()
+                        }
+                        .foregroundColor(dynamicPrimaryColor)
+                    }
+                }
                 ToolbarItem(placement: .principal) {
                     Text("Smart Scheduling")
                         .fontWeight(.bold)
@@ -181,6 +192,11 @@ struct SmartSchedulingView: View {
                 }
             } message: {
                 Text("Would you like me to suggest a different time for these tasks?")
+            }
+            .alert("No Tasks to Schedule", isPresented: $showingNoTasksAlert) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("Add tasks to your backlog first. Expand the Backlog section below and tap + to add items, then try again.")
             }
             .onAppear {
                 // Set initial date if provided
@@ -296,7 +312,11 @@ struct SmartSchedulingView: View {
                 .buttonStyle(ScaleButtonStyle())
                 
                 Button(action: {
-                    runAgent()
+                    if backlogViewModel.backlogItems.isEmpty {
+                        showingNoTasksAlert = true
+                    } else {
+                        runAgent()
+                    }
                 }) {
                     HStack {
                         Image(systemName: isAgentRunning ? "bolt.fill" : "play.circle.fill")
@@ -310,7 +330,7 @@ struct SmartSchedulingView: View {
                     .cornerRadius(10)
                 }
                 .buttonStyle(ScaleButtonStyle())
-                .disabled(isAgentRunning || backlogViewModel.backlogItems.isEmpty)
+                .disabled(isAgentRunning)
             }
         }
         .padding()
@@ -451,24 +471,6 @@ struct SmartSchedulingView: View {
                 onToggle: { isContextExpanded.toggle() }
             ) {
                 DayContextSection(schedulingViewModel: schedulingViewModel)
-            }
-            
-            ExpandableSection(
-                title: "Agent Memory",
-                icon: "brain.head.profile",
-                isExpanded: isMemoryExpanded,
-                onToggle: { isMemoryExpanded.toggle() }
-            ) {
-                AgentMemorySection(schedulingViewModel: schedulingViewModel, selectedDate: selectedDate)
-            }
-            
-            ExpandableSection(
-                title: "Calendar",
-                icon: "calendar",
-                isExpanded: isCalendarExpanded,
-                onToggle: { isCalendarExpanded.toggle() }
-            ) {
-                calendarSectionContent
             }
         }
     }

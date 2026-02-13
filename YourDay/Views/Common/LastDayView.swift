@@ -73,16 +73,20 @@ struct LastDayView: View {
     
     var isModal: Bool
 
-    private var uniqueSortedDates: [Date] {
-        let uniqueDates = Set(allSummaries.map { Calendar.current.startOfDay(for: $0.date) })
-        return Array(uniqueDates).sorted(by: >)
+    private static let numberOfNavigableDays = 30
+
+    /// Last N days (index 0 = today, 1 = yesterday, …) so we can always switch between days.
+    private var navigableDates: [Date] {
+        let calendar = Calendar.current
+        let startOfToday = calendar.startOfDay(for: Date())
+        return (0..<Self.numberOfNavigableDays).compactMap { calendar.date(byAdding: .day, value: -$0, to: startOfToday) }
     }
 
     private var currentDisplayDate: Date? {
-        guard !uniqueSortedDates.isEmpty, dateOffset < uniqueSortedDates.count, dateOffset >= 0 else {
+        guard dateOffset >= 0, dateOffset < navigableDates.count else {
             return Calendar.current.startOfDay(for: Date())
         }
-        return uniqueSortedDates[dateOffset]
+        return navigableDates[dateOffset]
     }
     
     private var summariesForDisplayDate: [DailySummaryTask] {
@@ -126,13 +130,13 @@ struct LastDayView: View {
         VStack(spacing: 16) {
             if let displayDate = currentDisplayDate {
                 HStack {
-                    Button { if dateOffset < uniqueSortedDates.count - 1 { dateOffset += 1 }
+                    Button { if dateOffset < navigableDates.count - 1 { dateOffset += 1 }
                     } label: {
                         Image(systemName: "chevron.left.circle.fill")
                             .font(.title2)
                             .foregroundColor(dynamicPrimaryColor)
                     }
-                    .disabled(uniqueSortedDates.isEmpty || dateOffset >= uniqueSortedDates.count - 1)
+                    .disabled(dateOffset >= navigableDates.count - 1)
                     
                     Spacer()
                     
@@ -151,7 +155,7 @@ struct LastDayView: View {
                             .font(.title2)
                             .foregroundColor(dynamicPrimaryColor)
                     }
-                    .disabled(uniqueSortedDates.isEmpty || dateOffset <= 0)
+                    .disabled(dateOffset <= 0)
                 }
                 .padding(.horizontal)
             } else {
@@ -160,7 +164,7 @@ struct LastDayView: View {
                     .foregroundColor(dynamicSecondaryTextColor)
             }
             
-            if !summariesForDisplayDate.isEmpty || (isModal && xpInfoForDisplayDate.xpEarnedToday == 0 && uniqueSortedDates.isEmpty) {
+            if !summariesForDisplayDate.isEmpty || (isModal && dateOffset == 0) {
                 Text("+\(Int(animatedPointsTotal)) Points!")
                     .font(.system(size: 40, weight: .heavy, design: .rounded))
                     .foregroundColor(dynamicSecondaryColor)
@@ -203,7 +207,7 @@ struct LastDayView: View {
 
             } else {
                 Spacer()
-                Text(uniqueSortedDates.isEmpty ? "No summary data found." : "No task activity recorded for this day.")
+                Text("No task activity recorded for this day.")
                     .font(.title3)
                     .foregroundColor(dynamicSecondaryTextColor)
                     .multilineTextAlignment(.center)
@@ -238,12 +242,11 @@ struct LastDayView: View {
                 updateContinueButtonVisibility(points: initialPoints, isInitialAppearance: true)
             }
         }
-        .onChange(of: currentDisplayDate) { oldDate, newDate in
-            guard oldDate != newDate else { return }
+        .onChange(of: dateOffset) { _, _ in
             let newTotalPoints = totalPointsForDisplayDate
             self.animatedPointsTotal = 0
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                withAnimation(.easeOut(duration: 1.0)) { self.animatedPointsTotal = newTotalPoints }
+                withAnimation(.easeOut(duration: 0.5)) { self.animatedPointsTotal = newTotalPoints }
                 updateContinueButtonVisibility(points: newTotalPoints)
             }
         }

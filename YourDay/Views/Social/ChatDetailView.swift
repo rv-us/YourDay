@@ -140,6 +140,7 @@ struct ChatDetailView: View {
             }
         }
         .onAppear {
+            loginViewModel.currentChatFriendId = friend.userId
             listener = firebaseManager.listenToChat(with: friend.userId) { updated in
                 self.messages = updated
             }
@@ -162,6 +163,7 @@ struct ChatDetailView: View {
         }
 
         .onDisappear {
+            loginViewModel.currentChatFriendId = nil
             listener?.remove()
             sharedTaskListener?.remove()
         }

@@ -31,6 +31,9 @@ class LoginViewModel: ObservableObject {
     @Published var loadedPlayerStatsCodable: PlayerStatsCodable? = nil
     @Published private(set) var isProcessingFreshLogin: Bool = false
 
+    /// When non-nil, the user is viewing the chat with this friend; used to suppress chat message notifications for that chat.
+    @Published var currentChatFriendId: String? = nil
+
     // MARK: - Private Properties
     private var authStateHandler: AuthStateDidChangeListenerHandle?
     private let firebaseManager = FirebaseManager()
@@ -168,6 +171,7 @@ class LoginViewModel: ObservableObject {
                         self.errorMessage = "Account created, but failed to set display name: \(error.localizedDescription)"
                     } else {
                         print("Account created and display name set successfully.")
+                        self.userDisplayName = self.displayNameForRegistration
                         self.isProcessingFreshLogin = true
                     }
                 }

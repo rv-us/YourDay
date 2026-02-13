@@ -26,6 +26,7 @@ struct Todoview: View {
     @State private var signOutAlertMessageInTodoView = ""
     @State private var navigateToCalendar = false
     @State private var showGoogleCalendarView = false
+    @State private var pendingProofFromList: TaskProofCaptureContext?
 
     enum TaskListFilter {
         case today
@@ -119,8 +120,14 @@ struct Todoview: View {
                             .listRowInsets(EdgeInsets())
                         ) {
                             ForEach(filteredItems.filter { !$0.isDone }) { item in
-                                TodoListItemView(item: item, todoViewModel: viewModel)
+                                TodoListItemView(item: item, todoViewModel: viewModel, onRequestProofCapture: { pendingProofFromList = $0 })
                                     .listRowBackground(dynamicSecondaryBackgroundColor)
+                                    .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                                        Button(selectedFilter == .today ? "Move to Master" : "Move to Today") {
+                                            moveToOtherList(item)
+                                        }
+                                        .tint(dynamicPrimaryColor)
+                                    }
                             }
                             .onMove(perform: moveItem)
                             .onDelete { indexSet in
@@ -166,8 +173,14 @@ struct Todoview: View {
                             .listRowInsets(EdgeInsets())
                         ) {
                             ForEach(filteredItems.filter { $0.isDone }) { item in
-                                TodoListItemView(item: item, todoViewModel: viewModel)
+                                TodoListItemView(item: item, todoViewModel: viewModel, onRequestProofCapture: { pendingProofFromList = $0 })
                                     .listRowBackground(dynamicSecondaryBackgroundColor)
+                                    .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                                        Button(selectedFilter == .today ? "Move to Master" : "Move to Today") {
+                                            moveToOtherList(item)
+                                        }
+                                        .tint(dynamicPrimaryColor)
+                                    }
                             }
                             .onDelete { indexSet in
                                 for index in indexSet {
@@ -249,6 +262,17 @@ struct Todoview: View {
                 }
             }
             .overlay(tutorialOverlay)
+            .sheet(item: $pendingProofFromList, onDismiss: { pendingProofFromList = nil }) { proofContext in
+                TaskProofCaptureView(
+                    context: proofContext,
+                    onSkip: { pendingProofFromList = nil },
+                    onPosted: { postId in
+                        applyProofPostId(postId, localTaskId: proofContext.localTaskId)
+                        pendingProofFromList = nil
+                    }
+                )
+                .environmentObject(FirebaseManager.shared)
+            }
             .sheet(isPresented: $viewModel.showingNewItemView) {
                 NewItemview(newItemPresented: $viewModel.showingNewItemView, selectedOrigin: selectedFilter == .today ? .today : .master)
             }
@@ -343,7 +367,7 @@ struct Todoview: View {
     private var inProgressSection: some View {
         Section(header: sectionHeader(title: "In Progress")) {
             ForEach(filteredItems.filter { !$0.isDone }) { item in
-                TodoListItemView(item: item, todoViewModel: viewModel)
+                TodoListItemView(item: item, todoViewModel: viewModel, onRequestProofCapture: { pendingProofFromList = $0 })
                     .listRowBackground(dynamicSecondaryBackgroundColor)
             }
             .onMove(perform: moveItem)
@@ -356,7 +380,7 @@ struct Todoview: View {
     private var completedSection: some View {
         Section(header: sectionHeader(title: "Completed")) {
             ForEach(filteredItems.filter { $0.isDone }) { item in
-                TodoListItemView(item: item, todoViewModel: viewModel)
+                TodoListItemView(item: item, todoViewModel: viewModel, onRequestProofCapture: { pendingProofFromList = $0 })
                     .listRowBackground(dynamicSecondaryBackgroundColor)
             }
             .onDelete { indexSet in
@@ -518,6 +542,21 @@ struct Todoview: View {
             item.position = index
         }
 
+        try? context.save()
+    }
+
+    private func moveToOtherList(_ item: TodoItem) {
+        item.origin = selectedFilter == .today ? .master : .today
+        try? context.save()
+    }
+
+    private func applyProofPostId(_ postId: String, localTaskId: String?) {
+        guard let localTaskId = localTaskId else { return }
+        let descriptor = FetchDescriptor<TodoItem>(
+            predicate: #Predicate<TodoItem> { $0.localTaskId == localTaskId }
+        )
+        guard let item = try? context.fetch(descriptor).first else { return }
+        item.proofPostId = postId
         try? context.save()
     }
     

@@ -271,6 +271,37 @@ class NotificationManager: ObservableObject {
             center.removeDeliveredNotifications(withIdentifiers: identifiers)
         }
     }
+
+    // MARK: - Chat Message Notifications
+
+    /// Schedules a local notification for an incoming chat message. Respects the app's notificationsEnabled setting.
+    func scheduleChatMessageNotification(senderName: String, messagePreview: String, senderId: String) {
+        let notificationsEnabled = UserDefaults.standard.bool(forKey: "notificationsEnabled")
+        guard notificationsEnabled else { return }
+
+        let content = UNMutableNotificationContent()
+        content.title = "New message from \(senderName)"
+        let body = messagePreview.isEmpty ? "Tap to open chat." : messagePreview
+        content.body = body.count > 120 ? String(body.prefix(117)) + "..." : body
+        content.sound = .default
+        content.userInfo = [
+            "type": "chatMessage",
+            "senderId": senderId
+        ]
+
+        let identifier = "chatMessage_\(senderId)_\(UUID().uuidString)"
+        let request = UNNotificationRequest(
+            identifier: identifier,
+            content: content,
+            trigger: nil
+        )
+
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("Error scheduling chat notification: \(error.localizedDescription)")
+            }
+        }
+    }
 }
 
 // MARK: - Notification Types

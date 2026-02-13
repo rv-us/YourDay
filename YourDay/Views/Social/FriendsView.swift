@@ -119,6 +119,7 @@ struct FriendsView: View {
                         Section {
                             Text(message)
                                 .foregroundColor(dynamicSecondaryTextColor)
+                                .listRowBackground(dynamicSecondaryBackgroundColor)
                         }
                     }
 
@@ -157,6 +158,7 @@ struct FriendsView: View {
                                 }
                             }
                         }
+                        .listRowBackground(dynamicSecondaryBackgroundColor)
                     }
 
                     Section(header: Text("Your Friends").foregroundColor(dynamicTextColor)) {
@@ -179,6 +181,7 @@ struct FriendsView: View {
                                 .foregroundColor(dynamicDestructiveColor)
                             }
                         }
+                        .listRowBackground(dynamicSecondaryBackgroundColor)
                     }
                 }
                 .scrollContentBackground(.hidden)

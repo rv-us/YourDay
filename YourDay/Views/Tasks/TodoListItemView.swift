@@ -4,12 +4,11 @@ import SwiftData
 struct TodoListItemView: View {
     @Bindable var item: TodoItem
     @State private var showingEditView = false
-    @State private var showingProofCapture = false
-    @State private var pendingProofContext: TaskProofCaptureContext?
     @State private var proofErrorMessage: String?
     @Environment(\.modelContext) private var _modelContext
     @ObservedObject var todoViewModel: TodoViewModel
     @EnvironmentObject var firebaseManager: FirebaseManager
+    var onRequestProofCapture: ((TaskProofCaptureContext) -> Void)? = nil
 
     // Color based on task origin
     private var originColor: Color {
@@ -109,21 +108,6 @@ struct TodoListItemView: View {
             NewItemview(newItemPresented: $showingEditView, editingItem: item)
                 .environment(\.modelContext, _modelContext)
         }
-        .sheet(isPresented: $showingProofCapture, onDismiss: {
-            pendingProofContext = nil
-        }) {
-            if let pendingProofContext = pendingProofContext {
-                TaskProofCaptureView(
-                    context: pendingProofContext,
-                    onSkip: {},
-                    onPosted: { postId in
-                        item.proofPostId = postId
-                        saveModelContext()
-                    }
-                )
-                .environmentObject(firebaseManager)
-            }
-        }
         .alert("Proof Update Failed", isPresented: Binding(
             get: { proofErrorMessage != nil },
             set: { isPresented in
@@ -159,15 +143,14 @@ struct TodoListItemView: View {
         }
 
         if !wasDone && item.isDone {
-            pendingProofContext = TaskProofCaptureContext(
+            onRequestProofCapture?(TaskProofCaptureContext(
                 taskTitle: item.title,
                 sourceType: item.sharedTaskId == nil ? .unscheduled : .shared,
                 scheduledEventId: nil,
                 localTaskId: item.localTaskId,
                 sharedTaskId: item.sharedTaskId,
                 completedAt: item.completedAt ?? Date()
-            )
-            showingProofCapture = true
+            ))
         } else if wasDone && !item.isDone, let proofPostId = item.proofPostId {
             item.proofPostId = nil
             firebaseManager.deleteTaskProofPost(postId: proofPostId) { error in

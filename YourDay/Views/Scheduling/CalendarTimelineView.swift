@@ -10,6 +10,7 @@ import SwiftUI
 struct TimelineView: View {
     let events: [GoogleCalendarEvent]
     let selectedDate: Date
+    var onScheduledTaskTap: ((GoogleCalendarEvent) -> Void)? = nil
     
     private let calendar = Calendar.current
     private let startHour = 0
@@ -68,7 +69,7 @@ struct TimelineView: View {
     
     var body: some View {
         ZStack(alignment: .topLeading) {
-            // Grid background with lines
+            // Grid background with lines - allow taps to pass through
             VStack(spacing: 0) {
                 ForEach(timeSlots, id: \.self) { timeSlot in
                     ZStack(alignment: .topLeading) {
@@ -88,6 +89,7 @@ struct TimelineView: View {
                     .frame(height: hourHeight)
                 }
             }
+            .allowsHitTesting(false)
             
             // Events overlay - handle overlapping events
             ForEach(Array(eventGroups.enumerated()), id: \.offset) { groupIndex, group in
@@ -102,14 +104,16 @@ struct TimelineView: View {
                             hourHeight: hourHeight,
                             availableWidth: UIScreen.main.bounds.width - 96,
                             groupSize: group.count,
-                            groupIndex: eventIndex
+                            groupIndex: eventIndex,
+                            onScheduledTaskTap: onScheduledTaskTap
                         )
                     }
                 }
             }
             
-            // Current time indicator
+            // Current time indicator - allow taps to pass through
             CurrentTimeIndicator(selectedDate: selectedDate, hourHeight: hourHeight)
+                .allowsHitTesting(false)
         }
         .padding(.horizontal, 0)
         .frame(minHeight: CGFloat(timeSlots.count) * hourHeight)

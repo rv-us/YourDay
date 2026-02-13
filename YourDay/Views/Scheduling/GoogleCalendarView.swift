@@ -53,8 +53,18 @@ struct GoogleCalendarEvent: Identifiable, Codable {
     }
 }
 
+/// Wrapper so we can use sheet(item:) with an optional GoogleCalendarEvent.
+private struct IdentifiableCalendarEvent: Identifiable, Equatable {
+    let event: GoogleCalendarEvent
+    var id: String { event.id }
+    static func == (lhs: IdentifiableCalendarEvent, rhs: IdentifiableCalendarEvent) -> Bool {
+        lhs.id == rhs.id
+    }
+}
+
 struct GoogleCalendarView: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var firebaseManager: FirebaseManager
     @StateObject private var loginViewModel = LoginViewModel()
     
     /// When `true`, this view is meant to be embedded inside another screen (e.g. `Todoview`)
@@ -70,7 +80,9 @@ struct GoogleCalendarView: View {
     @State private var currentMonth = Date()
     @State private var showingMonthPicker = false
     @State private var currentWeekIndex: Int = 0
-    
+    @State private var scheduledEventForPopup: IdentifiableCalendarEvent?
+    @State private var scheduledTaskPopupDetent: PresentationDetent = .medium
+
     // Fast lookup cache for “does this day have events?” in the week slider.
     // Store start-of-day Dates so lookups are O(1) instead of scanning all events per cell.
     @State private var monthEventDays: Set<Date> = []
@@ -272,12 +284,41 @@ struct GoogleCalendarView: View {
                 Spacer()
             } else {
                 ScrollView {
-                    TimelineView(events: todayEvents, selectedDate: selectedDate)
+                    TimelineView(events: todayEvents, selectedDate: selectedDate, onScheduledTaskTap: { scheduledEventForPopup = IdentifiableCalendarEvent(event: $0) })
                         .frame(minHeight: UIScreen.main.bounds.height)
                 }
+                .gesture(
+                    DragGesture(minimumDistance: 50)
+                        .onEnded { value in
+                            let horizontalAmount = value.translation.width
+                            if abs(horizontalAmount) > 50 {
+                                if horizontalAmount > 0 {
+                                    // Swipe right - previous day
+                                    if let previousDay = calendar.date(byAdding: .day, value: -1, to: selectedDate) {
+                                        selectedDate = previousDay
+                                        fetchEvents()
+                                    }
+                                } else {
+                                    // Swipe left - next day
+                                    if let nextDay = calendar.date(byAdding: .day, value: 1, to: selectedDate) {
+                                        selectedDate = nextDay
+                                        fetchEvents()
+                                    }
+                                }
+                            }
+                        }
+                )
             }
         }
         .background(dynamicBackgroundColor.edgesIgnoringSafeArea(.all))
+        .sheet(item: $scheduledEventForPopup) { identifiable in
+            ScheduledTaskPopupSheet(event: identifiable.event, onDismiss: { scheduledEventForPopup = nil })
+                .presentationDetents([.medium, .large], selection: $scheduledTaskPopupDetent)
+                .presentationDragIndicator(.visible)
+        }
+        .onChange(of: scheduledEventForPopup) { _, newValue in
+            if newValue != nil { scheduledTaskPopupDetent = .medium }
+        }
         .sheet(isPresented: $showingMonthPicker) {
             MonthYearPicker(selectedDate: $currentMonth)
                 .onChange(of: currentMonth) { _, newDate in
@@ -301,6 +342,10 @@ struct GoogleCalendarView: View {
             fetchMonthEvents()
         }
         .onChange(of: selectedDate) { _, newDate in
+            // Update currentMonth if selectedDate moves to a different month
+            if !calendar.isDate(newDate, equalTo: currentMonth, toGranularity: .month) {
+                currentMonth = newDate
+            }
             // Update week index when selectedDate changes programmatically
             let weeks = weeksInRange
             let newWeekIndex = selectedWeekIndex(in: weeks)
