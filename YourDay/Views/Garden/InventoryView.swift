@@ -11,6 +11,7 @@ enum InventorySortOption: String, CaseIterable, Identifiable {
 struct InventoryView: View {
     @Environment(\.dismiss) var dismiss
     @Environment(\.modelContext) private var context
+    @EnvironmentObject var loginViewModel: LoginViewModel
 
     @Query(filter: #Predicate<PlayerStats> { _ in true }) private var playerStatsList: [PlayerStats]
     private var playerStats: PlayerStats { playerStatsList.first ?? PlayerStats() }
@@ -225,6 +226,12 @@ struct InventoryView: View {
             return
         }
         let result = mutablePlayerStats.convertToFertilizer(blueprintID: blueprintID, quantityToConvert: quantity)
+        
+        if result.success {
+            // Sync fertilizer conversion to Firebase
+            loginViewModel.syncLocalPlayerStatsToFirestore(playerStatsModel: mutablePlayerStats)
+        }
+        
         conversionResultMessage = result.message
     }
 }

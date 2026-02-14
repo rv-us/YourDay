@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import Lottie
+import AVKit
 
 struct VibrantLightTheme {
     static let backgroundGradient = Gradient(colors: [Color(hex: "#A8E063"), Color(hex: "#56AB2F")])
@@ -45,8 +46,6 @@ let vibrantWaterButtonColor = Color(UIColor { _ in UIColor(VibrantLightTheme.wat
 let vibrantSellButtonColor = Color(UIColor { _ in UIColor(VibrantLightTheme.sellButton) })
 let vibrantFertilizerButtonColor = Color(UIColor { _ in UIColor(VibrantLightTheme.fertilizerButton) })
 let vibrantAccentColor = Color(UIColor { _ in UIColor(VibrantLightTheme.accent) })
-
-
 
 struct IdentifiableGridPositionWrapper: Identifiable {
     let id = UUID()
@@ -243,7 +242,7 @@ struct GardenView: View {
     var body: some View {
         NavigationView {
             ZStack {
-                vibrantGardenBackground.edgesIgnoringSafeArea(.all)
+                OceanVideoBackgroundView()
                 
                 VStack(spacing: 10) {
                     currentSeasonDisplay
@@ -275,11 +274,14 @@ struct GardenView: View {
                         checkTutorialStatusAfterShopReturn()
                     }
                 }) {
-                    ShopView().environment(\.modelContext, context)
+                    ShopView()
+                        .environment(\.modelContext, context)
+                        .environmentObject(loginViewModel)
                 }
                 .sheet(isPresented: $showingInventoryView) {
                     InventoryView(isPlantingMode: false, onPlantSelected: nil)
                         .environment(\.modelContext, context)
+                        .environmentObject(loginViewModel)
                 }
                 .sheet(item: $plantingSheetItem) { itemWrapper in
                     InventoryView(
@@ -289,6 +291,7 @@ struct GardenView: View {
                         }
                     )
                     .environment(\.modelContext, context)
+                    .environmentObject(loginViewModel)
                 }
                 .sheet(item: $selectedPlantForInfo) { plant in
                     PlantInfoView(plant: plant)
@@ -605,6 +608,8 @@ struct GardenView: View {
         if mutablePlayerStats.numberOfOwnedPlots < mutablePlayerStats.maxPlotsForCurrentLevel {
             if mutablePlayerStats.totalPoints >= cost {
                 if mutablePlayerStats.buyNextPlot() {
+                    // Sync plot purchase to Firebase
+                    loginViewModel.syncLocalPlayerStatsToFirestore(playerStatsModel: mutablePlayerStats)
                     showStandardAlert(title: "Plot Purchased!", message: "You now have \(mutablePlayerStats.numberOfOwnedPlots) plots.")
                 }
             } else {

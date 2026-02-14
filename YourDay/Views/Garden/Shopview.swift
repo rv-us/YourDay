@@ -172,6 +172,7 @@ struct ThemeBannerView: View {
 
 struct ThemePullView: View {
     @Environment(\.modelContext) private var context
+    @EnvironmentObject var loginViewModel: LoginViewModel
     @Query(filter: #Predicate<PlayerStats> { _ in true }) private var playerStatsList: [PlayerStats]
     private var playerStats: PlayerStats { playerStatsList.first ?? PlayerStats() }
 
@@ -481,6 +482,9 @@ struct ThemePullView: View {
         let result = mutablePlayerStats.pullPlants(forTheme: theme, numberOfPulls: numberOfPulls, totalCost: totalCost)
         
         if result.success {
+            // Sync plant purchase to Firebase
+            loginViewModel.syncLocalPlayerStatsToFirestore(playerStatsModel: mutablePlayerStats)
+            
             currentPullQueue = result.pulledPlants
             revealedPlantsThisPull.removeAll()
             finalResultMessage = result.message
