@@ -159,7 +159,7 @@ class FirebaseManager: ObservableObject {
                 completion(error)
                 return
             }
-            
+
             let group = DispatchGroup()
             var capturedError: Error?
 
@@ -175,7 +175,7 @@ class FirebaseManager: ObservableObject {
                 }
                 group.leave()
             }
-            
+
             // Delete Leaderboard Entry document
             group.enter()
             let leaderboardDocRef = db.collection("leaderboard_entries").document(userId)
@@ -188,7 +188,31 @@ class FirebaseManager: ObservableObject {
                 }
                 group.leave()
             }
-            
+
+            // Delete all Tasks documents
+            group.enter()
+            deleteAllDocumentsInSubcollection(userId: userId, subcollection: "tasks") { error in
+                if let error = error {
+                    print("Error deleting tasks for user \(userId): \(error.localizedDescription)")
+                    if capturedError == nil { capturedError = error }
+                } else {
+                    print("Deleted tasks for user \(userId).")
+                }
+                group.leave()
+            }
+
+            // Delete all Notes documents
+            group.enter()
+            deleteAllDocumentsInSubcollection(userId: userId, subcollection: "notes") { error in
+                if let error = error {
+                    print("Error deleting notes for user \(userId): \(error.localizedDescription)")
+                    if capturedError == nil { capturedError = error }
+                } else {
+                    print("Deleted notes for user \(userId).")
+                }
+                group.leave()
+            }
+
             // Notify when all deletions are complete
             group.notify(queue: .main) {
                 if let error = capturedError {
@@ -200,6 +224,36 @@ class FirebaseManager: ObservableObject {
                 }
             }
         }
+
+    /// Helper method to delete all documents in a user's subcollection
+    private func deleteAllDocumentsInSubcollection(userId: String, subcollection: String, completion: @escaping (Error?) -> Void) {
+        db.collection("users").document(userId).collection(subcollection)
+            .getDocuments { [weak self] snapshot, error in
+                guard let self = self else {
+                    completion(nil)
+                    return
+                }
+
+                if let error = error {
+                    completion(error)
+                    return
+                }
+
+                guard let documents = snapshot?.documents, !documents.isEmpty else {
+                    completion(nil)
+                    return
+                }
+
+                let batch = self.db.batch()
+                for doc in documents {
+                    batch.deleteDocument(doc.reference)
+                }
+
+                batch.commit { error in
+                    completion(error)
+                }
+            }
+    }
 
     func checkDisplayNameExists(displayName: String, completion: @escaping (Bool, Error?) -> Void) {
             db.collection("leaderboard_entries")
@@ -1966,7 +2020,7 @@ class FirebaseManager: ObservableObject {
             completion(false)
             return
         }
-        
+
         db.collection("users").document(userId).collection("journalEntries")
             .whereField("eventId", isEqualTo: eventId)
             .limit(to: 1)
@@ -1976,9 +2030,341 @@ class FirebaseManager: ObservableObject {
                     completion(false)
                     return
                 }
-                
+
                 let exists = snapshot?.documents.isEmpty == false
                 completion(exists)
+            }
+    }
+
+    // MARK: - TodoItem (Tasks) Firebase Storage
+
+    /// Save a single TodoItem to Firestore
+    func saveTodoItem(_ item: TodoItemCodable, completion: @escaping (Error?) -> Void) {
+        guard let userId = userId else {
+            completion(NSError(domain: "FirebaseManager", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+
+        let docRef = db.collection("users").document(userId).collection("tasks").document(item.localTaskId)
+        do {
+            var itemToSave = item
+            itemToSave.updatedAt = Date()
+            try docRef.setData(from: itemToSave) { error in
+                if let error = error {
+                    print("FirebaseManager: Error saving TodoItem '\(item.title)': \(error.localizedDescription)")
+                } else {
+                    print("FirebaseManager: Successfully saved TodoItem '\(item.title)'")
+                }
+                completion(error)
+            }
+        } catch {
+            print("FirebaseManager: Error encoding TodoItem '\(item.title)': \(error.localizedDescription)")
+            completion(error)
+        }
+    }
+
+    /// Save multiple TodoItems to Firestore using batch write
+    func saveTodoItems(_ items: [TodoItemCodable], completion: @escaping (Error?) -> Void) {
+        guard let userId = userId else {
+            completion(NSError(domain: "FirebaseManager", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+
+        guard !items.isEmpty else {
+            completion(nil)
+            return
+        }
+
+        let batch = db.batch()
+        let encoder = Firestore.Encoder()
+
+        for item in items {
+            var itemToSave = item
+            itemToSave.updatedAt = Date()
+            let docRef = db.collection("users").document(userId).collection("tasks").document(item.localTaskId)
+            do {
+                let data = try encoder.encode(itemToSave)
+                batch.setData(data, forDocument: docRef)
+            } catch {
+                print("FirebaseManager: Error encoding TodoItem '\(item.title)' for batch: \(error.localizedDescription)")
+                completion(error)
+                return
+            }
+        }
+
+        batch.commit { error in
+            if let error = error {
+                print("FirebaseManager: Error batch saving \(items.count) TodoItems: \(error.localizedDescription)")
+            } else {
+                print("FirebaseManager: Successfully batch saved \(items.count) TodoItems")
+            }
+            completion(error)
+        }
+    }
+
+    /// Fetch all TodoItems for the current user from Firestore
+    func fetchTodoItems(completion: @escaping ([TodoItemCodable]?, Error?) -> Void) {
+        guard let userId = userId else {
+            completion(nil, NSError(domain: "FirebaseManager", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+
+        db.collection("users").document(userId).collection("tasks")
+            .order(by: "dueDate", descending: false)
+            .getDocuments { snapshot, error in
+                if let error = error {
+                    print("FirebaseManager: Error fetching TodoItems: \(error.localizedDescription)")
+                    completion(nil, error)
+                    return
+                }
+
+                let items = snapshot?.documents.compactMap { doc -> TodoItemCodable? in
+                    do {
+                        return try doc.data(as: TodoItemCodable.self)
+                    } catch {
+                        print("FirebaseManager: Error decoding TodoItem document \(doc.documentID): \(error.localizedDescription)")
+                        return nil
+                    }
+                } ?? []
+
+                print("FirebaseManager: Fetched \(items.count) TodoItems from Firestore")
+                completion(items, nil)
+            }
+    }
+
+    /// Delete a TodoItem from Firestore
+    func deleteTodoItem(localTaskId: String, completion: @escaping (Error?) -> Void) {
+        guard let userId = userId else {
+            completion(NSError(domain: "FirebaseManager", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+
+        db.collection("users").document(userId).collection("tasks").document(localTaskId).delete { error in
+            if let error = error {
+                print("FirebaseManager: Error deleting TodoItem \(localTaskId): \(error.localizedDescription)")
+            } else {
+                print("FirebaseManager: Successfully deleted TodoItem \(localTaskId)")
+            }
+            completion(error)
+        }
+    }
+
+    /// Delete multiple TodoItems from Firestore using batch write
+    func deleteTodoItems(localTaskIds: [String], completion: @escaping (Error?) -> Void) {
+        guard let userId = userId else {
+            completion(NSError(domain: "FirebaseManager", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+
+        guard !localTaskIds.isEmpty else {
+            completion(nil)
+            return
+        }
+
+        let batch = db.batch()
+
+        for taskId in localTaskIds {
+            let docRef = db.collection("users").document(userId).collection("tasks").document(taskId)
+            batch.deleteDocument(docRef)
+        }
+
+        batch.commit { error in
+            if let error = error {
+                print("FirebaseManager: Error batch deleting \(localTaskIds.count) TodoItems: \(error.localizedDescription)")
+            } else {
+                print("FirebaseManager: Successfully batch deleted \(localTaskIds.count) TodoItems")
+            }
+            completion(error)
+        }
+    }
+
+    /// Listen to real-time updates for TodoItems
+    func listenToTodoItems(onUpdate: @escaping ([TodoItemCodable]) -> Void) -> ListenerRegistration? {
+        guard let userId = userId else {
+            onUpdate([])
+            return nil
+        }
+
+        return db.collection("users").document(userId).collection("tasks")
+            .order(by: "dueDate", descending: false)
+            .addSnapshotListener { snapshot, error in
+                if let error = error {
+                    print("FirebaseManager: Error listening to TodoItems: \(error.localizedDescription)")
+                    onUpdate([])
+                    return
+                }
+
+                let items = snapshot?.documents.compactMap { doc -> TodoItemCodable? in
+                    try? doc.data(as: TodoItemCodable.self)
+                } ?? []
+
+                onUpdate(items)
+            }
+    }
+
+    // MARK: - NoteItem (Notes) Firebase Storage
+
+    /// Save a single NoteItem to Firestore
+    func saveNoteItem(_ item: NoteItemCodable, completion: @escaping (Error?) -> Void) {
+        guard let userId = userId else {
+            completion(NSError(domain: "FirebaseManager", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+
+        let docRef = db.collection("users").document(userId).collection("notes").document(item.localNoteId)
+        do {
+            var itemToSave = item
+            itemToSave.updatedAt = Date()
+            try docRef.setData(from: itemToSave) { error in
+                if let error = error {
+                    print("FirebaseManager: Error saving NoteItem: \(error.localizedDescription)")
+                } else {
+                    print("FirebaseManager: Successfully saved NoteItem")
+                }
+                completion(error)
+            }
+        } catch {
+            print("FirebaseManager: Error encoding NoteItem: \(error.localizedDescription)")
+            completion(error)
+        }
+    }
+
+    /// Save multiple NoteItems to Firestore using batch write
+    func saveNoteItems(_ items: [NoteItemCodable], completion: @escaping (Error?) -> Void) {
+        guard let userId = userId else {
+            completion(NSError(domain: "FirebaseManager", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+
+        guard !items.isEmpty else {
+            completion(nil)
+            return
+        }
+
+        let batch = db.batch()
+        let encoder = Firestore.Encoder()
+
+        for item in items {
+            var itemToSave = item
+            itemToSave.updatedAt = Date()
+            let docRef = db.collection("users").document(userId).collection("notes").document(item.localNoteId)
+            do {
+                let data = try encoder.encode(itemToSave)
+                batch.setData(data, forDocument: docRef)
+            } catch {
+                print("FirebaseManager: Error encoding NoteItem for batch: \(error.localizedDescription)")
+                completion(error)
+                return
+            }
+        }
+
+        batch.commit { error in
+            if let error = error {
+                print("FirebaseManager: Error batch saving \(items.count) NoteItems: \(error.localizedDescription)")
+            } else {
+                print("FirebaseManager: Successfully batch saved \(items.count) NoteItems")
+            }
+            completion(error)
+        }
+    }
+
+    /// Fetch all NoteItems for the current user from Firestore
+    func fetchNoteItems(completion: @escaping ([NoteItemCodable]?, Error?) -> Void) {
+        guard let userId = userId else {
+            completion(nil, NSError(domain: "FirebaseManager", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+
+        db.collection("users").document(userId).collection("notes")
+            .order(by: "createdAt", descending: true)
+            .getDocuments { snapshot, error in
+                if let error = error {
+                    print("FirebaseManager: Error fetching NoteItems: \(error.localizedDescription)")
+                    completion(nil, error)
+                    return
+                }
+
+                let items = snapshot?.documents.compactMap { doc -> NoteItemCodable? in
+                    do {
+                        return try doc.data(as: NoteItemCodable.self)
+                    } catch {
+                        print("FirebaseManager: Error decoding NoteItem document \(doc.documentID): \(error.localizedDescription)")
+                        return nil
+                    }
+                } ?? []
+
+                print("FirebaseManager: Fetched \(items.count) NoteItems from Firestore")
+                completion(items, nil)
+            }
+    }
+
+    /// Delete a NoteItem from Firestore
+    func deleteNoteItem(localNoteId: String, completion: @escaping (Error?) -> Void) {
+        guard let userId = userId else {
+            completion(NSError(domain: "FirebaseManager", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+
+        db.collection("users").document(userId).collection("notes").document(localNoteId).delete { error in
+            if let error = error {
+                print("FirebaseManager: Error deleting NoteItem \(localNoteId): \(error.localizedDescription)")
+            } else {
+                print("FirebaseManager: Successfully deleted NoteItem \(localNoteId)")
+            }
+            completion(error)
+        }
+    }
+
+    /// Delete multiple NoteItems from Firestore using batch write
+    func deleteNoteItems(localNoteIds: [String], completion: @escaping (Error?) -> Void) {
+        guard let userId = userId else {
+            completion(NSError(domain: "FirebaseManager", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+
+        guard !localNoteIds.isEmpty else {
+            completion(nil)
+            return
+        }
+
+        let batch = db.batch()
+
+        for noteId in localNoteIds {
+            let docRef = db.collection("users").document(userId).collection("notes").document(noteId)
+            batch.deleteDocument(docRef)
+        }
+
+        batch.commit { error in
+            if let error = error {
+                print("FirebaseManager: Error batch deleting \(localNoteIds.count) NoteItems: \(error.localizedDescription)")
+            } else {
+                print("FirebaseManager: Successfully batch deleted \(localNoteIds.count) NoteItems")
+            }
+            completion(error)
+        }
+    }
+
+    /// Listen to real-time updates for NoteItems
+    func listenToNoteItems(onUpdate: @escaping ([NoteItemCodable]) -> Void) -> ListenerRegistration? {
+        guard let userId = userId else {
+            onUpdate([])
+            return nil
+        }
+
+        return db.collection("users").document(userId).collection("notes")
+            .order(by: "createdAt", descending: true)
+            .addSnapshotListener { snapshot, error in
+                if let error = error {
+                    print("FirebaseManager: Error listening to NoteItems: \(error.localizedDescription)")
+                    onUpdate([])
+                    return
+                }
+
+                let items = snapshot?.documents.compactMap { doc -> NoteItemCodable? in
+                    try? doc.data(as: NoteItemCodable.self)
+                } ?? []
+
+                onUpdate(items)
             }
     }
 }

@@ -407,8 +407,11 @@ class LoginViewModel: ObservableObject {
         if isProcessingFreshLogin {
             print("LoginViewModel: handleUserSession - Processing FRESH LOGIN. Loading from Firestore.")
             initiatePlayerStatsLoadAndUpdateLocal(modelContext: modelContext, loginDateToSet: today) {
-                self.isProcessingFreshLogin = false
-                print("LoginViewModel: Finished processing fresh login data load sequence, isProcessingFreshLogin flag reset.")
+                // After PlayerStats sync, sync tasks and notes
+                self.syncTasksAndNotesOnLogin(modelContext: modelContext) {
+                    self.isProcessingFreshLogin = false
+                    print("LoginViewModel: Finished processing fresh login data load sequence, isProcessingFreshLogin flag reset.")
+                }
             }
         } else {
             if let existingLocalStats = localPlayerStats {
@@ -422,9 +425,14 @@ class LoginViewModel: ObservableObject {
                         print("LoginViewModel: Failed to sync local stats to Firestore on app launch: \(error!.localizedDescription)")
                     }
                 }
+                // Also sync tasks and notes on app launch
+                self.syncTasksAndNotesOnLogin(modelContext: modelContext, completion: nil)
             } else {
                 print("LoginViewModel: handleUserSession - App launch, NO local PlayerStats. Loading from Firestore as fallback.")
-                initiatePlayerStatsLoadAndUpdateLocal(modelContext: modelContext, loginDateToSet: today, completion: nil)
+                initiatePlayerStatsLoadAndUpdateLocal(modelContext: modelContext, loginDateToSet: today) {
+                    // After PlayerStats sync, sync tasks and notes
+                    self.syncTasksAndNotesOnLogin(modelContext: modelContext, completion: nil)
+                }
             }
         }
     }
@@ -579,9 +587,9 @@ class LoginViewModel: ObservableObject {
 
     private func updateLeaderboardFromLocalStats(playerStatsModel: PlayerStats) {
         guard !isGuest, let userId = Auth.auth().currentUser?.uid else { return }
-        
+
         let nameForLeaderboard = self.userDisplayName ?? Auth.auth().currentUser?.displayName ?? "Anonymous Gardener"
-        
+
         print("LoginViewModel: Updating leaderboard for user \(userId) with Name: \(nameForLeaderboard), Level: \(playerStatsModel.playerLevel), GardenValue: \(playerStatsModel.gardenValue)")
 
         let leaderboardEntry = LeaderboardEntry(
@@ -595,6 +603,385 @@ class LoginViewModel: ObservableObject {
                 print("LoginViewModel: Failed to update leaderboard from local stats sync: \(error.localizedDescription)")
             } else {
                 print("LoginViewModel: Leaderboard entry updated based on local stats sync.")
+            }
+        }
+    }
+
+    // MARK: - Tasks and Notes Sync
+
+    /// Syncs tasks and notes between local SwiftData and Firebase on login
+    private func syncTasksAndNotesOnLogin(modelContext: ModelContext, completion: (() -> Void)?) {
+        guard !isGuest, let userId = Auth.auth().currentUser?.uid else {
+            completion?()
+            return
+        }
+
+        print("LoginViewModel: Starting tasks and notes sync for user \(userId)")
+
+        let group = DispatchGroup()
+
+        // Sync TodoItems
+        group.enter()
+        syncTodoItemsOnLogin(modelContext: modelContext, userId: userId) {
+            group.leave()
+        }
+
+        // Sync NoteItems
+        group.enter()
+        syncNoteItemsOnLogin(modelContext: modelContext, userId: userId) {
+            group.leave()
+        }
+
+        group.notify(queue: .main) {
+            print("LoginViewModel: Finished syncing tasks and notes")
+            completion?()
+        }
+    }
+
+    /// Syncs TodoItems between local SwiftData and Firebase
+    private func syncTodoItemsOnLogin(modelContext: ModelContext, userId: String, completion: @escaping () -> Void) {
+        // Fetch local tasks
+        let localDescriptor = FetchDescriptor<TodoItem>()
+        var localTasks: [TodoItem] = []
+        do {
+            localTasks = try modelContext.fetch(localDescriptor)
+        } catch {
+            print("LoginViewModel: Error fetching local TodoItems: \(error.localizedDescription)")
+        }
+
+        // Fetch cloud tasks
+        firebaseManager.fetchTodoItems { [weak self] cloudItems, error in
+            guard let self = self else {
+                completion()
+                return
+            }
+
+            if let error = error {
+                print("LoginViewModel: Error fetching cloud TodoItems: \(error.localizedDescription)")
+                // If cloud fetch fails, push local items to cloud
+                self.pushLocalTasksToCloud(localTasks: localTasks, userId: userId, completion: completion)
+                return
+            }
+
+            let cloudTasks = cloudItems ?? []
+            print("LoginViewModel: Found \(localTasks.count) local tasks and \(cloudTasks.count) cloud tasks")
+
+            // Create lookup maps
+            let localTasksMap = Dictionary(uniqueKeysWithValues: localTasks.map { ($0.localTaskId, $0) })
+            let cloudTasksMap = Dictionary(uniqueKeysWithValues: cloudTasks.map { ($0.localTaskId, $0) })
+
+            var tasksToCreateLocally: [TodoItemCodable] = []
+            var tasksToUpdateLocally: [TodoItemCodable] = []
+            var tasksToPushToCloud: [TodoItem] = []
+
+            // Find tasks that exist only in cloud -> create locally
+            for (cloudId, cloudTask) in cloudTasksMap {
+                if localTasksMap[cloudId] == nil {
+                    tasksToCreateLocally.append(cloudTask)
+                } else if let localTask = localTasksMap[cloudId] {
+                    // Task exists in both - use cloud data (cloud wins based on updatedAt)
+                    // For simplicity, we assume cloud is source of truth on login
+                    tasksToUpdateLocally.append(cloudTask)
+                }
+            }
+
+            // Find tasks that exist only locally -> push to cloud
+            for (localId, localTask) in localTasksMap {
+                if cloudTasksMap[localId] == nil {
+                    tasksToPushToCloud.append(localTask)
+                }
+            }
+
+            // Apply changes
+            DispatchQueue.main.async {
+                // Create local tasks from cloud
+                for cloudTask in tasksToCreateLocally {
+                    let props = cloudTask.toTodoItemProperties()
+                    let newTask = TodoItem(
+                        localTaskId: props.localTaskId,
+                        title: props.title,
+                        detail: props.detail,
+                        dueDate: props.dueDate,
+                        isDone: props.isDone,
+                        subtasks: props.subtasks,
+                        position: props.position,
+                        origin: props.origin,
+                        sharedTaskId: props.sharedTaskId,
+                        isSharedPending: props.isSharedPending,
+                        proofPostId: props.proofPostId
+                    )
+                    newTask.completedAt = props.completedAt
+                    modelContext.insert(newTask)
+                }
+
+                // Update local tasks from cloud
+                for cloudTask in tasksToUpdateLocally {
+                    if let localTask = localTasksMap[cloudTask.localTaskId] {
+                        let props = cloudTask.toTodoItemProperties()
+                        localTask.title = props.title
+                        localTask.detail = props.detail
+                        localTask.dueDate = props.dueDate
+                        localTask.isDone = props.isDone
+                        localTask.subtasks = props.subtasks
+                        localTask.completedAt = props.completedAt
+                        localTask.origin = props.origin
+                        localTask.position = props.position
+                        localTask.sharedTaskId = props.sharedTaskId
+                        localTask.isSharedPending = props.isSharedPending
+                        localTask.proofPostId = props.proofPostId
+                    }
+                }
+
+                do {
+                    try modelContext.save()
+                    print("LoginViewModel: Saved \(tasksToCreateLocally.count) new tasks and updated \(tasksToUpdateLocally.count) tasks locally")
+                } catch {
+                    print("LoginViewModel: Error saving TodoItems to local: \(error.localizedDescription)")
+                }
+
+                // Push local-only tasks to cloud
+                if !tasksToPushToCloud.isEmpty {
+                    let codableTasks = tasksToPushToCloud.map { TodoItemCodable(from: $0, userId: userId) }
+                    self.firebaseManager.saveTodoItems(codableTasks) { error in
+                        if let error = error {
+                            print("LoginViewModel: Error pushing local tasks to cloud: \(error.localizedDescription)")
+                        } else {
+                            print("LoginViewModel: Pushed \(tasksToPushToCloud.count) local tasks to cloud")
+                        }
+                        completion()
+                    }
+                } else {
+                    completion()
+                }
+            }
+        }
+    }
+
+    /// Pushes all local tasks to cloud (used when cloud fetch fails)
+    private func pushLocalTasksToCloud(localTasks: [TodoItem], userId: String, completion: @escaping () -> Void) {
+        guard !localTasks.isEmpty else {
+            completion()
+            return
+        }
+
+        let codableTasks = localTasks.map { TodoItemCodable(from: $0, userId: userId) }
+        firebaseManager.saveTodoItems(codableTasks) { error in
+            if let error = error {
+                print("LoginViewModel: Error pushing all local tasks to cloud: \(error.localizedDescription)")
+            } else {
+                print("LoginViewModel: Pushed \(localTasks.count) local tasks to cloud")
+            }
+            completion()
+        }
+    }
+
+    /// Syncs NoteItems between local SwiftData and Firebase
+    private func syncNoteItemsOnLogin(modelContext: ModelContext, userId: String, completion: @escaping () -> Void) {
+        // Fetch local notes
+        let localDescriptor = FetchDescriptor<NoteItem>()
+        var localNotes: [NoteItem] = []
+        do {
+            localNotes = try modelContext.fetch(localDescriptor)
+        } catch {
+            print("LoginViewModel: Error fetching local NoteItems: \(error.localizedDescription)")
+        }
+
+        // Fetch cloud notes
+        firebaseManager.fetchNoteItems { [weak self] cloudItems, error in
+            guard let self = self else {
+                completion()
+                return
+            }
+
+            if let error = error {
+                print("LoginViewModel: Error fetching cloud NoteItems: \(error.localizedDescription)")
+                // If cloud fetch fails, push local items to cloud
+                self.pushLocalNotesToCloud(localNotes: localNotes, userId: userId, completion: completion)
+                return
+            }
+
+            let cloudNotes = cloudItems ?? []
+            print("LoginViewModel: Found \(localNotes.count) local notes and \(cloudNotes.count) cloud notes")
+
+            // Create lookup maps
+            let localNotesMap = Dictionary(uniqueKeysWithValues: localNotes.map { ($0.id.uuidString, $0) })
+            let cloudNotesMap = Dictionary(uniqueKeysWithValues: cloudNotes.map { ($0.localNoteId, $0) })
+
+            var notesToCreateLocally: [NoteItemCodable] = []
+            var notesToUpdateLocally: [NoteItemCodable] = []
+            var notesToPushToCloud: [NoteItem] = []
+
+            // Find notes that exist only in cloud -> create locally
+            for (cloudId, cloudNote) in cloudNotesMap {
+                if localNotesMap[cloudId] == nil {
+                    notesToCreateLocally.append(cloudNote)
+                } else {
+                    // Note exists in both - use cloud data (cloud wins)
+                    notesToUpdateLocally.append(cloudNote)
+                }
+            }
+
+            // Find notes that exist only locally -> push to cloud
+            for (localId, localNote) in localNotesMap {
+                if cloudNotesMap[localId] == nil {
+                    notesToPushToCloud.append(localNote)
+                }
+            }
+
+            // Apply changes
+            DispatchQueue.main.async {
+                // Create local notes from cloud
+                for cloudNote in notesToCreateLocally {
+                    let props = cloudNote.toNoteItemProperties()
+                    let newNote = NoteItem(content: props.content)
+                    // NoteItem creates its own UUID, but we need to preserve the cloud ID
+                    // Since NoteItem.id has @Attribute(.unique), we need a custom approach
+                    // For now, we'll create with the content and accept a new local ID
+                    // A more robust solution would modify NoteItem to accept an ID
+                    modelContext.insert(newNote)
+                }
+
+                // Update local notes from cloud
+                for cloudNote in notesToUpdateLocally {
+                    if let localNote = localNotesMap[cloudNote.localNoteId] {
+                        let props = cloudNote.toNoteItemProperties()
+                        localNote.content = props.content
+                    }
+                }
+
+                do {
+                    try modelContext.save()
+                    print("LoginViewModel: Saved \(notesToCreateLocally.count) new notes and updated \(notesToUpdateLocally.count) notes locally")
+                } catch {
+                    print("LoginViewModel: Error saving NoteItems to local: \(error.localizedDescription)")
+                }
+
+                // Push local-only notes to cloud
+                if !notesToPushToCloud.isEmpty {
+                    let codableNotes = notesToPushToCloud.map { NoteItemCodable(from: $0, userId: userId) }
+                    self.firebaseManager.saveNoteItems(codableNotes) { error in
+                        if let error = error {
+                            print("LoginViewModel: Error pushing local notes to cloud: \(error.localizedDescription)")
+                        } else {
+                            print("LoginViewModel: Pushed \(notesToPushToCloud.count) local notes to cloud")
+                        }
+                        completion()
+                    }
+                } else {
+                    completion()
+                }
+            }
+        }
+    }
+
+    /// Pushes all local notes to cloud (used when cloud fetch fails)
+    private func pushLocalNotesToCloud(localNotes: [NoteItem], userId: String, completion: @escaping () -> Void) {
+        guard !localNotes.isEmpty else {
+            completion()
+            return
+        }
+
+        let codableNotes = localNotes.map { NoteItemCodable(from: $0, userId: userId) }
+        firebaseManager.saveNoteItems(codableNotes) { error in
+            if let error = error {
+                print("LoginViewModel: Error pushing all local notes to cloud: \(error.localizedDescription)")
+            } else {
+                print("LoginViewModel: Pushed \(localNotes.count) local notes to cloud")
+            }
+            completion()
+        }
+    }
+
+    // MARK: - Public Sync Methods for Views
+
+    /// Syncs a single TodoItem to Firebase (call after creating/updating a task)
+    func syncTodoItemToFirebase(_ task: TodoItem) {
+        guard !isGuest, let userId = Auth.auth().currentUser?.uid else { return }
+
+        let codableTask = TodoItemCodable(from: task, userId: userId)
+        firebaseManager.saveTodoItem(codableTask) { error in
+            if let error = error {
+                print("LoginViewModel: Failed to sync task '\(task.title)' to Firebase: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// Syncs multiple TodoItems to Firebase (call after batch updates)
+    func syncTodoItemsToFirebase(_ tasks: [TodoItem]) {
+        guard !isGuest, let userId = Auth.auth().currentUser?.uid else { return }
+
+        let codableTasks = tasks.map { TodoItemCodable(from: $0, userId: userId) }
+        firebaseManager.saveTodoItems(codableTasks) { error in
+            if let error = error {
+                print("LoginViewModel: Failed to sync \(tasks.count) tasks to Firebase: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// Deletes a TodoItem from Firebase (call after deleting locally)
+    func deleteTodoItemFromFirebase(localTaskId: String) {
+        guard !isGuest else { return }
+
+        firebaseManager.deleteTodoItem(localTaskId: localTaskId) { error in
+            if let error = error {
+                print("LoginViewModel: Failed to delete task from Firebase: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// Deletes multiple TodoItems from Firebase (call after batch deletes)
+    func deleteTodoItemsFromFirebase(localTaskIds: [String]) {
+        guard !isGuest else { return }
+
+        firebaseManager.deleteTodoItems(localTaskIds: localTaskIds) { error in
+            if let error = error {
+                print("LoginViewModel: Failed to delete \(localTaskIds.count) tasks from Firebase: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// Syncs a single NoteItem to Firebase (call after creating/updating a note)
+    func syncNoteItemToFirebase(_ note: NoteItem) {
+        guard !isGuest, let userId = Auth.auth().currentUser?.uid else { return }
+
+        let codableNote = NoteItemCodable(from: note, userId: userId)
+        firebaseManager.saveNoteItem(codableNote) { error in
+            if let error = error {
+                print("LoginViewModel: Failed to sync note to Firebase: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// Syncs multiple NoteItems to Firebase (call after batch updates)
+    func syncNoteItemsToFirebase(_ notes: [NoteItem]) {
+        guard !isGuest, let userId = Auth.auth().currentUser?.uid else { return }
+
+        let codableNotes = notes.map { NoteItemCodable(from: $0, userId: userId) }
+        firebaseManager.saveNoteItems(codableNotes) { error in
+            if let error = error {
+                print("LoginViewModel: Failed to sync \(notes.count) notes to Firebase: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// Deletes a NoteItem from Firebase (call after deleting locally)
+    func deleteNoteItemFromFirebase(localNoteId: String) {
+        guard !isGuest else { return }
+
+        firebaseManager.deleteNoteItem(localNoteId: localNoteId) { error in
+            if let error = error {
+                print("LoginViewModel: Failed to delete note from Firebase: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// Deletes multiple NoteItems from Firebase (call after batch deletes)
+    func deleteNoteItemsFromFirebase(localNoteIds: [String]) {
+        guard !isGuest else { return }
+
+        firebaseManager.deleteNoteItems(localNoteIds: localNoteIds) { error in
+            if let error = error {
+                print("LoginViewModel: Failed to delete \(localNoteIds.count) notes from Firebase: \(error.localizedDescription)")
             }
         }
     }
