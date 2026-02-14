@@ -8,6 +8,7 @@
 import SwiftUI
 import SwiftData
 import UIKit
+import FirebaseAuth
 
 // MARK: - Event Bar (for compact preview)
 
@@ -500,6 +501,19 @@ struct ScheduledTaskItemRow: View {
                                 }
                                 firebaseManager.updateSharedSubtasks(sharedTaskId: sharedId, subtasks: sharedSubtasks) { _ in }
                             }
+                            
+                            // Sync subtask change to Firebase
+                            if let userId = FirebaseAuth.Auth.auth().currentUser?.uid {
+                                let codableTask = TodoItemCodable(from: item, userId: userId)
+                                firebaseManager.saveTodoItem(codableTask) { error in
+                                    if let error = error {
+                                        print("CalendarEventComponents: Failed to sync subtask change to Firebase: \(error.localizedDescription)")
+                                    } else {
+                                        print("CalendarEventComponents: Successfully synced subtask change to Firebase")
+                                    }
+                                }
+                            }
+                            
                             saveContext()
                         })
                         .strikethrough(subtask.isDone, color: dynamicSecondaryTextColor.opacity(0.7))
@@ -518,6 +532,19 @@ struct ScheduledTaskItemRow: View {
         if let sharedId = item.sharedTaskId {
             firebaseManager.updateSharedTaskProgress(sharedTaskId: sharedId, isCompleted: item.isDone) { _ in }
         }
+        
+        // Sync task completion toggle to Firebase
+        if let userId = FirebaseAuth.Auth.auth().currentUser?.uid {
+            let codableTask = TodoItemCodable(from: item, userId: userId)
+            firebaseManager.saveTodoItem(codableTask) { error in
+                if let error = error {
+                    print("CalendarEventComponents: Failed to sync task toggle to Firebase: \(error.localizedDescription)")
+                } else {
+                    print("CalendarEventComponents: Successfully synced task toggle to Firebase")
+                }
+            }
+        }
+        
         saveContext()
     }
     

@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import FirebaseAuth
 
 struct NewNoteView: View {
     @Environment(\.modelContext) private var context
@@ -46,6 +47,19 @@ struct NewNoteView: View {
                     Button("Save") {
                         let newNote = NoteItem(content: noteText)
                         context.insert(newNote)
+                        
+                        // Sync new note to Firebase
+                        if let userId = FirebaseAuth.Auth.auth().currentUser?.uid {
+                            let codableNote = NoteItemCodable(from: newNote, userId: userId)
+                            FirebaseManager.shared.saveNoteItem(codableNote) { error in
+                                if let error = error {
+                                    print("NewNoteView: Failed to sync new note to Firebase: \(error.localizedDescription)")
+                                } else {
+                                    print("NewNoteView: Successfully synced new note to Firebase")
+                                }
+                            }
+                        }
+                        
                         onNoteCreated?()
                         isPresented = false
                     }

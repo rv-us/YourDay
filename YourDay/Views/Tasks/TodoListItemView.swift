@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import FirebaseAuth
 
 struct TodoListItemView: View {
     @Bindable var item: TodoItem
@@ -93,6 +94,18 @@ struct TodoListItemView: View {
                                     if let error = error { print("Failed to sync shared subtasks: \(error.localizedDescription)") }
                                 }
                             }
+                            
+                            // Sync subtask change to Firebase
+                            if let userId = FirebaseAuth.Auth.auth().currentUser?.uid {
+                                let codableTask = TodoItemCodable(from: item, userId: userId)
+                                firebaseManager.saveTodoItem(codableTask) { error in
+                                    if let error = error {
+                                        print("TodoListItemView: Failed to sync subtask change to Firebase: \(error.localizedDescription)")
+                                    } else {
+                                        print("TodoListItemView: Successfully synced subtask change to Firebase")
+                                    }
+                                }
+                            }
                         })
                             .strikethrough(subtask.isDone, color: dynamicSecondaryTextColor.opacity(0.7))
                             .foregroundColor(subtask.isDone ? dynamicSecondaryTextColor.opacity(0.7) : dynamicTextColor)
@@ -138,6 +151,18 @@ struct TodoListItemView: View {
             firebaseManager.updateSharedTaskProgress(sharedTaskId: sharedId, isCompleted: item.isDone) { error in
                 if let error = error {
                     print("Failed to sync shared task progress: \(error.localizedDescription)")
+                }
+            }
+        }
+        
+        // Sync task completion toggle to Firebase
+        if let userId = FirebaseAuth.Auth.auth().currentUser?.uid {
+            let codableTask = TodoItemCodable(from: item, userId: userId)
+            firebaseManager.saveTodoItem(codableTask) { error in
+                if let error = error {
+                    print("TodoListItemView: Failed to sync task toggle to Firebase: \(error.localizedDescription)")
+                } else {
+                    print("TodoListItemView: Successfully synced task toggle to Firebase")
                 }
             }
         }

@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import FirebaseAuth
 
 struct MigrateTasksView: View {
     @Environment(\.modelContext) private var modelContext
@@ -186,7 +187,17 @@ struct MigrateTasksView: View {
                         }
                     }
                     
+                    let taskId = taskInReview.localTaskId
                     modelContext.delete(taskInReview)
+                    
+                    // Sync deletion to Firebase
+                    FirebaseManager.shared.deleteTodoItem(localTaskId: taskId) { error in
+                        if let error = error {
+                            print("MigrateTasksView: Failed to delete task from Firebase: \(error.localizedDescription)")
+                        } else {
+                            print("MigrateTasksView: Successfully deleted task from Firebase")
+                        }
+                    }
                 } else {
                     print("Keeping unselected MASTER task: \(taskInReview.title)")
                 }
@@ -214,7 +225,17 @@ struct MigrateTasksView: View {
                 }
             }
             
+            let taskId = task.localTaskId
             modelContext.delete(task)
+            
+            // Sync deletion to Firebase
+            FirebaseManager.shared.deleteTodoItem(localTaskId: taskId) { error in
+                if let error = error {
+                    print("MigrateTasksView: Failed to delete task '\(task.title)' from Firebase: \(error.localizedDescription)")
+                } else {
+                    print("MigrateTasksView: Successfully deleted task '\(task.title)' from Firebase")
+                }
+            }
         }
         do {
             try modelContext.save()

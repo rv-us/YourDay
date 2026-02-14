@@ -19,4 +19,5 @@ struct SharedTask: Identifiable, Codable {
     var createdAt: Date
     var completedAt: Date?
     var subtasks: [SharedSubtask] = []
+    var isProgressShare: Bool = false // true if sender is sharing their own progress, false if assigning task to receiver
 } 

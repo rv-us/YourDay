@@ -232,7 +232,23 @@ struct ChatDetailView: View {
                 sharedTaskId: task.id
             )
             modelContext.insert(todo)
-            do { try modelContext.save() } catch { print("Failed to save shared task to local list: \(error)") }
+            do { 
+                try modelContext.save()
+                
+                // Sync accepted task to Firebase
+                if let userId = Auth.auth().currentUser?.uid {
+                    let codableTask = TodoItemCodable(from: todo, userId: userId)
+                    firebaseManager.saveTodoItem(codableTask) { error in
+                        if let error = error {
+                            print("ChatDetailView: Failed to sync accepted task to Firebase: \(error.localizedDescription)")
+                        } else {
+                            print("ChatDetailView: Successfully synced accepted task to Firebase")
+                        }
+                    }
+                }
+            } catch { 
+                print("Failed to save shared task to local list: \(error)") 
+            }
         }
     }
 }

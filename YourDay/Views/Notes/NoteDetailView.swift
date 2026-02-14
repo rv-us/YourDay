@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import FirebaseAuth
 
 struct NoteDetailView: View {
     @Environment(\.modelContext) private var context
@@ -42,6 +43,19 @@ struct NoteDetailView: View {
                 Button("Save") {
                     note.content = editedText
                     try? context.save()
+                    
+                    // Sync note update to Firebase
+                    if let userId = FirebaseAuth.Auth.auth().currentUser?.uid {
+                        let codableNote = NoteItemCodable(from: note, userId: userId)
+                        FirebaseManager.shared.saveNoteItem(codableNote) { error in
+                            if let error = error {
+                                print("NoteDetailView: Failed to sync note update to Firebase: \(error.localizedDescription)")
+                            } else {
+                                print("NoteDetailView: Successfully synced note update to Firebase")
+                            }
+                        }
+                    }
+                    
                     dismiss()
                 }
                 .disabled(editedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)

@@ -62,9 +62,18 @@ struct SharedTasksInboxView: View {
                                 }
                                 .buttonStyle(.bordered)
                             }
-                            if task.isAccepted && !task.isCompleted && task.senderId == Auth.auth().currentUser?.uid {
-                                if let id = task.id {
+                            // Nudge logic:
+                            // - Regular shared task (isProgressShare = false): sender can nudge receiver after acceptance
+                            // - Progress share (isProgressShare = true): receiver can nudge sender, sender cannot nudge
+                            if task.isAccepted && !task.isCompleted {
+                                // Regular shared task: sender nudges receiver
+                                if !task.isProgressShare && task.senderId == Auth.auth().currentUser?.uid, let id = task.id {
                                     Button("Nudge") { firebaseManager.nudgeSharedTask(sharedTaskId: id, to: task.receiverId) { _ in } }
+                                        .buttonStyle(.bordered)
+                                }
+                                // Progress share: receiver nudges sender
+                                if task.isProgressShare && task.receiverId == Auth.auth().currentUser?.uid, let id = task.id {
+                                    Button("Nudge") { firebaseManager.nudgeSharedTask(sharedTaskId: id, to: task.senderId) { _ in } }
                                         .buttonStyle(.bordered)
                                 }
                             }
@@ -118,7 +127,23 @@ struct SharedTasksInboxView: View {
                 isSharedPending: false
             )
             modelContext.insert(todo)
-            do { try modelContext.save() } catch { print("Failed to insert accepted task into main list: \(error)") }
+            do { 
+                try modelContext.save()
+                
+                // Sync accepted task to Firebase
+                if let userId = FirebaseAuth.Auth.auth().currentUser?.uid {
+                    let codableTask = TodoItemCodable(from: todo, userId: userId)
+                    firebaseManager.saveTodoItem(codableTask) { error in
+                        if let error = error {
+                            print("SharedTasksInboxView: Failed to sync accepted task to Firebase: \(error.localizedDescription)")
+                        } else {
+                            print("SharedTasksInboxView: Successfully synced accepted task to Firebase")
+                        }
+                    }
+                }
+            } catch { 
+                print("Failed to insert accepted task into main list: \(error)") 
+            }
         }
     }
 } 

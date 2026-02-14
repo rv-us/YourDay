@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import FirebaseVertexAI
+import FirebaseAuth
 
 struct NewItemview: View {
     @Environment(\.modelContext) private var context
@@ -293,6 +294,18 @@ struct NewItemview: View {
             existing.subtasks = viewModel.subtasks
             existing.origin = viewModel.origin
             print("Updated task '\(existing.title)'")
+            
+            // Sync update to Firebase
+            if let userId = FirebaseAuth.Auth.auth().currentUser?.uid {
+                let codableTask = TodoItemCodable(from: existing, userId: userId)
+                FirebaseManager.shared.saveTodoItem(codableTask) { error in
+                    if let error = error {
+                        print("NewItemview: Failed to sync task update to Firebase: \(error.localizedDescription)")
+                    } else {
+                        print("NewItemview: Successfully synced task update to Firebase")
+                    }
+                }
+            }
         } else {
             let newItem = TodoItem(
                 title: viewModel.title,
@@ -303,6 +316,19 @@ struct NewItemview: View {
             )
             context.insert(newItem)
             print("Created new task '\(newItem.title)'")
+            
+            // Sync new task to Firebase
+            if let userId = FirebaseAuth.Auth.auth().currentUser?.uid {
+                let codableTask = TodoItemCodable(from: newItem, userId: userId)
+                FirebaseManager.shared.saveTodoItem(codableTask) { error in
+                    if let error = error {
+                        print("NewItemview: Failed to sync new task to Firebase: \(error.localizedDescription)")
+                    } else {
+                        print("NewItemview: Successfully synced new task to Firebase")
+                    }
+                }
+            }
+            
             NotificationCenter.default.post(name: Notification.Name("NewItemSavedNotification"), object: nil, userInfo: ["item": newItem])
         }
 

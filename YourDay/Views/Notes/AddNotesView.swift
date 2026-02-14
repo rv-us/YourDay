@@ -6,6 +6,7 @@
 import SwiftUI
 import SwiftData
 import FirebaseVertexAI
+import FirebaseAuth
 
 struct AddNotesView: View {
     @Environment(\.modelContext) private var context
@@ -48,6 +49,18 @@ struct AddNotesView: View {
                     ConfirmGeneratedTasksView(tasks: generatedTasks) { selectedTasks in
                         for task in selectedTasks {
                             context.insert(task)
+                            
+                            // Sync new task to Firebase
+                            if let userId = FirebaseAuth.Auth.auth().currentUser?.uid {
+                                let codableTask = TodoItemCodable(from: task, userId: userId)
+                                FirebaseManager.shared.saveTodoItem(codableTask) { error in
+                                    if let error = error {
+                                        print("AddNotesView: Failed to sync generated task to Firebase: \(error.localizedDescription)")
+                                    } else {
+                                        print("AddNotesView: Successfully synced generated task to Firebase")
+                                    }
+                                }
+                            }
                         }
                         generatedTasks = []
                         showingConfirmGeneratedTasks = false
@@ -80,7 +93,20 @@ struct AddNotesView: View {
             }
             .onDelete { indexSet in
                 for index in indexSet {
-                    context.delete(notes[index])
+                    let note = notes[index]
+                    let noteId = note.id.uuidString
+                    context.delete(note)
+                    
+                    // Sync deletion to Firebase
+                    if let userId = FirebaseAuth.Auth.auth().currentUser?.uid {
+                        FirebaseManager.shared.deleteNoteItem(localNoteId: noteId) { error in
+                            if let error = error {
+                                print("AddNotesView: Failed to delete note from Firebase: \(error.localizedDescription)")
+                            } else {
+                                print("AddNotesView: Successfully deleted note from Firebase")
+                            }
+                        }
+                    }
                 }
             }
         }

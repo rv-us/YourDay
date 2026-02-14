@@ -57,13 +57,26 @@ struct SharedTaskDetailView: View {
                         }
                         .buttonStyle(.bordered)
                     }
-                    if (liveTask?.isAccepted ?? task.isAccepted) && !(liveTask?.isCompleted ?? task.isCompleted) && task.senderId == currentId {
-                        if let tid = (liveTask?.id ?? task.id) {
+                    // Nudge logic:
+                    // - Regular shared task (isProgressShare = false): sender can nudge receiver after acceptance
+                    // - Progress share (isProgressShare = true): receiver can nudge sender, sender cannot nudge
+                    let isProgressShare = (liveTask?.isProgressShare ?? task.isProgressShare)
+                    let isAccepted = (liveTask?.isAccepted ?? task.isAccepted)
+                    let isCompleted = (liveTask?.isCompleted ?? task.isCompleted)
+                    
+                    if isAccepted && !isCompleted {
+                        // Regular shared task: sender nudges receiver
+                        if !isProgressShare && task.senderId == currentId, let tid = (liveTask?.id ?? task.id) {
                             Button("Nudge") { firebaseManager.nudgeSharedTask(sharedTaskId: tid, to: task.receiverId) { _ in } }
                                 .buttonStyle(.bordered)
                         }
+                        // Progress share: receiver nudges sender
+                        if isProgressShare && task.receiverId == currentId, let tid = (liveTask?.id ?? task.id) {
+                            Button("Nudge") { firebaseManager.nudgeSharedTask(sharedTaskId: tid, to: task.senderId) { _ in } }
+                                .buttonStyle(.bordered)
+                        }
                     }
-                    if (liveTask?.isCompleted ?? task.isCompleted), let tid = (liveTask?.id ?? task.id) {
+                    if isCompleted, let tid = (liveTask?.id ?? task.id) {
                         Button(role: .destructive) { firebaseManager.deleteSharedTask(sharedTaskId: tid) { _ in dismiss() } } label: { Text("Delete") }
                             .buttonStyle(.bordered)
                     }

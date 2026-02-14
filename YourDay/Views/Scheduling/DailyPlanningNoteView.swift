@@ -8,6 +8,7 @@
 import SwiftUI
 import SwiftData
 import FirebaseVertexAI
+import FirebaseAuth
 
 struct DailyPlanningNoteView: View {
     @Environment(\.modelContext) private var context
@@ -86,6 +87,18 @@ struct DailyPlanningNoteView: View {
             ConfirmGeneratedTasksView(tasks: generatedTasks) { selectedTasks in
                 for task in selectedTasks {
                     context.insert(task)
+                    
+                    // Sync new task to Firebase
+                    if let userId = FirebaseAuth.Auth.auth().currentUser?.uid {
+                        let codableTask = TodoItemCodable(from: task, userId: userId)
+                        FirebaseManager.shared.saveTodoItem(codableTask) { error in
+                            if let error = error {
+                                print("DailyPlanningNoteView: Failed to sync generated task to Firebase: \(error.localizedDescription)")
+                            } else {
+                                print("DailyPlanningNoteView: Successfully synced generated task to Firebase")
+                            }
+                        }
+                    }
                 }
                 do {
                     try context.save()

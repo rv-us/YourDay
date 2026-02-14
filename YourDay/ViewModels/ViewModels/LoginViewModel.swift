@@ -616,19 +616,20 @@ class LoginViewModel: ObservableObject {
             return
         }
 
-        print("LoginViewModel: Starting tasks and notes sync for user \(userId)")
+        let isFreshLogin = isProcessingFreshLogin
+        print("LoginViewModel: Starting tasks and notes sync for user \(userId) (isFreshLogin: \(isFreshLogin))")
 
         let group = DispatchGroup()
 
         // Sync TodoItems
         group.enter()
-        syncTodoItemsOnLogin(modelContext: modelContext, userId: userId) {
+        syncTodoItemsOnLogin(modelContext: modelContext, userId: userId, isFreshLogin: isFreshLogin) {
             group.leave()
         }
 
         // Sync NoteItems
         group.enter()
-        syncNoteItemsOnLogin(modelContext: modelContext, userId: userId) {
+        syncNoteItemsOnLogin(modelContext: modelContext, userId: userId, isFreshLogin: isFreshLogin) {
             group.leave()
         }
 
@@ -638,8 +639,42 @@ class LoginViewModel: ObservableObject {
         }
     }
 
+    /// Deduplicates local tasks by keeping the first occurrence of each localTaskId
+    private func deduplicateTasks(_ tasks: [TodoItem]) -> [TodoItem] {
+        var seen = Set<String>()
+        var result: [TodoItem] = []
+        for task in tasks {
+            if !seen.contains(task.localTaskId) {
+                seen.insert(task.localTaskId)
+                result.append(task)
+            } else {
+                print("LoginViewModel: ⚠️ Duplicate local task found with ID: \(task.localTaskId) - skipping")
+            }
+        }
+        return result
+    }
+    
+    /// Deduplicates cloud tasks by keeping the most recently updated version of each localTaskId
+    private func deduplicateCloudTasks(_ tasks: [TodoItemCodable]) -> [TodoItemCodable] {
+        var taskMap: [String: TodoItemCodable] = [:]
+        for task in tasks {
+            if let existing = taskMap[task.localTaskId] {
+                // Keep the one with the most recent updatedAt
+                if task.updatedAt > existing.updatedAt {
+                    print("LoginViewModel: ⚠️ Duplicate cloud task found with ID: \(task.localTaskId) - keeping newer version (updatedAt: \(task.updatedAt))")
+                    taskMap[task.localTaskId] = task
+                } else {
+                    print("LoginViewModel: ⚠️ Duplicate cloud task found with ID: \(task.localTaskId) - keeping existing version (updatedAt: \(existing.updatedAt))")
+                }
+            } else {
+                taskMap[task.localTaskId] = task
+            }
+        }
+        return Array(taskMap.values)
+    }
+
     /// Syncs TodoItems between local SwiftData and Firebase
-    private func syncTodoItemsOnLogin(modelContext: ModelContext, userId: String, completion: @escaping () -> Void) {
+    private func syncTodoItemsOnLogin(modelContext: ModelContext, userId: String, isFreshLogin: Bool, completion: @escaping () -> Void) {
         // Fetch local tasks
         let localDescriptor = FetchDescriptor<TodoItem>()
         var localTasks: [TodoItem] = []
@@ -649,108 +684,164 @@ class LoginViewModel: ObservableObject {
             print("LoginViewModel: Error fetching local TodoItems: \(error.localizedDescription)")
         }
 
-        // Fetch cloud tasks
-        firebaseManager.fetchTodoItems { [weak self] cloudItems, error in
-            guard let self = self else {
-                completion()
-                return
-            }
-
-            if let error = error {
-                print("LoginViewModel: Error fetching cloud TodoItems: \(error.localizedDescription)")
-                // If cloud fetch fails, push local items to cloud
-                self.pushLocalTasksToCloud(localTasks: localTasks, userId: userId, completion: completion)
-                return
-            }
-
-            let cloudTasks = cloudItems ?? []
-            print("LoginViewModel: Found \(localTasks.count) local tasks and \(cloudTasks.count) cloud tasks")
-
-            // Create lookup maps
-            let localTasksMap = Dictionary(uniqueKeysWithValues: localTasks.map { ($0.localTaskId, $0) })
-            let cloudTasksMap = Dictionary(uniqueKeysWithValues: cloudTasks.map { ($0.localTaskId, $0) })
-
-            var tasksToCreateLocally: [TodoItemCodable] = []
-            var tasksToUpdateLocally: [TodoItemCodable] = []
-            var tasksToPushToCloud: [TodoItem] = []
-
-            // Find tasks that exist only in cloud -> create locally
-            for (cloudId, cloudTask) in cloudTasksMap {
-                if localTasksMap[cloudId] == nil {
-                    tasksToCreateLocally.append(cloudTask)
-                } else if let localTask = localTasksMap[cloudId] {
-                    // Task exists in both - use cloud data (cloud wins based on updatedAt)
-                    // For simplicity, we assume cloud is source of truth on login
-                    tasksToUpdateLocally.append(cloudTask)
-                }
-            }
-
-            // Find tasks that exist only locally -> push to cloud
-            for (localId, localTask) in localTasksMap {
-                if cloudTasksMap[localId] == nil {
-                    tasksToPushToCloud.append(localTask)
-                }
-            }
-
-            // Apply changes
-            DispatchQueue.main.async {
-                // Create local tasks from cloud
-                for cloudTask in tasksToCreateLocally {
-                    let props = cloudTask.toTodoItemProperties()
-                    let newTask = TodoItem(
-                        localTaskId: props.localTaskId,
-                        title: props.title,
-                        detail: props.detail,
-                        dueDate: props.dueDate,
-                        isDone: props.isDone,
-                        subtasks: props.subtasks,
-                        position: props.position,
-                        origin: props.origin,
-                        sharedTaskId: props.sharedTaskId,
-                        isSharedPending: props.isSharedPending,
-                        proofPostId: props.proofPostId
-                    )
-                    newTask.completedAt = props.completedAt
-                    modelContext.insert(newTask)
+        if isFreshLogin {
+            // Fresh login: Cloud is source of truth, merge cloud into local
+            // Fetch cloud tasks
+            firebaseManager.fetchTodoItems { [weak self] cloudItems, error in
+                guard let self = self else {
+                    completion()
+                    return
                 }
 
-                // Update local tasks from cloud
-                for cloudTask in tasksToUpdateLocally {
-                    if let localTask = localTasksMap[cloudTask.localTaskId] {
-                        let props = cloudTask.toTodoItemProperties()
-                        localTask.title = props.title
-                        localTask.detail = props.detail
-                        localTask.dueDate = props.dueDate
-                        localTask.isDone = props.isDone
-                        localTask.subtasks = props.subtasks
-                        localTask.completedAt = props.completedAt
-                        localTask.origin = props.origin
-                        localTask.position = props.position
-                        localTask.sharedTaskId = props.sharedTaskId
-                        localTask.isSharedPending = props.isSharedPending
-                        localTask.proofPostId = props.proofPostId
+                if let error = error {
+                    print("LoginViewModel: Error fetching cloud TodoItems: \(error.localizedDescription)")
+                    // If cloud fetch fails, push local items to cloud
+                    self.pushLocalTasksToCloud(localTasks: localTasks, userId: userId, completion: completion)
+                    return
+                }
+
+                let cloudTasks = cloudItems ?? []
+                print("LoginViewModel: [Fresh Login] Found \(localTasks.count) local tasks and \(cloudTasks.count) cloud tasks")
+
+                // Deduplicate tasks before creating maps (keep the most recent version)
+                let deduplicatedLocalTasks = deduplicateTasks(localTasks)
+                let deduplicatedCloudTasks = deduplicateCloudTasks(cloudTasks)
+                
+                if deduplicatedLocalTasks.count != localTasks.count {
+                    print("LoginViewModel: ⚠️ Found and removed \(localTasks.count - deduplicatedLocalTasks.count) duplicate local tasks")
+                }
+                if deduplicatedCloudTasks.count != cloudTasks.count {
+                    print("LoginViewModel: ⚠️ Found and removed \(cloudTasks.count - deduplicatedCloudTasks.count) duplicate cloud tasks")
+                }
+
+                // Create lookup maps (now safe from duplicates)
+                let localTasksMap = Dictionary(uniqueKeysWithValues: deduplicatedLocalTasks.map { ($0.localTaskId, $0) })
+                let cloudTasksMap = Dictionary(uniqueKeysWithValues: deduplicatedCloudTasks.map { ($0.localTaskId, $0) })
+
+                var tasksToCreateLocally: [TodoItemCodable] = []
+                var tasksToUpdateLocally: [TodoItemCodable] = []
+                var tasksToPushToCloud: [TodoItem] = []
+
+                // Find tasks that exist only in cloud -> create locally
+                for (cloudId, cloudTask) in cloudTasksMap {
+                    if localTasksMap[cloudId] == nil {
+                        tasksToCreateLocally.append(cloudTask)
+                    } else if let localTask = localTasksMap[cloudId] {
+                        // Task exists in both - use cloud data (cloud wins based on updatedAt)
+                        tasksToUpdateLocally.append(cloudTask)
                     }
                 }
 
-                do {
-                    try modelContext.save()
-                    print("LoginViewModel: Saved \(tasksToCreateLocally.count) new tasks and updated \(tasksToUpdateLocally.count) tasks locally")
-                } catch {
-                    print("LoginViewModel: Error saving TodoItems to local: \(error.localizedDescription)")
+                // Find tasks that exist only locally -> push to cloud
+                for (localId, localTask) in localTasksMap {
+                    if cloudTasksMap[localId] == nil {
+                        tasksToPushToCloud.append(localTask)
+                    }
                 }
 
-                // Push local-only tasks to cloud
-                if !tasksToPushToCloud.isEmpty {
-                    let codableTasks = tasksToPushToCloud.map { TodoItemCodable(from: $0, userId: userId) }
-                    self.firebaseManager.saveTodoItems(codableTasks) { error in
-                        if let error = error {
-                            print("LoginViewModel: Error pushing local tasks to cloud: \(error.localizedDescription)")
+                // Apply changes
+                DispatchQueue.main.async {
+                    // Create local tasks from cloud
+                    for cloudTask in tasksToCreateLocally {
+                        // Double-check that task doesn't already exist (safety check after deduplication)
+                        if localTasksMap[cloudTask.localTaskId] == nil {
+                            let props = cloudTask.toTodoItemProperties()
+                            let newTask = TodoItem(
+                                localTaskId: props.localTaskId,
+                                title: props.title,
+                                detail: props.detail,
+                                dueDate: props.dueDate,
+                                isDone: props.isDone,
+                                subtasks: props.subtasks,
+                                position: props.position,
+                                origin: props.origin,
+                                sharedTaskId: props.sharedTaskId,
+                                isSharedPending: props.isSharedPending,
+                                proofPostId: props.proofPostId
+                            )
+                            newTask.completedAt = props.completedAt
+                            modelContext.insert(newTask)
                         } else {
-                            print("LoginViewModel: Pushed \(tasksToPushToCloud.count) local tasks to cloud")
+                            print("LoginViewModel: ⚠️ Task with ID \(cloudTask.localTaskId) already exists locally, skipping creation")
                         }
+                    }
+
+                    // Update local tasks from cloud
+                    for cloudTask in tasksToUpdateLocally {
+                        if let localTask = localTasksMap[cloudTask.localTaskId] {
+                            let props = cloudTask.toTodoItemProperties()
+                            localTask.title = props.title
+                            localTask.detail = props.detail
+                            localTask.dueDate = props.dueDate
+                            localTask.isDone = props.isDone
+                            localTask.subtasks = props.subtasks
+                            localTask.completedAt = props.completedAt
+                            localTask.origin = props.origin
+                            localTask.position = props.position
+                            localTask.sharedTaskId = props.sharedTaskId
+                            localTask.isSharedPending = props.isSharedPending
+                            localTask.proofPostId = props.proofPostId
+                        }
+                    }
+
+                    do {
+                        try modelContext.save()
+                        print("LoginViewModel: [Fresh Login] Saved \(tasksToCreateLocally.count) new tasks and updated \(tasksToUpdateLocally.count) tasks locally")
+                    } catch {
+                        print("LoginViewModel: Error saving TodoItems to local: \(error.localizedDescription)")
+                    }
+
+                    // Push local-only tasks to cloud
+                    if !tasksToPushToCloud.isEmpty {
+                        let codableTasks = tasksToPushToCloud.map { TodoItemCodable(from: $0, userId: userId) }
+                        self.firebaseManager.saveTodoItems(codableTasks) { error in
+                            if let error = error {
+                                print("LoginViewModel: Error pushing local tasks to cloud: \(error.localizedDescription)")
+                            } else {
+                                print("LoginViewModel: Pushed \(tasksToPushToCloud.count) local tasks to cloud")
+                            }
+                            completion()
+                        }
+                    } else {
                         completion()
                     }
-                } else {
+                }
+            }
+        } else {
+            // Normal app launch: Local is source of truth, replace cloud with local
+            print("LoginViewModel: [Normal Launch] Found \(localTasks.count) local tasks - pushing to cloud and cleaning up")
+            
+            // Deduplicate local tasks
+            let deduplicatedLocalTasks = deduplicateTasks(localTasks)
+            if deduplicatedLocalTasks.count != localTasks.count {
+                print("LoginViewModel: ⚠️ Found and removed \(localTasks.count - deduplicatedLocalTasks.count) duplicate local tasks")
+            }
+            
+            // Push all local tasks to cloud
+            let localTaskIds = Set(deduplicatedLocalTasks.map { $0.localTaskId })
+            let codableTasks = deduplicatedLocalTasks.map { TodoItemCodable(from: $0, userId: userId) }
+            
+            firebaseManager.saveTodoItems(codableTasks) { [weak self] error in
+                guard let self = self else {
+                    completion()
+                    return
+                }
+                
+                if let error = error {
+                    print("LoginViewModel: Error pushing local tasks to cloud: \(error.localizedDescription)")
+                    completion()
+                    return
+                }
+                
+                print("LoginViewModel: [Normal Launch] Pushed \(codableTasks.count) local tasks to cloud")
+                
+                // Delete cloud tasks that don't exist locally
+                self.firebaseManager.deleteCloudTasksNotInLocal(localTaskIds: localTaskIds) { error in
+                    if let error = error {
+                        print("LoginViewModel: Error cleaning up cloud tasks: \(error.localizedDescription)")
+                    } else {
+                        print("LoginViewModel: [Normal Launch] Cleaned up cloud tasks (local is now source of truth)")
+                    }
                     completion()
                 }
             }
@@ -775,8 +866,42 @@ class LoginViewModel: ObservableObject {
         }
     }
 
+    /// Deduplicates local notes by keeping the first occurrence of each UUID
+    private func deduplicateNotes(_ notes: [NoteItem]) -> [NoteItem] {
+        var seen = Set<UUID>()
+        var result: [NoteItem] = []
+        for note in notes {
+            if !seen.contains(note.id) {
+                seen.insert(note.id)
+                result.append(note)
+            } else {
+                print("LoginViewModel: ⚠️ Duplicate local note found with ID: \(note.id) - skipping")
+            }
+        }
+        return result
+    }
+    
+    /// Deduplicates cloud notes by keeping the most recently updated version of each localNoteId
+    private func deduplicateCloudNotes(_ notes: [NoteItemCodable]) -> [NoteItemCodable] {
+        var noteMap: [String: NoteItemCodable] = [:]
+        for note in notes {
+            if let existing = noteMap[note.localNoteId] {
+                // Keep the one with the most recent updatedAt
+                if note.updatedAt > existing.updatedAt {
+                    print("LoginViewModel: ⚠️ Duplicate cloud note found with ID: \(note.localNoteId) - keeping newer version (updatedAt: \(note.updatedAt))")
+                    noteMap[note.localNoteId] = note
+                } else {
+                    print("LoginViewModel: ⚠️ Duplicate cloud note found with ID: \(note.localNoteId) - keeping existing version (updatedAt: \(existing.updatedAt))")
+                }
+            } else {
+                noteMap[note.localNoteId] = note
+            }
+        }
+        return Array(noteMap.values)
+    }
+
     /// Syncs NoteItems between local SwiftData and Firebase
-    private func syncNoteItemsOnLogin(modelContext: ModelContext, userId: String, completion: @escaping () -> Void) {
+    private func syncNoteItemsOnLogin(modelContext: ModelContext, userId: String, isFreshLogin: Bool, completion: @escaping () -> Void) {
         // Fetch local notes
         let localDescriptor = FetchDescriptor<NoteItem>()
         var localNotes: [NoteItem] = []
@@ -786,88 +911,141 @@ class LoginViewModel: ObservableObject {
             print("LoginViewModel: Error fetching local NoteItems: \(error.localizedDescription)")
         }
 
-        // Fetch cloud notes
-        firebaseManager.fetchNoteItems { [weak self] cloudItems, error in
-            guard let self = self else {
-                completion()
-                return
-            }
-
-            if let error = error {
-                print("LoginViewModel: Error fetching cloud NoteItems: \(error.localizedDescription)")
-                // If cloud fetch fails, push local items to cloud
-                self.pushLocalNotesToCloud(localNotes: localNotes, userId: userId, completion: completion)
-                return
-            }
-
-            let cloudNotes = cloudItems ?? []
-            print("LoginViewModel: Found \(localNotes.count) local notes and \(cloudNotes.count) cloud notes")
-
-            // Create lookup maps
-            let localNotesMap = Dictionary(uniqueKeysWithValues: localNotes.map { ($0.id.uuidString, $0) })
-            let cloudNotesMap = Dictionary(uniqueKeysWithValues: cloudNotes.map { ($0.localNoteId, $0) })
-
-            var notesToCreateLocally: [NoteItemCodable] = []
-            var notesToUpdateLocally: [NoteItemCodable] = []
-            var notesToPushToCloud: [NoteItem] = []
-
-            // Find notes that exist only in cloud -> create locally
-            for (cloudId, cloudNote) in cloudNotesMap {
-                if localNotesMap[cloudId] == nil {
-                    notesToCreateLocally.append(cloudNote)
-                } else {
-                    // Note exists in both - use cloud data (cloud wins)
-                    notesToUpdateLocally.append(cloudNote)
-                }
-            }
-
-            // Find notes that exist only locally -> push to cloud
-            for (localId, localNote) in localNotesMap {
-                if cloudNotesMap[localId] == nil {
-                    notesToPushToCloud.append(localNote)
-                }
-            }
-
-            // Apply changes
-            DispatchQueue.main.async {
-                // Create local notes from cloud
-                for cloudNote in notesToCreateLocally {
-                    let props = cloudNote.toNoteItemProperties()
-                    let newNote = NoteItem(content: props.content)
-                    // NoteItem creates its own UUID, but we need to preserve the cloud ID
-                    // Since NoteItem.id has @Attribute(.unique), we need a custom approach
-                    // For now, we'll create with the content and accept a new local ID
-                    // A more robust solution would modify NoteItem to accept an ID
-                    modelContext.insert(newNote)
+        if isFreshLogin {
+            // Fresh login: Cloud is source of truth, merge cloud into local
+            // Fetch cloud notes
+            firebaseManager.fetchNoteItems { [weak self] cloudItems, error in
+                guard let self = self else {
+                    completion()
+                    return
                 }
 
-                // Update local notes from cloud
-                for cloudNote in notesToUpdateLocally {
-                    if let localNote = localNotesMap[cloudNote.localNoteId] {
-                        let props = cloudNote.toNoteItemProperties()
-                        localNote.content = props.content
+                if let error = error {
+                    print("LoginViewModel: Error fetching cloud NoteItems: \(error.localizedDescription)")
+                    // If cloud fetch fails, push local items to cloud
+                    self.pushLocalNotesToCloud(localNotes: localNotes, userId: userId, completion: completion)
+                    return
+                }
+
+                let cloudNotes = cloudItems ?? []
+                print("LoginViewModel: [Fresh Login] Found \(localNotes.count) local notes and \(cloudNotes.count) cloud notes")
+
+                // Deduplicate notes before creating maps
+                let deduplicatedLocalNotes = deduplicateNotes(localNotes)
+                let deduplicatedCloudNotes = deduplicateCloudNotes(cloudNotes)
+                
+                if deduplicatedLocalNotes.count != localNotes.count {
+                    print("LoginViewModel: ⚠️ Found and removed \(localNotes.count - deduplicatedLocalNotes.count) duplicate local notes")
+                }
+                if deduplicatedCloudNotes.count != cloudNotes.count {
+                    print("LoginViewModel: ⚠️ Found and removed \(cloudNotes.count - deduplicatedCloudNotes.count) duplicate cloud notes")
+                }
+
+                // Create lookup maps using localNoteId (UUID string) for both to ensure proper matching
+                let localNotesMap = Dictionary(uniqueKeysWithValues: deduplicatedLocalNotes.map { ($0.id.uuidString, $0) })
+                let cloudNotesMap = Dictionary(uniqueKeysWithValues: deduplicatedCloudNotes.map { ($0.localNoteId, $0) })
+
+                var notesToCreateLocally: [NoteItemCodable] = []
+                var notesToUpdateLocally: [NoteItemCodable] = []
+                var notesToPushToCloud: [NoteItem] = []
+
+                // Find notes that exist only in cloud -> create locally
+                for (cloudId, cloudNote) in cloudNotesMap {
+                    if localNotesMap[cloudId] == nil {
+                        notesToCreateLocally.append(cloudNote)
+                    } else {
+                        // Note exists in both - use cloud data (cloud wins)
+                        notesToUpdateLocally.append(cloudNote)
                     }
                 }
 
-                do {
-                    try modelContext.save()
-                    print("LoginViewModel: Saved \(notesToCreateLocally.count) new notes and updated \(notesToUpdateLocally.count) notes locally")
-                } catch {
-                    print("LoginViewModel: Error saving NoteItems to local: \(error.localizedDescription)")
+                // Find notes that exist only locally -> push to cloud
+                for (localId, localNote) in localNotesMap {
+                    if cloudNotesMap[localId] == nil {
+                        notesToPushToCloud.append(localNote)
+                    }
                 }
 
-                // Push local-only notes to cloud
-                if !notesToPushToCloud.isEmpty {
-                    let codableNotes = notesToPushToCloud.map { NoteItemCodable(from: $0, userId: userId) }
-                    self.firebaseManager.saveNoteItems(codableNotes) { error in
-                        if let error = error {
-                            print("LoginViewModel: Error pushing local notes to cloud: \(error.localizedDescription)")
+                // Apply changes
+                DispatchQueue.main.async {
+                    // Create local notes from cloud (preserving the UUID from cloud)
+                    for cloudNote in notesToCreateLocally {
+                        let props = cloudNote.toNoteItemProperties()
+                        // Check if note with this ID already exists (shouldn't happen after deduplication, but safety check)
+                        if localNotesMap[cloudNote.localNoteId] == nil {
+                            let newNote = NoteItem(id: props.id, content: props.content, createdAt: props.createdAt)
+                            modelContext.insert(newNote)
                         } else {
-                            print("LoginViewModel: Pushed \(notesToPushToCloud.count) local notes to cloud")
+                            print("LoginViewModel: ⚠️ Note with ID \(cloudNote.localNoteId) already exists locally, skipping creation")
                         }
+                    }
+
+                    // Update local notes from cloud
+                    for cloudNote in notesToUpdateLocally {
+                        if let localNote = localNotesMap[cloudNote.localNoteId] {
+                            let props = cloudNote.toNoteItemProperties()
+                            localNote.content = props.content
+                        }
+                    }
+
+                    do {
+                        try modelContext.save()
+                        print("LoginViewModel: [Fresh Login] Saved \(notesToCreateLocally.count) new notes and updated \(notesToUpdateLocally.count) notes locally")
+                    } catch {
+                        print("LoginViewModel: Error saving NoteItems to local: \(error.localizedDescription)")
+                    }
+
+                    // Push local-only notes to cloud
+                    if !notesToPushToCloud.isEmpty {
+                        let codableNotes = notesToPushToCloud.map { NoteItemCodable(from: $0, userId: userId) }
+                        self.firebaseManager.saveNoteItems(codableNotes) { error in
+                            if let error = error {
+                                print("LoginViewModel: Error pushing local notes to cloud: \(error.localizedDescription)")
+                            } else {
+                                print("LoginViewModel: Pushed \(notesToPushToCloud.count) local notes to cloud")
+                            }
+                            completion()
+                        }
+                    } else {
                         completion()
                     }
-                } else {
+                }
+            }
+        } else {
+            // Normal app launch: Local is source of truth, replace cloud with local
+            print("LoginViewModel: [Normal Launch] Found \(localNotes.count) local notes - pushing to cloud and cleaning up")
+            
+            // Deduplicate local notes
+            let deduplicatedLocalNotes = deduplicateNotes(localNotes)
+            if deduplicatedLocalNotes.count != localNotes.count {
+                print("LoginViewModel: ⚠️ Found and removed \(localNotes.count - deduplicatedLocalNotes.count) duplicate local notes")
+            }
+            
+            // Push all local notes to cloud
+            let localNoteIds = Set(deduplicatedLocalNotes.map { $0.id.uuidString })
+            let codableNotes = deduplicatedLocalNotes.map { NoteItemCodable(from: $0, userId: userId) }
+            
+            firebaseManager.saveNoteItems(codableNotes) { [weak self] error in
+                guard let self = self else {
+                    completion()
+                    return
+                }
+                
+                if let error = error {
+                    print("LoginViewModel: Error pushing local notes to cloud: \(error.localizedDescription)")
+                    completion()
+                    return
+                }
+                
+                print("LoginViewModel: [Normal Launch] Pushed \(codableNotes.count) local notes to cloud")
+                
+                // Delete cloud notes that don't exist locally
+                self.firebaseManager.deleteCloudNotesNotInLocal(localNoteIds: localNoteIds) { error in
+                    if let error = error {
+                        print("LoginViewModel: Error cleaning up cloud notes: \(error.localizedDescription)")
+                    } else {
+                        print("LoginViewModel: [Normal Launch] Cleaned up cloud notes (local is now source of truth)")
+                    }
                     completion()
                 }
             }

@@ -19,5 +19,11 @@ class NoteItem {
         self.content = content
         self.createdAt = Date()
     }
+    
+    init(id: UUID, content: String, createdAt: Date = Date()) {
+        self.id = id
+        self.content = content
+        self.createdAt = createdAt
+    }
 }
 

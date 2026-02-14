@@ -834,6 +834,7 @@ class FirebaseManager: ObservableObject {
             "isCompleted": false,
             "createdAt": FieldValue.serverTimestamp(),
             "completedAt": NSNull(),
+            "isProgressShare": false, // Regular task assignment
             "subtasks": subtasks.map { [
                 "id": $0.id,
                 "title": $0.title,
@@ -1008,6 +1009,7 @@ class FirebaseManager: ObservableObject {
             "isCompleted": isCompleted,
             "createdAt": FieldValue.serverTimestamp(),
             "completedAt": isCompleted ? FieldValue.serverTimestamp() : NSNull(),
+            "isProgressShare": true, // This is a progress share
             "subtasks": subtasks.map { [
                 "id": $0.id,
                 "title": $0.title,
@@ -2341,6 +2343,160 @@ class FirebaseManager: ObservableObject {
                 print("FirebaseManager: Successfully batch deleted \(localNoteIds.count) NoteItems")
             }
             completion(error)
+        }
+    }
+    
+    /// Delete all cloud TodoItems that are not in the provided local task IDs set (for local-first sync)
+    func deleteCloudTasksNotInLocal(localTaskIds: Set<String>, completion: @escaping (Error?) -> Void) {
+        guard let userId = userId else {
+            completion(NSError(domain: "FirebaseManager", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+        
+        // Fetch all cloud tasks
+        db.collection("users").document(userId).collection("tasks").getDocuments { [weak self] snapshot, error in
+            guard let self = self else {
+                completion(NSError(domain: "FirebaseManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "Manager deallocated"]))
+                return
+            }
+            
+            if let error = error {
+                print("FirebaseManager: Error fetching cloud tasks for cleanup: \(error.localizedDescription)")
+                completion(error)
+                return
+            }
+            
+            guard let documents = snapshot?.documents else {
+                completion(nil)
+                return
+            }
+            
+            // Find cloud tasks that are not in local set
+            let cloudTaskIds = Set(documents.map { $0.documentID })
+            let tasksToDelete = cloudTaskIds.subtracting(localTaskIds)
+            
+            guard !tasksToDelete.isEmpty else {
+                print("FirebaseManager: No cloud tasks to delete (all cloud tasks exist locally)")
+                completion(nil)
+                return
+            }
+            
+            print("FirebaseManager: Deleting \(tasksToDelete.count) cloud tasks not in local set")
+            
+            // Delete in batches (Firestore batch limit is 500)
+            let batchSize = 500
+            let taskIdsArray = Array(tasksToDelete)
+            var completedBatches = 0
+            var lastError: Error?
+            let totalBatches = (taskIdsArray.count + batchSize - 1) / batchSize
+            
+            guard totalBatches > 0 else {
+                completion(nil)
+                return
+            }
+            
+            for batchIndex in 0..<totalBatches {
+                let startIndex = batchIndex * batchSize
+                let endIndex = min(startIndex + batchSize, taskIdsArray.count)
+                let batchTaskIds = Array(taskIdsArray[startIndex..<endIndex])
+                
+                let batch = self.db.batch()
+                for taskId in batchTaskIds {
+                    let docRef = self.db.collection("users").document(userId).collection("tasks").document(taskId)
+                    batch.deleteDocument(docRef)
+                }
+                
+                batch.commit { error in
+                    if let error = error {
+                        print("FirebaseManager: Error deleting batch of cloud tasks: \(error.localizedDescription)")
+                        lastError = error
+                    } else {
+                        print("FirebaseManager: Successfully deleted batch \(batchIndex + 1)/\(totalBatches) of cloud tasks")
+                    }
+                    
+                    completedBatches += 1
+                    if completedBatches == totalBatches {
+                        completion(lastError)
+                    }
+                }
+            }
+        }
+    }
+    
+    /// Delete all cloud NoteItems that are not in the provided local note IDs set (for local-first sync)
+    func deleteCloudNotesNotInLocal(localNoteIds: Set<String>, completion: @escaping (Error?) -> Void) {
+        guard let userId = userId else {
+            completion(NSError(domain: "FirebaseManager", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+        
+        // Fetch all cloud notes
+        db.collection("users").document(userId).collection("notes").getDocuments { [weak self] snapshot, error in
+            guard let self = self else {
+                completion(NSError(domain: "FirebaseManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "Manager deallocated"]))
+                return
+            }
+            
+            if let error = error {
+                print("FirebaseManager: Error fetching cloud notes for cleanup: \(error.localizedDescription)")
+                completion(error)
+                return
+            }
+            
+            guard let documents = snapshot?.documents else {
+                completion(nil)
+                return
+            }
+            
+            // Find cloud notes that are not in local set
+            let cloudNoteIds = Set(documents.map { $0.documentID })
+            let notesToDelete = cloudNoteIds.subtracting(localNoteIds)
+            
+            guard !notesToDelete.isEmpty else {
+                print("FirebaseManager: No cloud notes to delete (all cloud notes exist locally)")
+                completion(nil)
+                return
+            }
+            
+            print("FirebaseManager: Deleting \(notesToDelete.count) cloud notes not in local set")
+            
+            // Delete in batches (Firestore batch limit is 500)
+            let batchSize = 500
+            let noteIdsArray = Array(notesToDelete)
+            var completedBatches = 0
+            var lastError: Error?
+            let totalBatches = (noteIdsArray.count + batchSize - 1) / batchSize
+            
+            guard totalBatches > 0 else {
+                completion(nil)
+                return
+            }
+            
+            for batchIndex in 0..<totalBatches {
+                let startIndex = batchIndex * batchSize
+                let endIndex = min(startIndex + batchSize, noteIdsArray.count)
+                let batchNoteIds = Array(noteIdsArray[startIndex..<endIndex])
+                
+                let batch = self.db.batch()
+                for noteId in batchNoteIds {
+                    let docRef = self.db.collection("users").document(userId).collection("notes").document(noteId)
+                    batch.deleteDocument(docRef)
+                }
+                
+                batch.commit { error in
+                    if let error = error {
+                        print("FirebaseManager: Error deleting batch of cloud notes: \(error.localizedDescription)")
+                        lastError = error
+                    } else {
+                        print("FirebaseManager: Successfully deleted batch \(batchIndex + 1)/\(totalBatches) of cloud notes")
+                    }
+                    
+                    completedBatches += 1
+                    if completedBatches == totalBatches {
+                        completion(lastError)
+                    }
+                }
+            }
         }
     }
 

@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import UserNotifications
+import FirebaseAuth
 
 struct Todoview: View {
     @Environment(\.modelContext) private var context
@@ -135,6 +136,8 @@ struct Todoview: View {
                                     let activeItems = filteredItems.filter { !$0.isDone }
                                     if index < activeItems.count {
                                         let item = activeItems[index]
+                                        let taskId = item.localTaskId
+                                        
                                         if let sharedId = item.sharedTaskId {
                                             // Mark as discarded instead of deleting, so other person sees it was cancelled
                                             FirebaseManager.shared.markSharedTaskDiscarded(sharedTaskId: sharedId) { error in
@@ -143,7 +146,17 @@ struct Todoview: View {
                                                 }
                                             }
                                         }
+                                        
                                         context.delete(item)
+                                        
+                                        // Sync deletion to Firebase
+                                        FirebaseManager.shared.deleteTodoItem(localTaskId: taskId) { error in
+                                            if let error = error {
+                                                print("Todoview: Failed to delete task from Firebase: \(error.localizedDescription)")
+                                            } else {
+                                                print("Todoview: Successfully deleted task from Firebase")
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -502,7 +515,17 @@ struct Todoview: View {
                         }
                     }
                 }
+                let taskId = item.localTaskId
                 context.delete(item)
+                
+                // Sync deletion to Firebase
+                FirebaseManager.shared.deleteTodoItem(localTaskId: taskId) { error in
+                    if let error = error {
+                        print("Todoview: Failed to delete task from Firebase: \(error.localizedDescription)")
+                    } else {
+                        print("Todoview: Successfully deleted task from Firebase")
+                    }
+                }
             }
         }
     }
@@ -512,6 +535,8 @@ struct Todoview: View {
             let doneItems = filteredItems.filter { $0.isDone }
             if index < doneItems.count {
                 let item = doneItems[index]
+                let taskId = item.localTaskId
+                
                 if let sharedId = item.sharedTaskId {
                     // Keep completed status synced before deletion
                     FirebaseManager.shared.deleteSharedTask(sharedTaskId: sharedId) { error in
@@ -520,7 +545,17 @@ struct Todoview: View {
                         }
                     }
                 }
+                
                 context.delete(item)
+                
+                // Sync deletion to Firebase
+                FirebaseManager.shared.deleteTodoItem(localTaskId: taskId) { error in
+                    if let error = error {
+                        print("Todoview: Failed to delete completed task from Firebase: \(error.localizedDescription)")
+                    } else {
+                        print("Todoview: Successfully deleted completed task from Firebase")
+                    }
+                }
             }
         }
     }
@@ -548,6 +583,18 @@ struct Todoview: View {
     private func moveToOtherList(_ item: TodoItem) {
         item.origin = selectedFilter == .today ? .master : .today
         try? context.save()
+        
+        // Sync origin change to Firebase
+        if let userId = FirebaseAuth.Auth.auth().currentUser?.uid {
+            let codableTask = TodoItemCodable(from: item, userId: userId)
+            FirebaseManager.shared.saveTodoItem(codableTask) { error in
+                if let error = error {
+                    print("Todoview: Failed to sync task move to Firebase: \(error.localizedDescription)")
+                } else {
+                    print("Todoview: Successfully synced task move to Firebase")
+                }
+            }
+        }
     }
 
     private func applyProofPostId(_ postId: String, localTaskId: String?) {
