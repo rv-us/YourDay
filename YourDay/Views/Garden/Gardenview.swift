@@ -176,8 +176,8 @@ struct GardenView: View {
     
     @State private var zoomScale: CGFloat = 1.0
     @State private var lastZoomScale: CGFloat = 1.0
-    @State private var minZoomScale: CGFloat = 0.3
-    @State private var maxZoomScale: CGFloat = 2.0
+    @State private var minZoomScale: CGFloat = 0.03566673968241224 // max zoom-out
+    @State private var maxZoomScale: CGFloat = 0.13157511832349003 // max zoom-in
     @State private var panOffset: CGSize = .zero
     @State private var lastPanOffset: CGSize = .zero
     @State private var viewportSize: CGSize = .zero
@@ -335,15 +335,10 @@ struct GardenView: View {
                     // Store viewport size for panning calculations
                     viewportSize = geometry.size
 
-                    // Calculate minimum zoom to fit the full island on screen
-                    let islandMinZoom = IslandGridConfig.minimumZoomToFitIsland(for: geometry.size)
-                    // Allow more zoom-out (smaller value = more zoomed out) but clamp to prevent going past it
-                    minZoomScale = max(0.05, islandMinZoom * 0.5) // Increased zoom-out capability
-
-                    // Start zoomed to fit the island nicely
-                    zoomScale = islandMinZoom
+                    // Start at minimum zoom (max zoom-out) so user can see the full context
+                    zoomScale = minZoomScale
                     lastZoomScale = zoomScale
-
+                    
                     // Center the island on screen
                     panOffset = IslandGridConfig.panOffsetToCenterIsland(for: geometry.size, zoomScale: zoomScale)
                     lastPanOffset = panOffset

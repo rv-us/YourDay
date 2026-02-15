@@ -12,6 +12,9 @@ import UIKit
 
 // Helper functions for dynamic asset selection
 struct GardenAssetHelper {
+    static let winterBackdropImage = "water_winter_back_drop (1)"
+    static let icebergImage = "iceburg"
+
     /// Determines if it's currently day or night (6 AM - 8 PM = day)
     static func isDayTime() -> Bool {
         let hour = Calendar.current.component(.hour, from: Date())
@@ -29,9 +32,16 @@ struct GardenAssetHelper {
         default: return nil
         }
     }
+
+    static func isWinterDaytime() -> Bool {
+        return isDayTime() && currentSeason() == "winter"
+    }
     
     /// Gets the backdrop image name based on time of day
     static func backdropImageName() -> String {
+        if isWinterDaytime(), UIImage(named: winterBackdropImage) != nil {
+            return winterBackdropImage
+        }
         return isDayTime() ? "water_back_drop" : "water_back_drop_night"
     }
     
@@ -57,8 +67,12 @@ struct GardenAssetHelper {
 struct GardenMapConfig {
     static let mapColumns = 30
     static let mapRows = 30
+    static let baseMapBackdropImage = "water_back_drop"
     static let backdropScale: CGFloat = 2.0
+    static let icebergAssetScaleMultiplier: CGFloat = 1.8
     static let cloudAssetScaleMultiplier: CGFloat = 3.0
+    static let icebergCount = 18
+    static let icebergMinSpacing: CGFloat = 180
     
     // Cloud rules: cluster count scales with tiles per quadrant (~1 per 125 tiles)
     static let tilesPerCluster = 4
@@ -72,10 +86,15 @@ struct GardenMapConfig {
     static let minClusterSpacing: CGFloat = 150
     
     static func tileSize() -> CGSize? {
-        let backdropName = GardenAssetHelper.backdropImageName()
-        guard let image = UIImage(named: backdropName) else { return nil }
-        // Return original size for map dimensions (islands use this, so keep at 1x)
-        return image.size
+        // Keep map-space geometry stable at 1x using the base backdrop tile size.
+        // Seasonal/day-night backdrops can change visuals, but not map/island scaling math.
+        if let baseImage = UIImage(named: baseMapBackdropImage) {
+            return baseImage.size
+        }
+
+        // Fallback if base asset is unavailable.
+        let activeBackdropName = GardenAssetHelper.backdropImageName()
+        return UIImage(named: activeBackdropName)?.size
     }
     
     static func mapDimensions() -> (width: CGFloat, height: CGFloat)? {
@@ -147,6 +166,14 @@ struct CloudCluster: Identifiable {
     var spawnTime: Date = Date()  // Track when cluster was created for fade-in
 }
 
+struct IcebergPiece: Identifiable {
+    let id = UUID()
+    let image: UIImage
+    var position: CGPoint
+    var scale: CGFloat
+    var opacity: Double
+}
+
 // MARK: - Main Background View
 
 struct OceanVideoBackgroundView: View {
@@ -155,6 +182,7 @@ struct OceanVideoBackgroundView: View {
     
     @State private var cloudClusters: [CloudCluster] = []
     @State private var cloudQuadrants: [UIImage] = []
+    @State private var icebergPieces: [IcebergPiece] = []
     @State private var tileImage: UIImage?
     @State private var tileSize: CGSize = .zero
     @State private var mapWidth: CGFloat = 0
@@ -215,6 +243,12 @@ struct OceanVideoBackgroundView: View {
                     .frame(width: geometry.size.width, height: geometry.size.height)
                     .zIndex(0)
 
+                    // Static iceberg layer (winter daytime only), above backdrop and below clouds
+                    ForEach(icebergPieces) { piece in
+                        IcebergPieceView(piece: piece, zoomScale: zoomScale, panOffset: panOffset, viewportSize: geometry.size)
+                            .zIndex(0.5)
+                    }
+
                     // Cloud clusters with viewport transforms
                     ForEach(cloudClusters) { cluster in
                         CloudClusterView(cluster: cluster, zoomScale: zoomScale, panOffset: panOffset, viewportSize: geometry.size)
@@ -261,6 +295,13 @@ struct OceanVideoBackgroundView: View {
             print("☁️ Generated \(cloudClusters.count) cloud clusters")
         }
 
+        if GardenAssetHelper.isWinterDaytime() {
+            let icebergImages = loadIcebergImages()
+            icebergPieces = generateIcebergPieces(from: icebergImages)
+        } else {
+            icebergPieces = []
+        }
+
         isReady = true
     }
     
@@ -279,6 +320,53 @@ struct OceanVideoBackgroundView: View {
 
     private func clustersInQuadrant(_ index: Int) -> Int {
         cloudClusters.filter { $0.quadrantIndex == index }.count
+    }
+
+    // MARK: - Iceberg Layer (static)
+
+    private func loadIcebergImages() -> [UIImage] {
+        guard let icebergImage = UIImage(named: GardenAssetHelper.icebergImage) else {
+            return []
+        }
+
+        let splitImages = CloudImageSplitter.splitCloudsImage(icebergImage)
+        return splitImages.isEmpty ? [icebergImage] : splitImages
+    }
+
+    private func generateIcebergPieces(from images: [UIImage]) -> [IcebergPiece] {
+        guard !images.isEmpty, mapWidth > 0, mapHeight > 0 else { return [] }
+
+        var pieces: [IcebergPiece] = []
+        let maxAttempts = GardenMapConfig.icebergCount * 20
+        var attempts = 0
+
+        while pieces.count < GardenMapConfig.icebergCount, attempts < maxAttempts {
+            attempts += 1
+
+            let position = CGPoint(
+                x: CGFloat.random(in: 0...mapWidth),
+                y: CGFloat.random(in: (mapHeight * 0.08)...(mapHeight * 0.72))
+            )
+
+            let tooClose = pieces.contains { existing in
+                hypot(position.x - existing.position.x, position.y - existing.position.y) < GardenMapConfig.icebergMinSpacing
+            }
+
+            if tooClose {
+                continue
+            }
+
+            pieces.append(
+                IcebergPiece(
+                    image: images.randomElement() ?? images[0],
+                    position: position,
+                    scale: CGFloat.random(in: 0.5...1.05),
+                    opacity: Double.random(in: 0.78...0.96)
+                )
+            )
+        }
+
+        return pieces
     }
 
     // MARK: - Cloud Animation Tick (single timer drives everything)
@@ -397,6 +485,35 @@ struct OceanVideoBackgroundView: View {
             quadrantIndex: quadrant,
             spawnTime: Date()
         )
+    }
+}
+
+// MARK: - Iceberg Piece View (static render)
+
+struct IcebergPieceView: View {
+    let piece: IcebergPiece
+    var zoomScale: CGFloat = 1.0
+    var panOffset: CGSize = .zero
+    var viewportSize: CGSize = .zero
+
+    var body: some View {
+        let screenX = piece.position.x * zoomScale + panOffset.width
+        let screenY = piece.position.y * zoomScale + panOffset.height
+        let margin: CGFloat = 300 * zoomScale
+        let isVisible = screenX > -margin && screenX < viewportSize.width + margin
+            && screenY > -margin && screenY < viewportSize.height + margin
+
+        if isVisible {
+            Image(uiImage: piece.image)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(
+                    width: piece.image.size.width * piece.scale * GardenMapConfig.icebergAssetScaleMultiplier * zoomScale,
+                    height: piece.image.size.height * piece.scale * GardenMapConfig.icebergAssetScaleMultiplier * zoomScale
+                )
+                .opacity(piece.opacity)
+                .position(x: screenX, y: screenY)
+        }
     }
 }
 
