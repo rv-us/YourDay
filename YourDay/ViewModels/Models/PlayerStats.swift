@@ -395,16 +395,51 @@ class PlayerStats {
         guard !placedPlants.isEmpty else { return }
 
         let allOldFormat = placedPlants.allSatisfy { $0.position.y == 0 }
-        guard allOldFormat else { return } // Already migrated
-
-        let unlockOrder = IslandGridConfig.tileUnlockOrder
-        for i in placedPlants.indices {
-            let oldIndex = placedPlants[i].position.x
-            if oldIndex >= 0 && oldIndex < unlockOrder.count {
-                placedPlants[i].position = unlockOrder[oldIndex]
-            } else if i < unlockOrder.count {
-                placedPlants[i].position = unlockOrder[i]
+        if allOldFormat {
+            // Old-format migration path (1D -> 2D)
+            let unlockOrder = IslandGridConfig.tileUnlockOrder
+            for i in placedPlants.indices {
+                let oldIndex = placedPlants[i].position.x
+                if oldIndex >= 0 && oldIndex < unlockOrder.count {
+                    placedPlants[i].position = unlockOrder[oldIndex]
+                } else if i < unlockOrder.count {
+                    placedPlants[i].position = unlockOrder[i]
+                }
             }
+        }
+
+        remapPlantsToUnlockedTilesIfNeeded()
+    }
+
+    /// Ensures plants sit on currently unlocked tiles so they can render.
+    private func remapPlantsToUnlockedTilesIfNeeded() {
+        let unlocked = IslandGridConfig.unlockedPositions(count: numberOfOwnedPlots)
+        guard !unlocked.isEmpty else { return }
+        guard !placedPlants.isEmpty else { return }
+
+        let unlockedSet = Set(unlocked)
+        var usedPositions: Set<GridPosition> = []
+        var needsRemapIndices: [Int] = []
+
+        for i in placedPlants.indices {
+            let pos = placedPlants[i].position
+            if unlockedSet.contains(pos) && !usedPositions.contains(pos) {
+                usedPositions.insert(pos)
+            } else {
+                needsRemapIndices.append(i)
+            }
+        }
+
+        guard !needsRemapIndices.isEmpty else { return }
+
+        var availableUnlocked = unlocked.filter { !usedPositions.contains($0) }
+
+        for plantIndex in needsRemapIndices {
+            guard !availableUnlocked.isEmpty else { continue }
+
+            let newPos = availableUnlocked.removeFirst()
+            placedPlants[plantIndex].position = newPos
+            usedPositions.insert(newPos)
         }
     }
 

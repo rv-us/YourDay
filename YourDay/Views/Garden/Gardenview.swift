@@ -249,8 +249,7 @@ struct GardenView: View {
             }
         }
     }
-    
-    
+
     var body: some View {
         NavigationView {
             GeometryReader { geometry in

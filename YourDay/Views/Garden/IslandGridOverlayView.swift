@@ -231,8 +231,8 @@ struct EmptyTileView: View {
             .fill(
                 LinearGradient(
                     gradient: Gradient(colors: [
-                        Color.white.opacity(0.25),
-                        Color.white.opacity(0.15)
+                        Color(red: 0.58, green: 0.40, blue: 0.24).opacity(0.85),
+                        Color(red: 0.45, green: 0.30, blue: 0.17).opacity(0.88)
                     ]),
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
@@ -240,20 +240,19 @@ struct EmptyTileView: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
-                    .strokeBorder(Color.white.opacity(0.75), style: StrokeStyle(lineWidth: 2.5, dash: [6, 4]))
+                    .strokeBorder(
+                        Color(red: 0.33, green: 0.22, blue: 0.12).opacity(0.95),
+                        style: StrokeStyle(lineWidth: 2.5, dash: [6, 4])
+                    )
             )
             .overlay(
                 Image(systemName: "plus.circle.fill")
                     .font(.system(size: min(tileSize.width, tileSize.height) * 0.35, weight: .medium))
-                    .foregroundColor(
-                        GardenAssetHelper.isDayTime() 
-                            ? Color.white.opacity(0.85) 
-                            : Color.white.opacity(0.95)
-                    )
+                    .foregroundColor(Color.white.opacity(0.92))
                     .scaleEffect(pulseScale)
             )
-            .shadow(color: Color.white.opacity(0.3), radius: 4, x: 0, y: 0)
-            .shadow(color: Color.white.opacity(0.2), radius: 8, x: 0, y: 0)
+            .shadow(color: Color.black.opacity(0.18), radius: 4, x: 0, y: 2)
+            .shadow(color: Color.black.opacity(0.12), radius: 8, x: 0, y: 4)
             .frame(width: tileSize.width * 0.92, height: tileSize.height * 0.92)
             .onAppear {
                 withAnimation(
@@ -265,4 +264,3 @@ struct EmptyTileView: View {
             }
     }
 }
-
