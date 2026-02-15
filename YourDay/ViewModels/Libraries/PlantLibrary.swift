@@ -51,23 +51,11 @@ struct PlantVisualDisplayView: View {
     var body: some View {
         // Attempt to load the image.
         if UIImage(named: assetName) != nil {
-            // Asset IS found
-            ZStack {
-                // Background color based on rarity (using the same logic as placeholder)
-                // We use a RoundedRectangle to get the shape and then fill it.
-                RoundedRectangle(cornerRadius: isIcon ? 6 : 10)
-                    .fill(rarityBasedColor())
-                
-                Image(assetName)
-                    .resizable()
-                    .scaledToFit()
-                    // Add padding if you want the background to act as a border around the image
-                    .padding(isIcon ? 3 : 6)
-            }
-            // No need to apply .cornerRadius to the ZStack here if the RoundedRectangle handles it.
-            // The ZStack will implicitly take the shape of its content if not given a frame.
-            // However, if you want to ensure a consistent outer shape, you can clip the ZStack:
-            // .clipShape(RoundedRectangle(cornerRadius: isIcon ? 6 : 10))
+            // Asset IS found — no background, just the image
+            Image(assetName)
+                .resizable()
+                .scaledToFit()
+                .padding(isIcon ? 3 : 6)
 
         } else {
             // Asset IS NOT found - use the existing placeholder logic

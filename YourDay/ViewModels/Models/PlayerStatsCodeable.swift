@@ -49,7 +49,7 @@ struct PlayerStatsCodable: Codable, Identifiable {
         placedPlants: [PlacedPlant] = [], // Ensure PlacedPlant has its getCurrentDynamicValue()
         numberOfOwnedPlots: Int = 2,
         fertilizerCount: Int = 1,
-        schemaVersion: Int = 2
+        schemaVersion: Int = 3
     ) {
         self.id = id
         self.totalPoints = totalPoints
@@ -93,7 +93,7 @@ struct PlayerStatsCodable: Codable, Identifiable {
         self.placedPlants = model.placedPlants // Assumes PlacedPlant struct is Codable
         self.numberOfOwnedPlots = model.numberOfOwnedPlots
         self.fertilizerCount = model.fertilizerCount
-        self.schemaVersion = 2 // Current schema version
+        self.schemaVersion = 3 // Current schema version
     }
     
     // Custom decoding to handle schema migrations
@@ -121,12 +121,23 @@ struct PlayerStatsCodable: Codable, Identifiable {
         fertilizerCount = try container.decode(Int.self, forKey: .fertilizerCount)
         
         // Apply schema migrations if needed
-        if version < 2 {
-            // Future migrations can be added here
-            // For now, just set the current version
+        if version < 3 {
+            // Migrate 1D grid positions to 2D island grid
+            let allOldFormat = placedPlants.allSatisfy { $0.position.y == 0 }
+            if allOldFormat && !placedPlants.isEmpty {
+                let unlockOrder = IslandGridConfig.tileUnlockOrder
+                for i in placedPlants.indices {
+                    let oldIndex = placedPlants[i].position.x
+                    if oldIndex >= 0 && oldIndex < unlockOrder.count {
+                        placedPlants[i].position = unlockOrder[oldIndex]
+                    } else if i < unlockOrder.count {
+                        placedPlants[i].position = unlockOrder[i]
+                    }
+                }
+            }
         }
-        
-        schemaVersion = 2
+
+        schemaVersion = 3
     }
     
     // Custom encoding to ensure schema version is always included

@@ -389,6 +389,25 @@ class PlayerStats {
         return false
     }
 
+    /// Migrates placed plants from old 1D positions (x=index, y=0) to 2D island grid positions.
+    func migrateToIslandGrid() {
+        // Check if migration is needed: all plants have y == 0 and sequential x positions
+        guard !placedPlants.isEmpty else { return }
+
+        let allOldFormat = placedPlants.allSatisfy { $0.position.y == 0 }
+        guard allOldFormat else { return } // Already migrated
+
+        let unlockOrder = IslandGridConfig.tileUnlockOrder
+        for i in placedPlants.indices {
+            let oldIndex = placedPlants[i].position.x
+            if oldIndex >= 0 && oldIndex < unlockOrder.count {
+                placedPlants[i].position = unlockOrder[oldIndex]
+            } else if i < unlockOrder.count {
+                placedPlants[i].position = unlockOrder[i]
+            }
+        }
+    }
+
     func useFertilizer(onPlantID plantId: UUID) -> (success: Bool, message: String) {
         guard fertilizerCount > 0 else {
             return (false, "No fertilizer left!")
