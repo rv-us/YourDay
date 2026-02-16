@@ -203,7 +203,7 @@ class NotificationManager: ObservableObject {
     
     func scheduleJournalPromptNotification(eventId: String, taskTitle: String, scheduledEndTime: Date) {
         // Check if notifications are enabled
-        let notificationsEnabled = UserDefaults.standard.bool(forKey: "notificationsEnabled")
+        let notificationsEnabled = UserDefaults.standard.object(forKey: "notificationsEnabled") as? Bool ?? true
         guard notificationsEnabled else { return }
         
         let content = UNMutableNotificationContent()

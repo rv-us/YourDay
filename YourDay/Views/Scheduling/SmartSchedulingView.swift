@@ -230,10 +230,6 @@ struct SmartSchedulingView: View {
                     }
                 }
             }
-            .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
-                // Force check for ended tasks when app becomes active
-                TaskEndMonitor.shared.forceCheck()
-            }
             .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("JournalEntrySaved"))) { _ in
                 // Trigger AI analysis when journal entry is saved
                 if !journalViewModel.journalEntries.isEmpty {

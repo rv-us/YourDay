@@ -32,6 +32,8 @@ class TaskEndMonitor: ObservableObject {
     }
     
     func startMonitoring() {
+        if timer != nil { return }
+
         // Check every minute for ended tasks
         timer = Timer.scheduledTimer(withTimeInterval: 60.0, repeats: true) { [weak self] _ in
             Task { @MainActor in

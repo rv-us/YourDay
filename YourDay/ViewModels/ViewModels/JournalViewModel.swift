@@ -24,9 +24,6 @@ class JournalViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
 
-    // Persisted preference - when user skips, auto-prompts are permanently disabled
-    @AppStorage("autoShowJournalPrompts") var autoShowPrompts = true
-    
     // Queue for pending journal events
     private var pendingJournalQueue: [TaskEndMonitor.PendingJournalEvent] = []
     
@@ -63,14 +60,6 @@ class JournalViewModel: ObservableObject {
     
     private func showNextPendingPrompt() {
         guard !showingTaskProofCapture else { return }
-
-        // Check if user has opted out of auto-prompts
-        guard autoShowPrompts else {
-            // User has permanently opted out of auto-prompts
-            pendingJournalPrompt = nil
-            showingJournalPrompt = false
-            return
-        }
 
         // Remove the next event from queue and show it
         guard !pendingJournalQueue.isEmpty else {
@@ -172,7 +161,8 @@ class JournalViewModel: ObservableObject {
         howWent: String?,
         learned: String?,
         distractions: String?,
-        completionStatus: CompletionStatus
+        completionStatus: CompletionStatus,
+        onSaveSuccess: (() -> Void)? = nil
     ) {
         guard let userId = Auth.auth().currentUser?.uid else {
             errorMessage = "User not authenticated"
@@ -253,6 +243,7 @@ class JournalViewModel: ObservableObject {
                     
                     // Add to local entries
                     self.journalEntries.insert(entry, at: 0)
+                    onSaveSuccess?()
                     
                     if completionStatus == .completed {
                         self.queueScheduledProofCapture(
@@ -335,10 +326,8 @@ class JournalViewModel: ObservableObject {
     }
     
     func skipJournalPrompt() {
-        // Dismiss sheet FIRST to avoid black flash (Bug 1 fix)
+        // Dismiss sheet first, then move to next pending event.
         showingJournalPrompt = false
-        // Permanently suppress future auto-prompts (Bug 3 fix)
-        autoShowPrompts = false
 
         if let event = pendingJournalPrompt {
             taskEndMonitor.markEventAsJournaled(eventId: event.eventId)
@@ -346,7 +335,7 @@ class JournalViewModel: ObservableObject {
             notificationManager.cancelJournalPromptNotification(eventId: event.eventId)
         }
         pendingJournalPrompt = nil
-        // DON'T call showNextPendingPrompt() - user has opted out permanently
+        showNextPendingPrompt()
     }
 
     func completeScheduledProofCaptureFlow() {

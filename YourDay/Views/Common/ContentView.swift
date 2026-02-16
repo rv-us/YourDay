@@ -198,6 +198,9 @@ struct ContentView: View {
                     journalViewModel.showPromptForEvent(eventId: eventId)
                 }
             }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+                TaskEndMonitor.shared.forceCheck()
+            }
             .onAppear {
                 JournalNotificationDelegate.shared.setJournalViewModel(journalViewModel)
                 startIncomingChatListenerIfNeeded()
