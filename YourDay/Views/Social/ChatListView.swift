@@ -27,85 +27,69 @@ struct ChatListView: View {
     }
 
     var body: some View {
-        ScrollView {
-            LazyVStack(spacing: 12) {
-                ForEach(sortedFriends) { friend in
-                    NavigationLink(destination: ChatDetailView(friend: friend)
-                        .onAppear {
-                            openedChats.insert(friend.userId)
-                            saveOpenedChats()
-                        }) {
-                        HStack(spacing: 12) {
-                            Image(systemName: "person.crop.circle.fill")
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 40, height: 40)
-                                .foregroundColor(dynamicPrimaryColor)
+        List {
+            ForEach(sortedFriends) { friend in
+                NavigationLink(destination: ChatDetailView(friend: friend)
+                    .onAppear {
+                        openedChats.insert(friend.userId)
+                        saveOpenedChats()
+                    }) {
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: "person.crop.circle.fill")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 50, height: 50)
+                            .foregroundColor(dynamicPrimaryColor)
 
-                            VStack(alignment: .leading, spacing: 4) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
                                 Text(friend.displayName)
                                     .font(.headline)
                                     .foregroundColor(dynamicTextColor)
-
-                                if let msg = lastMessages[friend.userId] {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(msg.content)
-                                            .font(.caption)
-                                            .foregroundColor(dynamicSecondaryTextColor)
-                                            .lineLimit(1)
-                                        Text(formatTimestamp(msg.timestamp))
-                                            .font(.caption2)
-                                            .foregroundColor(.gray)
-                                    }
-                                } else {
-                                    Text("Tap to chat")
-                                        .font(.caption)
-                                        .foregroundColor(dynamicSecondaryTextColor)
-                                }
-
-                                if let lastSeenDate = lastSeen[friend.userId] {
-                                    Text("Last seen: \(formattedLastSeen(lastSeenDate))")
-                                        .font(.caption2)
-                                        .foregroundColor(.gray)
-                                }
-                            }
-
-                            Spacer()
-
-                            VStack(spacing: 6) {
+                                Spacer(minLength: 8)
                                 if let msg = lastMessages[friend.userId] {
                                     Text(formatTimestamp(msg.timestamp))
                                         .font(.caption2)
-                                        .foregroundColor(.gray)
+                                        .foregroundColor(dynamicSecondaryTextColor)
+                                }
+                            }
 
+                            if let msg = lastMessages[friend.userId] {
+                                HStack(alignment: .center, spacing: 6) {
+                                    Text(msg.content)
+                                        .font(.subheadline)
+                                        .foregroundColor(dynamicSecondaryTextColor)
+                                        .lineLimit(1)
                                     if msg.senderId == friend.userId && !openedChats.contains(friend.userId) {
                                         Circle()
-                                            .fill(Color.blue)
+                                            .fill(dynamicPrimaryColor)
                                             .frame(width: 8, height: 8)
                                     }
                                 }
-
-                                Image(systemName: "chevron.right")
+                            } else {
+                                Text("Tap to chat")
+                                    .font(.subheadline)
                                     .foregroundColor(dynamicSecondaryTextColor)
                             }
                         }
-                        .padding()
-                        .background(dynamicSecondaryBackgroundColor)
-                        .cornerRadius(12)
-                        .shadow(color: dynamicSecondaryTextColor.opacity(0.1), radius: 2, x: 0, y: 1)
-                        .padding(.horizontal)
                     }
+                    .padding(.vertical, 6)
                 }
-
-                if friends.isEmpty {
-                    Text("No friends to chat with yet.")
-                        .font(.subheadline)
-                        .foregroundColor(dynamicSecondaryTextColor)
-                        .padding(.top, 50)
-                }
+                .listRowBackground(dynamicSecondaryBackgroundColor)
+                .listRowSeparatorTint(dynamicSecondaryTextColor.opacity(0.3))
             }
-            .padding(.top)
+
+            if friends.isEmpty {
+                Text("No friends to chat with yet.")
+                    .font(.subheadline)
+                    .foregroundColor(dynamicSecondaryTextColor)
+                    .frame(maxWidth: .infinity)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+            }
         }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
         .background(dynamicBackgroundColor.edgesIgnoringSafeArea(.all))
         .navigationTitle("Chats")
         .navigationBarTitleDisplayMode(.inline)

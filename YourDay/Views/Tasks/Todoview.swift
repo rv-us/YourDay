@@ -129,37 +129,16 @@ struct Todoview: View {
                                         }
                                         .tint(dynamicPrimaryColor)
                                     }
-                            }
-                            .onMove(perform: moveItem)
-                            .onDelete { indexSet in
-                                for index in indexSet {
-                                    let activeItems = filteredItems.filter { !$0.isDone }
-                                    if index < activeItems.count {
-                                        let item = activeItems[index]
-                                        let taskId = item.localTaskId
-                                        
-                                        if let sharedId = item.sharedTaskId {
-                                            // Mark as discarded instead of deleting, so other person sees it was cancelled
-                                            FirebaseManager.shared.markSharedTaskDiscarded(sharedTaskId: sharedId) { error in
-                                                if let error = error {
-                                                    print("Failed to mark shared task as discarded: \(error)")
-                                                }
-                                            }
-                                        }
-                                        
-                                        context.delete(item)
-                                        
-                                        // Sync deletion to Firebase
-                                        FirebaseManager.shared.deleteTodoItem(localTaskId: taskId) { error in
-                                            if let error = error {
-                                                print("Todoview: Failed to delete task from Firebase: \(error.localizedDescription)")
-                                            } else {
-                                                print("Todoview: Successfully deleted task from Firebase")
-                                            }
+                                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                        Button(role: .destructive) {
+                                            deleteTask(item)
+                                        } label: {
+                                            Image(systemName: "trash")
+                                                .foregroundColor(.white)
                                         }
                                     }
-                                }
                             }
+                            .onMove(perform: moveItem)
                         }
 
                         Section(header:
@@ -194,23 +173,14 @@ struct Todoview: View {
                                         }
                                         .tint(dynamicPrimaryColor)
                                     }
-                            }
-                            .onDelete { indexSet in
-                                for index in indexSet {
-                                    let doneItems = filteredItems.filter { $0.isDone }
-                                    if index < doneItems.count {
-                                        let item = doneItems[index]
-                                        if let sharedId = item.sharedTaskId {
-                                            // Keep completed status synced before deletion
-                                            FirebaseManager.shared.deleteSharedTask(sharedTaskId: sharedId) { error in
-                                                if let error = error {
-                                                    print("Failed to delete shared task: \(error)")
-                                                }
-                                            }
+                                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                        Button(role: .destructive) {
+                                            deleteTask(item)
+                                        } label: {
+                                            Image(systemName: "trash")
+                                                .foregroundColor(.white)
                                         }
-                                        context.delete(item)
                                     }
-                                }
                             }
                         }
                     }
@@ -382,11 +352,16 @@ struct Todoview: View {
             ForEach(filteredItems.filter { !$0.isDone }) { item in
                 TodoListItemView(item: item, todoViewModel: viewModel, onRequestProofCapture: { pendingProofFromList = $0 })
                     .listRowBackground(dynamicSecondaryBackgroundColor)
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button(role: .destructive) {
+                            deleteTask(item)
+                        } label: {
+                            Image(systemName: "trash")
+                                .foregroundColor(.white)
+                        }
+                    }
             }
             .onMove(perform: moveItem)
-            .onDelete { indexSet in
-                handleInProgressDelete(indexSet: indexSet)
-            }
         }
     }
     
@@ -395,9 +370,14 @@ struct Todoview: View {
             ForEach(filteredItems.filter { $0.isDone }) { item in
                 TodoListItemView(item: item, todoViewModel: viewModel, onRequestProofCapture: { pendingProofFromList = $0 })
                     .listRowBackground(dynamicSecondaryBackgroundColor)
-            }
-            .onDelete { indexSet in
-                handleCompletedDelete(indexSet: indexSet)
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button(role: .destructive) {
+                            deleteTask(item)
+                        } label: {
+                            Image(systemName: "trash")
+                                .foregroundColor(.white)
+                        }
+                    }
             }
         }
     }
@@ -502,60 +482,28 @@ struct Todoview: View {
         }
     }
     
-    private func handleInProgressDelete(indexSet: IndexSet) {
-        for index in indexSet {
-            let activeItems = filteredItems.filter { !$0.isDone }
-            if index < activeItems.count {
-                let item = activeItems[index]
-                if let sharedId = item.sharedTaskId {
-                    // Mark as discarded instead of deleting, so other person sees it was cancelled
-                    FirebaseManager.shared.markSharedTaskDiscarded(sharedTaskId: sharedId) { error in
-                        if let error = error {
-                            print("Failed to mark shared task as discarded: \(error)")
-                        }
-                    }
+    private func deleteTask(_ item: TodoItem) {
+        let taskId = item.localTaskId
+
+        if let sharedId = item.sharedTaskId {
+            if item.isDone {
+                FirebaseManager.shared.deleteSharedTask(sharedTaskId: sharedId) { error in
+                    if let error = error { print("Failed to delete shared task: \(error)") }
                 }
-                let taskId = item.localTaskId
-                context.delete(item)
-                
-                // Sync deletion to Firebase
-                FirebaseManager.shared.deleteTodoItem(localTaskId: taskId) { error in
-                    if let error = error {
-                        print("Todoview: Failed to delete task from Firebase: \(error.localizedDescription)")
-                    } else {
-                        print("Todoview: Successfully deleted task from Firebase")
-                    }
+            } else {
+                FirebaseManager.shared.markSharedTaskDiscarded(sharedTaskId: sharedId) { error in
+                    if let error = error { print("Failed to mark shared task as discarded: \(error)") }
                 }
             }
         }
-    }
-    
-    private func handleCompletedDelete(indexSet: IndexSet) {
-        for index in indexSet {
-            let doneItems = filteredItems.filter { $0.isDone }
-            if index < doneItems.count {
-                let item = doneItems[index]
-                let taskId = item.localTaskId
-                
-                if let sharedId = item.sharedTaskId {
-                    // Keep completed status synced before deletion
-                    FirebaseManager.shared.deleteSharedTask(sharedTaskId: sharedId) { error in
-                        if let error = error {
-                            print("Failed to delete shared task: \(error)")
-                        }
-                    }
-                }
-                
-                context.delete(item)
-                
-                // Sync deletion to Firebase
-                FirebaseManager.shared.deleteTodoItem(localTaskId: taskId) { error in
-                    if let error = error {
-                        print("Todoview: Failed to delete completed task from Firebase: \(error.localizedDescription)")
-                    } else {
-                        print("Todoview: Successfully deleted completed task from Firebase")
-                    }
-                }
+
+        context.delete(item)
+
+        FirebaseManager.shared.deleteTodoItem(localTaskId: taskId) { error in
+            if let error = error {
+                print("Todoview: Failed to delete task from Firebase: \(error.localizedDescription)")
+            } else {
+                print("Todoview: Successfully deleted task from Firebase")
             }
         }
     }

@@ -144,7 +144,8 @@ struct NewItemview: View {
                     DatePicker("Select Due Date", selection: $viewModel.donebye)
                         .datePickerStyle(.graphical)
                         .tint(dynamicPrimaryColor)
-                        .foregroundColor(dynamicTextColor)
+                        .colorScheme(.light)
+                        .foregroundColor(.black)
                         .background(dynamicSecondaryBackgroundColor)
                         .cornerRadius(10)
                         .overlay(

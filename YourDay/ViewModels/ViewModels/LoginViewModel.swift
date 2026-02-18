@@ -34,6 +34,11 @@ class LoginViewModel: ObservableObject {
     /// When non-nil, the user is viewing the chat with this friend; used to suppress chat message notifications for that chat.
     @Published var currentChatFriendId: String? = nil
 
+    // MARK: - Account Linking Properties
+    /// When non-nil, the user needs to sign in with email/password to link this credential to their existing account.
+    @Published var pendingLinkCredential: AuthCredential? = nil
+    @Published var pendingLinkProviderName: String? = nil // "Apple" or "Google"
+
     // MARK: - Private Properties
     private var authStateHandler: AuthStateDidChangeListenerHandle?
     private let firebaseManager = FirebaseManager()
@@ -185,13 +190,56 @@ class LoginViewModel: ObservableObject {
         
         Auth.auth().signIn(withEmail: email, password: password) { [weak self] authResult, error in
             guard let self = self else { return }
-            self.isLoading = false
+            
             if let error = error {
+                self.isLoading = false
                 self.errorMessage = "Sign-in failed: \(error.localizedDescription)"
+                return
+            }
+            
+            // If there's a pending link credential, link it to the account now
+            if let credential = self.pendingLinkCredential, let providerName = self.pendingLinkProviderName {
+                self.linkCredentialToCurrentUser(credential: credential, providerName: providerName)
             } else {
+                self.isLoading = false
                 print("Sign-in successful.")
                 self.isProcessingFreshLogin = true
             }
+        }
+    }
+    
+    private func linkCredentialToCurrentUser(credential: AuthCredential, providerName: String) {
+        guard let user = Auth.auth().currentUser else {
+            self.isLoading = false
+            self.errorMessage = "Failed to link account: User not signed in."
+            self.pendingLinkCredential = nil
+            self.pendingLinkProviderName = nil
+            return
+        }
+        
+        user.link(with: credential) { [weak self] authResult, error in
+            guard let self = self else { return }
+            self.isLoading = false
+            
+            if let error = error {
+                let nsError = error as NSError
+                // If credential is already linked (shouldn't happen but handle gracefully)
+                if nsError.code == 17012 { // AuthErrorCode.credentialAlreadyInUse
+                    self.errorMessage = "This \(providerName) account is already linked to your account."
+                } else {
+                    self.errorMessage = "Failed to link \(providerName) account: \(error.localizedDescription)"
+                }
+                self.pendingLinkCredential = nil
+                self.pendingLinkProviderName = nil
+                return
+            }
+            
+            // Successfully linked
+            print("LoginViewModel: Successfully linked \(providerName) credential to existing account.")
+            self.pendingLinkCredential = nil
+            self.pendingLinkProviderName = nil
+            self.errorMessage = nil
+            self.isProcessingFreshLogin = true
         }
     }
     
@@ -248,7 +296,7 @@ class LoginViewModel: ObservableObject {
                 self.userDisplayName = nameFormatter.string(from: fullName)
             }
             
-            signInToFirebase(with: credential)
+            signInToFirebase(with: credential, providerName: "Apple")
 
         case .failure(let error):
             // Handle error, user cancellation, etc.
@@ -1219,15 +1267,36 @@ class LoginViewModel: ObservableObject {
             let credential = GoogleAuthProvider.credential(withIDToken: idToken, accessToken: accessToken)
             
             print("LoginViewModel: Google Sign-In successful, proceeding to Firebase sign-in.")
-            self.signInToFirebase(with: credential)
+            self.signInToFirebase(with: credential, providerName: "Google")
         }
     }
 
-    private func signInToFirebase(with credential: AuthCredential) {
+    private func signInToFirebase(with credential: AuthCredential, providerName: String = "provider") {
         Auth.auth().signIn(with: credential) { [weak self] authResult, error in
             guard let self = self else { return }
             
             if let error = error {
+                let nsError = error as NSError
+                let errorCode = nsError.code
+                
+                // Check if this credential/email is already associated with another account
+                // 17012 = AuthErrorCode.credentialAlreadyInUse
+                // 17025 = AuthErrorCode.emailAlreadyInUse (though this is usually for createUser)
+                // 17007 = AuthErrorCode.userNotFound (email doesn't exist yet - not our case)
+                // 17020 = AuthErrorCode.accountExistsWithDifferentCredential
+                
+                if errorCode == 17012 || errorCode == 17020 {
+                    // Credential is already linked to another account
+                    // Store the credential and prompt user to sign in with email/password to link
+                    self.pendingLinkCredential = credential
+                    self.pendingLinkProviderName = providerName
+                    self.errorMessage = "This email is already registered. Sign in with your email and password to add \(providerName) sign-in to your account."
+                    self.isLoading = false
+                    self.isProcessingFreshLogin = false
+                    return
+                }
+                
+                // Other errors - show generic message
                 self.errorMessage = "Firebase Sign-In error: \(error.localizedDescription)"
                 self.isLoading = false
                 self.isProcessingFreshLogin = false

@@ -53,6 +53,7 @@ struct EventBlockView: View {
     let availableWidth: CGFloat
     let groupSize: Int  // Number of overlapping events
     let groupIndex: Int // Index within the overlapping group
+    var eventGap: CGFloat = 4
     
     private let calendar = Calendar.current
     
@@ -64,15 +65,20 @@ struct EventBlockView: View {
         CalendarEventFilter.calculateEventHeight(start: eventStart, end: eventEnd, hourHeight: hourHeight)
     }
     
-    // Calculate width and x position for overlapping events
+    // Width and x position so overlapping events sit side by side with gaps
     private var eventWidth: CGFloat {
-        // Divide available width by number of overlapping events
-        return availableWidth / CGFloat(groupSize)
+        let totalGaps = CGFloat(max(0, groupSize - 1)) * eventGap
+        return (availableWidth - totalGaps) / CGFloat(groupSize)
     }
     
     private var xOffset: CGFloat {
-        // Position each event side by side
-        return 80 + (CGFloat(groupIndex) * eventWidth)
+        return 80 + CGFloat(groupIndex) * (eventWidth + eventGap)
+    }
+    
+    /// Scale content (fonts, padding) with timeline zoom so events shrink/expand with the grid.
+    private var contentScale: CGFloat {
+        let baseline: CGFloat = 50
+        return min(1.2, max(0.6, hourHeight / baseline))
     }
     
     private var timeRangeString: String {
@@ -105,22 +111,22 @@ struct EventBlockView: View {
             }
         } label: {
             ZStack(alignment: .topLeading) {
-                RoundedRectangle(cornerRadius: 6)
+                RoundedRectangle(cornerRadius: 6 * contentScale)
                     .fill(eventColor)
                 
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 2 * contentScale) {
                     Text(event.summary)
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.system(size: 13 * contentScale, weight: .medium))
                         .foregroundColor(.white)
                         .lineLimit(1)
                     
                     Text(timeRangeString)
-                        .font(.system(size: 11))
+                        .font(.system(size: 11 * contentScale))
                         .foregroundColor(.white.opacity(0.85))
                         .lineLimit(1)
                 }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 4)
+                .padding(.horizontal, 6 * contentScale)
+                .padding(.vertical, 4 * contentScale)
             }
             .frame(width: eventWidth, height: height)
         }

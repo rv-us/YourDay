@@ -56,77 +56,88 @@ struct ChatDetailView: View {
     @State private var showShareProgressPicker = false
 
     var body: some View {
-        VStack {
+        VStack(spacing: 0) {
             ScrollViewReader { proxy in
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 8) {
                         ForEach(messages) { msg in
-                            HStack {
+                            HStack(alignment: .bottom, spacing: 0) {
                                 if msg.senderId == Auth.auth().currentUser?.uid {
-                                    Spacer()
+                                    Spacer(minLength: 60)
                                     Text(msg.content)
-                                        .padding()
+                                        .padding(.horizontal, 14)
+                                        .padding(.vertical, 10)
                                         .background(dynamicPrimaryColor)
-                                        .cornerRadius(12)
+                                        .cornerRadius(18)
                                         .foregroundColor(.white)
                                 } else {
                                     Text(msg.content)
-                                        .padding()
+                                        .padding(.horizontal, 14)
+                                        .padding(.vertical, 10)
                                         .background(dynamicSecondaryBackgroundColor)
-                                        .cornerRadius(12)
+                                        .cornerRadius(18)
                                         .foregroundColor(dynamicTextColor)
-                                    Spacer()
+                                    Spacer(minLength: 60)
                                 }
                             }
                         }
+                        Color.clear
+                            .frame(height: 8)
+                            .id("chatBottom")
                     }
-                    .padding()
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
                 }
                 .onChange(of: messages.count) { oldValue, newValue in
-                    if let last = messages.last?.id {
-                        withAnimation {
-                            proxy.scrollTo(last, anchor: .bottom)
-                        }
+                    withAnimation(.easeOut(duration: 0.25)) {
+                        proxy.scrollTo("chatBottom", anchor: .bottom)
                     }
                 }
             }
 
-            HStack {
-                AppTextField(placeholder: "Message...", text: $newMessage)
-                Button("Send") {
-                    guard !newMessage.trimmingCharacters(in: .whitespaces).isEmpty,
-                          let currentId = Auth.auth().currentUser?.uid else { return }
-
-                    let message = ChatMessage(
-                        senderId: currentId,
-                        receiverId: friend.userId,
-                        content: newMessage,
-                        timestamp: Date()
+            // Messages-style input bar: clear background, rounded field, attachment, send
+            HStack(alignment: .bottom, spacing: 10) {
+                TextField("Message", text: $newMessage)
+                    .textFieldStyle(.plain)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(dynamicBackgroundColor)
+                    .foregroundColor(dynamicTextColor)
+                    .cornerRadius(20)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20)
+                            .stroke(dynamicSecondaryTextColor.opacity(0.4), lineWidth: 1)
                     )
-                    firebaseManager.sendChatMessage(message) { _ in
-                        newMessage = ""
+
+                Menu {
+                    Button {
+                        presentShareComposer = true
+                    } label: {
+                        Label("Share task", systemImage: "square.and.arrow.up")
                     }
+                    Button {
+                        showShareProgressPicker = true
+                    } label: {
+                        Label("Share progress", systemImage: "arrowshape.turn.up.right")
+                    }
+                } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 32))
+                        .foregroundColor(dynamicPrimaryColor)
                 }
-                .foregroundColor(dynamicPrimaryColor)
 
                 Button {
-                    presentShareComposer = true
+                    sendMessage()
                 } label: {
-                    Image(systemName: "square.and.arrow.up")
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.system(size: 32))
+                        .foregroundColor(newMessage.trimmingCharacters(in: .whitespaces).isEmpty ? dynamicSecondaryTextColor.opacity(0.5) : dynamicPrimaryColor)
                 }
-                .foregroundColor(dynamicPrimaryColor)
-                .padding(.leading, 4)
-
-                Button {
-                    showShareProgressPicker = true
-                } label: {
-                    Image(systemName: "arrowshape.turn.up.right")
-                }
-                .foregroundColor(dynamicPrimaryColor)
-                .padding(.leading, 4)
+                .disabled(newMessage.trimmingCharacters(in: .whitespaces).isEmpty)
             }
-            .padding()
-            .background(dynamicBackgroundColor)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(dynamicSecondaryBackgroundColor)
         }
         .navigationTitle(friend.displayName)
         .toolbar {
@@ -216,6 +227,20 @@ struct ChatDetailView: View {
                 .environmentObject(firebaseManager)
         }
         .background(dynamicBackgroundColor.edgesIgnoringSafeArea(.all))
+    }
+
+    private func sendMessage() {
+        guard !newMessage.trimmingCharacters(in: .whitespaces).isEmpty,
+              let currentId = Auth.auth().currentUser?.uid else { return }
+        let message = ChatMessage(
+            senderId: currentId,
+            receiverId: friend.userId,
+            content: newMessage,
+            timestamp: Date()
+        )
+        firebaseManager.sendChatMessage(message) { _ in
+            newMessage = ""
+        }
     }
 
     private func accept(_ task: SharedTask) {

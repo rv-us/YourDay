@@ -23,15 +23,19 @@ struct LoginView: View {
             ZStack {
                 Color.white.ignoresSafeArea()
 
-                if showAuthForm {
+                if showAuthForm || viewModel.pendingLinkCredential != nil {
                     LoginFormView(viewModel: viewModel, isRegistering: $isRegistering, onBack: {
                         withAnimation(.easeInOut(duration: 0.2)) {
                             showAuthForm = false
                         }
+                        // Clear pending link if user goes back
+                        viewModel.pendingLinkCredential = nil
+                        viewModel.pendingLinkProviderName = nil
                     })
                     .transition(.move(edge: .trailing))
                 } else {
                     CarouselLoginLandingView(
+                        viewModel: viewModel,
                         images: carouselImages,
                         onSignUpWithEmail: {
                             isRegistering = true
@@ -52,16 +56,27 @@ struct LoginView: View {
             .navigationBarHidden(true)
         }
         .navigationViewStyle(.stack)
+        .onChange(of: viewModel.pendingLinkCredential) { _, newValue in
+            // Automatically show email/password form when linking is needed
+            if newValue != nil && !showAuthForm {
+                isRegistering = false // Force sign-in mode
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showAuthForm = true
+                }
+            }
+        }
     }
 }
 
 // MARK: - Carousel Landing Screen
 private struct CarouselLoginLandingView: View {
+    @ObservedObject var viewModel: LoginViewModel
     let images: [String]
     let onSignUpWithEmail: () -> Void
     let onLogIn: () -> Void
 
     @State private var selectedIndex: Int = 1
+    @State private var carouselTimer: Timer?
 
     var body: some View {
         VStack(spacing: 24) {
@@ -85,20 +100,31 @@ private struct CarouselLoginLandingView: View {
             Spacer()
 
             VStack(spacing: 16) {
-                Button(action: {
-                    // If you enable Apple Sign-In later, wire it here.
-                }) {
+                SignInWithAppleButton(.signUp) { request in
+                    viewModel.handleAppleSignInRequest(request)
+                } onCompletion: { result in
+                    viewModel.handleAppleSignInCompletion(result)
+                }
+                .signInWithAppleButtonStyle(.black)
+                .frame(height: 50)
+                .frame(maxWidth: .infinity)
+
+                Button(action: { viewModel.signInWithGoogle() }) {
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        Image(systemName: "apple.logo")
-                        Text("Sign up with Apple")
+                        Image(systemName: "g.circle.fill")
+                        Text("Sign in with Google")
                     }
                     .padding(4)
                     .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
                 .buttonBorderShape(.roundedRectangle(radius: 10))
-                .tint(.black)
-                .foregroundStyle(Color.white)
+                .tint(.white)
+                .foregroundStyle(.black)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color.black.opacity(0.25), lineWidth: 1)
+                )
 
                 Button(action: onSignUpWithEmail) {
                     Text("Sign up with Email")
@@ -126,6 +152,39 @@ private struct CarouselLoginLandingView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.top, 60)
         .background(Color.white)
+        .overlay {
+            if viewModel.isLoading {
+                Color.black.opacity(0.3)
+                    .ignoresSafeArea()
+                ProgressView("Please wait...")
+                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    .scaleEffect(1.2)
+            }
+        }
+        .alert("Sign-in error", isPresented: Binding(
+            get: { viewModel.errorMessage != nil },
+            set: { if !$0 { viewModel.errorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) { viewModel.errorMessage = nil }
+        } message: {
+            if let message = viewModel.errorMessage {
+                Text(message)
+            }
+        }
+        .onAppear {
+            // Start auto-scrolling carousel
+            carouselTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { _ in
+                guard !images.isEmpty else { return }
+                withAnimation(.easeInOut(duration: 0.5)) {
+                    selectedIndex = (selectedIndex + 1) % images.count
+                }
+            }
+        }
+        .onDisappear {
+            // Stop timer when view disappears
+            carouselTimer?.invalidate()
+            carouselTimer = nil
+        }
     }
 }
 
@@ -217,11 +276,20 @@ private struct LoginFormView: View {
                         .foregroundColor(.black)
                         .multilineTextAlignment(.center)
 
-                    Text("Sign in to sync your progress across devices.")
-                        .font(.headline)
-                        .foregroundColor(.black.opacity(0.6))
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 40)
+                    if viewModel.pendingLinkCredential != nil, let providerName = viewModel.pendingLinkProviderName {
+                        Text("This email is already registered. Sign in with your email and password to add \(providerName) sign-in to your account.")
+                            .font(.headline)
+                            .foregroundColor(dynamicPrimaryColor)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 40)
+                            .padding(.bottom, 8)
+                    } else {
+                        Text("Sign in to sync your progress across devices.")
+                            .font(.headline)
+                            .foregroundColor(.black.opacity(0.6))
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 40)
+                    }
 
                     if viewModel.isLoading {
                         ProgressView("Please Wait...")
@@ -231,45 +299,54 @@ private struct LoginFormView: View {
                     } else {
                         VStack(spacing: 14) {
                             // Custom pill toggle (replaces SegmentedPickerStyle)
-                            HStack(spacing: 0) {
-                                Button {
-                                    focusedField = nil
-                                    withAnimation(.easeInOut(duration: 0.15)) {
-                                        isRegistering = false
+                            // Hide toggle when linking account (only allow sign-in)
+                            if viewModel.pendingLinkCredential == nil {
+                                HStack(spacing: 0) {
+                                    Button {
+                                        focusedField = nil
+                                        withAnimation(.easeInOut(duration: 0.15)) {
+                                            isRegistering = false
+                                        }
+                                    } label: {
+                                        Text("Sign In")
+                                            .fontWeight(.semibold)
+                                            .frame(maxWidth: .infinity)
+                                            .padding(.vertical, 10)
+                                            .foregroundColor(isRegistering ? .black.opacity(0.65) : .white)
+                                            .background(isRegistering ? Color.clear : dynamicPrimaryColor)
+                                            .clipShape(Capsule())
                                     }
-                                } label: {
-                                    Text("Sign In")
-                                        .fontWeight(.semibold)
-                                        .frame(maxWidth: .infinity)
-                                        .padding(.vertical, 10)
-                                        .foregroundColor(isRegistering ? .black.opacity(0.65) : .white)
-                                        .background(isRegistering ? Color.clear : dynamicPrimaryColor)
-                                        .clipShape(Capsule())
-                                }
-                                .buttonStyle(.plain)
+                                    .buttonStyle(.plain)
 
-                                Button {
-                                    focusedField = nil
-                                    withAnimation(.easeInOut(duration: 0.15)) {
-                                        isRegistering = true
+                                    Button {
+                                        focusedField = nil
+                                        withAnimation(.easeInOut(duration: 0.15)) {
+                                            isRegistering = true
+                                        }
+                                    } label: {
+                                        Text("Create Account")
+                                            .fontWeight(.semibold)
+                                            .frame(maxWidth: .infinity)
+                                            .padding(.vertical, 10)
+                                            .foregroundColor(isRegistering ? .white : .black.opacity(0.65))
+                                            .background(isRegistering ? dynamicPrimaryColor : Color.clear)
+                                            .clipShape(Capsule())
                                     }
-                                } label: {
-                                    Text("Create Account")
-                                        .fontWeight(.semibold)
-                                        .frame(maxWidth: .infinity)
-                                        .padding(.vertical, 10)
-                                        .foregroundColor(isRegistering ? .white : .black.opacity(0.65))
-                                        .background(isRegistering ? dynamicPrimaryColor : Color.clear)
-                                        .clipShape(Capsule())
+                                    .buttonStyle(.plain)
                                 }
-                                .buttonStyle(.plain)
+                                .padding(4)
+                                .background(
+                                    Capsule()
+                                        .fill(Color.black.opacity(0.06))
+                                )
+                                .padding(.bottom, 6)
+                            } else {
+                                // When linking, only sign-in is allowed; keep UI minimal
+                                EmptyView()
+                                    .onAppear {
+                                        if isRegistering { isRegistering = false }
+                                    }
                             }
-                            .padding(4)
-                            .background(
-                                Capsule()
-                                    .fill(Color.black.opacity(0.06))
-                            )
-                            .padding(.bottom, 6)
 
                             if isRegistering {
                                 AuthTextField(
@@ -304,13 +381,14 @@ private struct LoginFormView: View {
 
                             Button(action: {
                                 focusedField = nil
-                                if isRegistering {
-                                    viewModel.createAccountWithEmailPassword()
-                                } else {
+                                // When linking, only allow sign-in (not create account)
+                                if viewModel.pendingLinkCredential != nil || !isRegistering {
                                     viewModel.signInWithEmailPassword()
+                                } else {
+                                    viewModel.createAccountWithEmailPassword()
                                 }
                             }) {
-                                Text(isRegistering ? "Create Account" : "Sign In")
+                                Text(viewModel.pendingLinkCredential != nil ? "Sign In & Link Account" : (isRegistering ? "Create Account" : "Sign In"))
                                     .fontWeight(.semibold)
                                     .frame(maxWidth: .infinity)
                                     .padding()

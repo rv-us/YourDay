@@ -192,13 +192,6 @@ struct FriendsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(dynamicSecondaryBackgroundColor, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    Text("Friends")
-                        .fontWeight(.bold)
-                        .foregroundColor(dynamicTextColor)
-                }
-            }
             .onAppear {
                 firebaseManager.startListeningToAcceptedFriendsLive { updatedFriends in
                     self.acceptedFriends = updatedFriends

@@ -40,7 +40,8 @@ struct AddNotesView: View {
                     }
                 }
                 .sheet(isPresented: $showingNewNoteView) {
-                    NewNoteView(
+                    NoteEditorView(
+                        note: nil,
                         isPresented: $showingNewNoteView,
                         onNoteCreated: handleNoteCreated
                     )
@@ -90,28 +91,35 @@ struct AddNotesView: View {
         List(selection: isSelecting ? $selectedNotes : .constant([])) {
             ForEach(notes) { note in
                 noteRow(note: note)
-            }
-            .onDelete { indexSet in
-                for index in indexSet {
-                    let note = notes[index]
-                    let noteId = note.id.uuidString
-                    context.delete(note)
-                    
-                    // Sync deletion to Firebase
-                    if let userId = FirebaseAuth.Auth.auth().currentUser?.uid {
-                        FirebaseManager.shared.deleteNoteItem(localNoteId: noteId) { error in
-                            if let error = error {
-                                print("AddNotesView: Failed to delete note from Firebase: \(error.localizedDescription)")
-                            } else {
-                                print("AddNotesView: Successfully deleted note from Firebase")
-                            }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button(role: .destructive) {
+                            deleteNote(note)
+                        } label: {
+                            Image(systemName: "trash")
+                                .foregroundColor(.white)
                         }
                     }
-                }
             }
         }
         .listStyle(.plain)
         .background(dynamicBackgroundColor)
+    }
+
+    private func deleteNote(_ note: NoteItem) {
+        let noteId = note.id.uuidString
+        context.delete(note)
+        try? context.save()
+
+        // Sync deletion to Firebase
+        if let userId = FirebaseAuth.Auth.auth().currentUser?.uid {
+            FirebaseManager.shared.deleteNoteItem(localNoteId: noteId) { error in
+                if let error = error {
+                    print("AddNotesView: Failed to delete note from Firebase: \(error.localizedDescription)")
+                } else {
+                    print("AddNotesView: Successfully deleted note from Firebase")
+                }
+            }
+        }
     }
 
     @ViewBuilder
@@ -130,7 +138,7 @@ struct AddNotesView: View {
             .tag(note)
             .listRowBackground(selectedNotes.contains(note) ? dynamicPrimaryColor.opacity(0.3) : dynamicSecondaryBackgroundColor)
         } else {
-            NavigationLink(destination: NoteDetailView(note: note)) {
+            NavigationLink(destination: NoteEditorView(note: note)) {
                 VStack(alignment: .leading, spacing: 5) {
                     Text(note.content.isEmpty ? "New Note" : note.content)
                         .lineLimit(1)

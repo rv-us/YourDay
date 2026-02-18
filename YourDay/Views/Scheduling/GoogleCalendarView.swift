@@ -82,6 +82,12 @@ struct GoogleCalendarView: View {
     @State private var currentWeekIndex: Int = 0
     @State private var scheduledEventForPopup: IdentifiableCalendarEvent?
     @State private var scheduledTaskPopupDetent: PresentationDetent = .medium
+    /// True when user is signed in to Google but has not granted calendar scope (so we show "Grant access").
+    @State private var needsCalendarScope = false
+    
+    /// Timeline zoom: hour row height (pinch to expand/shrink).
+    @State private var timelineHourHeight: CGFloat = 50
+    @State private var pinchStartHeight: CGFloat = 50
 
     // Fast lookup cache for “does this day have events?” in the week slider.
     // Store start-of-day Dates so lookups are O(1) instead of scanning all events per cell.
@@ -260,7 +266,18 @@ struct GoogleCalendarView: View {
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
                     
-                    if !isAuthenticated {
+                    if needsCalendarScope {
+                        Button(action: authenticateWithGoogle) {
+                            HStack {
+                                Image(systemName: "calendar.badge.plus")
+                                Text("Grant calendar access")
+                            }
+                            .padding()
+                            .background(dynamicPrimaryColor)
+                            .foregroundColor(.white)
+                            .cornerRadius(10)
+                        }
+                    } else if !isAuthenticated {
                         Button(action: authenticateWithGoogle) {
                             HStack {
                                 Image(systemName: "person.circle.fill")
@@ -284,8 +301,19 @@ struct GoogleCalendarView: View {
                 Spacer()
             } else {
                 ScrollView {
-                    TimelineView(events: todayEvents, selectedDate: selectedDate, onScheduledTaskTap: { scheduledEventForPopup = IdentifiableCalendarEvent(event: $0) })
+                    TimelineView(events: todayEvents, selectedDate: selectedDate, hourHeight: timelineHourHeight, onScheduledTaskTap: { scheduledEventForPopup = IdentifiableCalendarEvent(event: $0) })
                         .frame(minHeight: UIScreen.main.bounds.height)
+                        .contentShape(Rectangle())
+                        .gesture(
+                            MagnificationGesture()
+                                .onChanged { value in
+                                    let newHeight = pinchStartHeight * value
+                                    timelineHourHeight = min(90, max(30, newHeight))
+                                }
+                                .onEnded { _ in
+                                    pinchStartHeight = timelineHourHeight
+                                }
+                        )
                 }
                 .gesture(
                     DragGesture(minimumDistance: 50)
@@ -446,15 +474,19 @@ struct GoogleCalendarView: View {
                 DispatchQueue.main.async {
                     if let user = user {
                         self.isAuthenticated = true
-                        self.errorMessage = nil
-                        // Check if calendar scope is already granted
+                        self.needsCalendarScope = false
                         let calendarScope = "https://www.googleapis.com/auth/calendar"
                         if user.grantedScopes?.contains(calendarScope) == true {
+                            self.errorMessage = nil
                             self.fetchMonthEvents()
                             self.fetchEvents()
+                        } else {
+                            self.errorMessage = "Grant calendar access to see your events and tasks."
+                            self.needsCalendarScope = true
                         }
                     } else {
                         self.isAuthenticated = false
+                        self.needsCalendarScope = false
                         self.errorMessage = "Please sign in with Google to view your calendar"
                     }
                 }
@@ -462,12 +494,15 @@ struct GoogleCalendarView: View {
         } else {
             // User is already signed in
             isAuthenticated = true
-            errorMessage = nil
-            // Check if calendar scope is granted
             let calendarScope = "https://www.googleapis.com/auth/calendar"
             if GIDSignIn.sharedInstance.currentUser?.grantedScopes?.contains(calendarScope) == true {
+                needsCalendarScope = false
+                errorMessage = nil
                 fetchMonthEvents()
                 fetchEvents()
+            } else {
+                needsCalendarScope = true
+                errorMessage = "Grant calendar access to see your events and tasks."
             }
         }
     }
@@ -508,6 +543,7 @@ struct GoogleCalendarView: View {
                     
                     if result != nil {
                         self.isAuthenticated = true
+                        self.needsCalendarScope = false
                         self.errorMessage = nil
                         self.fetchMonthEvents()
                         self.fetchEvents()
@@ -533,6 +569,7 @@ struct GoogleCalendarView: View {
                 
                 if signInResult != nil {
                     self.isAuthenticated = true
+                    self.needsCalendarScope = false
                     self.errorMessage = nil
                     self.fetchMonthEvents()
                     self.fetchEvents()
@@ -547,11 +584,18 @@ struct GoogleCalendarView: View {
         isLoading = true
         errorMessage = nil
         
-        user.refreshTokensIfNeeded { user, error in
-            if let user = user {
-                self.performFetchEventsForDate(self.selectedDate, user: user) { fetchedEvents in
-                    self.events = fetchedEvents
+        user.refreshTokensIfNeeded { refreshedUser, error in
+            DispatchQueue.main.async {
+                if let user = refreshedUser {
+                    self.performFetchEventsForDate(self.selectedDate, user: user) { fetchedEvents in
+                        DispatchQueue.main.async {
+                            self.events = fetchedEvents
+                            self.isLoading = false
+                        }
+                    }
+                } else {
                     self.isLoading = false
+                    self.errorMessage = "Session expired. Please sign in again to view your calendar."
                 }
             }
         }
@@ -566,12 +610,11 @@ struct GoogleCalendarView: View {
         let rangeStart = calendar.startOfDay(for: weeks.first ?? currentMonth)
         let rangeEnd = calendar.date(byAdding: .day, value: 7, to: (weeks.last ?? currentMonth))!
         
-        user.refreshTokensIfNeeded { user, error in
-            if let user = user {
-                self.performFetchEventsInRange(start: rangeStart, end: rangeEnd, user: user) { fetchedEvents in
+        user.refreshTokensIfNeeded { refreshedUser, error in
+            guard let user = refreshedUser else { return }
+            self.performFetchEventsInRange(start: rangeStart, end: rangeEnd, user: user) { fetchedEvents in
+                DispatchQueue.main.async {
                     self.monthEvents = fetchedEvents
-                    
-                    // Rebuild fast lookup cache for week slider dots (avoids `.onChange` needing Equatable).
                     var days: Set<Date> = []
                     days.reserveCapacity(fetchedEvents.count)
                     for event in fetchedEvents {
@@ -608,12 +651,25 @@ struct GoogleCalendarView: View {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         
         URLSession.shared.dataTask(with: request) { data, response, error in
-            if let data = data, let result = try? JSONDecoder().decode(GoogleCalendarResponse.self, from: data) {
-                DispatchQueue.main.async {
-                    completion(result.items)
+            DispatchQueue.main.async {
+                if let error = error {
+                    self.errorMessage = "Could not load calendar: \(error.localizedDescription)"
+                    completion([])
+                    return
                 }
-            } else {
-                DispatchQueue.main.async {
+                if let http = response as? HTTPURLResponse, http.statusCode != 200 {
+                    if http.statusCode == 401 || http.statusCode == 403 {
+                        self.errorMessage = "Calendar access expired or denied. Please sign in again."
+                    } else {
+                        self.errorMessage = "Could not load calendar (error \(http.statusCode))."
+                    }
+                    completion([])
+                    return
+                }
+                if let data = data, let result = try? JSONDecoder().decode(GoogleCalendarResponse.self, from: data) {
+                    completion(result.items)
+                } else {
+                    self.errorMessage = "Could not load calendar events."
                     completion([])
                 }
             }

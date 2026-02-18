@@ -464,7 +464,7 @@ struct DashboardView: View {
             } else {
                 VStack(spacing: 8) {
                     ForEach(recentNotes) { note in
-                        NavigationLink(destination: NoteDetailView(note: note)) {
+                        NavigationLink(destination: NoteEditorView(note: note)) {
                             HStack {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(note.content.isEmpty ? "New Note" : note.content)
