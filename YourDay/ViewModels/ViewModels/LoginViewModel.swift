@@ -117,6 +117,10 @@ class LoginViewModel: ObservableObject {
             errorMessage = "Please enter a display name to continue as a guest."
             return
         }
+        if DisplayNameValidator.containsProfanity(trimmedName) {
+            errorMessage = "Display name contains inappropriate language."
+            return
+        }
 
         print("LoginViewModel: Starting guest session with display name: \(trimmedName).")
         self.userDisplayName = trimmedName
@@ -133,6 +137,12 @@ class LoginViewModel: ObservableObject {
         
         guard !displayNameForRegistration.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             errorMessage = "Please enter a display name."
+            isLoading = false
+            return
+        }
+        let trimmedDisplayName = displayNameForRegistration.trimmingCharacters(in: .whitespacesAndNewlines)
+        if DisplayNameValidator.containsProfanity(trimmedDisplayName) {
+            errorMessage = "Display name contains inappropriate language."
             isLoading = false
             return
         }
@@ -349,12 +359,16 @@ class LoginViewModel: ObservableObject {
 
     // MARK: - User Profile Management
     func updateUserDisplayName(newName: String, currentPlayerStats: PlayerStats?, completion: @escaping (Bool, String?) -> Void) {
+        let trimmedNewName = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedNewName.isEmpty {
+            completion(false, "Display name cannot be empty.")
+            return
+        }
+        if DisplayNameValidator.containsProfanity(trimmedNewName) {
+            completion(false, "Display name contains inappropriate language.")
+            return
+        }
         if isGuest {
-            let trimmedNewName = newName.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmedNewName.isEmpty {
-                completion(false, "Display name cannot be empty.")
-                return
-            }
             self.userDisplayName = trimmedNewName
             completion(true, "Guest name updated locally.")
             return
@@ -367,12 +381,6 @@ class LoginViewModel: ObservableObject {
 
         guard isNetworkAvailable else {
             completion(false, "No internet connection. Cannot update name.")
-            return
-        }
-
-        let trimmedNewName = newName.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmedNewName.isEmpty {
-            completion(false, "Display name cannot be empty.")
             return
         }
         
@@ -1021,7 +1029,7 @@ class LoginViewModel: ObservableObject {
                         let props = cloudNote.toNoteItemProperties()
                         // Check if note with this ID already exists (shouldn't happen after deduplication, but safety check)
                         if localNotesMap[cloudNote.localNoteId] == nil {
-                            let newNote = NoteItem(id: props.id, content: props.content, createdAt: props.createdAt)
+                            let newNote = NoteItem(id: props.id, content: props.content, createdAt: props.createdAt, fontSize: props.fontSize)
                             modelContext.insert(newNote)
                         } else {
                             print("LoginViewModel: ⚠️ Note with ID \(cloudNote.localNoteId) already exists locally, skipping creation")
@@ -1033,6 +1041,7 @@ class LoginViewModel: ObservableObject {
                         if let localNote = localNotesMap[cloudNote.localNoteId] {
                             let props = cloudNote.toNoteItemProperties()
                             localNote.content = props.content
+                            localNote.fontSize = props.fontSize
                         }
                     }
 

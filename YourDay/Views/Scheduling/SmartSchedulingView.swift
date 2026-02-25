@@ -468,6 +468,15 @@ struct SmartSchedulingView: View {
             ) {
                 DayContextSection(schedulingViewModel: schedulingViewModel)
             }
+            
+            ExpandableSection(
+                title: "Learned Memories",
+                icon: "brain.head.profile",
+                isExpanded: isMemoryExpanded,
+                onToggle: { isMemoryExpanded.toggle() }
+            ) {
+                AgentMemorySection(schedulingViewModel: schedulingViewModel, selectedDate: selectedDate)
+            }
         }
     }
     

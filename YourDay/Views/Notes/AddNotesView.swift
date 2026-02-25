@@ -17,6 +17,7 @@ struct AddNotesView: View {
     @State private var generatedTasks: [TodoItem] = []
     @State private var showingConfirmGeneratedTasks = false
     @State private var isGenerating = false
+    @State private var searchText = ""
 
     @AppStorage("hasCompletedNotesTutorial") private var hasCompletedNotesTutorial = false
     @State private var showNotesTutorial = false
@@ -25,54 +26,69 @@ struct AddNotesView: View {
     @State private var generatedTaskOrigin: TaskOrigin = .today // ✅ New state to track origin
 
     var body: some View {
-        NavigationView {
-            notesMainContent
-                .padding(.top, 20)
-                .background(dynamicBackgroundColor.edgesIgnoringSafeArea(.all))
-                .navigationTitle("")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbarBackground(dynamicSecondaryBackgroundColor, for: .navigationBar)
-                .toolbarBackground(.visible, for: .navigationBar)
-                .toolbar { notesToolbarContent }
-                .onChange(of: selectedNotes) { _, newSelection in
-                    if currentNotesTutorialStep == .selectNote && !newSelection.isEmpty {
-                        currentNotesTutorialStep = .generateTasks
-                    }
+        NavigationStack {
+            notesNavigationContent
+        }
+    }
+
+    private var notesContentWithLayout: some View {
+        notesMainContent
+            .padding(.top, 20)
+            .background(dynamicBackgroundColor.edgesIgnoringSafeArea(.all))
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(dynamicSecondaryBackgroundColor, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbar { notesToolbarContent }
+            .navigationDestination(isPresented: $showingNewNoteView) {
+                NoteEditorView(note: nil, onNoteCreated: handleNoteCreated)
+            }
+    }
+
+    @ViewBuilder
+    private var notesNavigationContent: some View {
+        notesContentWithLayout
+            .onChange(of: selectedNotes) { _, newSelection in
+                if currentNotesTutorialStep == .selectNote && !newSelection.isEmpty {
+                    currentNotesTutorialStep = .generateTasks
                 }
-                .sheet(isPresented: $showingNewNoteView) {
-                    NoteEditorView(
-                        note: nil,
-                        isPresented: $showingNewNoteView,
-                        onNoteCreated: handleNoteCreated
-                    )
+            }
+            .sheet(isPresented: $showingConfirmGeneratedTasks) { confirmGeneratedTasksSheet }
+            .onAppear {
+                if !hasCompletedNotesTutorial {
+                    showNotesTutorial = true
                 }
-                .sheet(isPresented: $showingConfirmGeneratedTasks) {
-                    ConfirmGeneratedTasksView(tasks: generatedTasks) { selectedTasks in
-                        for task in selectedTasks {
-                            context.insert(task)
-                            
-                            // Sync new task to Firebase
-                            if let userId = FirebaseAuth.Auth.auth().currentUser?.uid {
-                                let codableTask = TodoItemCodable(from: task, userId: userId)
-                                FirebaseManager.shared.saveTodoItem(codableTask) { error in
-                                    if let error = error {
-                                        print("AddNotesView: Failed to sync generated task to Firebase: \(error.localizedDescription)")
-                                    } else {
-                                        print("AddNotesView: Successfully synced generated task to Firebase")
-                                    }
-                                }
-                            }
+            }
+            .overlay(notesTutorialOverlay)
+            .searchable(text: $searchText, placement: .toolbar, prompt: "Search notes")
+    }
+
+    @ViewBuilder
+    private var confirmGeneratedTasksSheet: some View {
+        ConfirmGeneratedTasksView(tasks: generatedTasks) { selectedTasks in
+            for task in selectedTasks {
+                context.insert(task)
+                if let userId = FirebaseAuth.Auth.auth().currentUser?.uid {
+                    let codableTask = TodoItemCodable(from: task, userId: userId)
+                    FirebaseManager.shared.saveTodoItem(codableTask) { error in
+                        if let error = error {
+                            print("AddNotesView: Failed to sync generated task to Firebase: \(error.localizedDescription)")
+                        } else {
+                            print("AddNotesView: Successfully synced generated task to Firebase")
                         }
-                        generatedTasks = []
-                        showingConfirmGeneratedTasks = false
                     }
                 }
-                .onAppear {
-                    if !hasCompletedNotesTutorial {
-                        showNotesTutorial = true
-                    }
-                }
-                .overlay(notesTutorialOverlay)
+            }
+            generatedTasks = []
+            showingConfirmGeneratedTasks = false
+        }
+    }
+
+    private var filteredNotes: [NoteItem] {
+        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return notes }
+        return notes.filter { note in
+            note.content.localizedCaseInsensitiveContains(trimmed)
         }
     }
 
@@ -89,7 +105,7 @@ struct AddNotesView: View {
 
     private var notesList: some View {
         List(selection: isSelecting ? $selectedNotes : .constant([])) {
-            ForEach(notes) { note in
+            ForEach(filteredNotes) { note in
                 noteRow(note: note)
                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                         Button(role: .destructive) {
@@ -230,7 +246,7 @@ struct AddNotesView: View {
                     showNotesTutorial = false
                 }
             } label: {
-                Text(isSelecting ? "Cancel" : "Select Notes")
+                Text(isSelecting ? "Cancel" : "Generate Tasks")
                     .foregroundColor(dynamicPrimaryColor)
             }
         }
@@ -432,7 +448,7 @@ var message: String {
     case .createNote:
         return "Tap the pencil icon in the top right to create your first note."
     case .selectNote:
-        return "Now tap 'Select Notes' and choose the note(s) you just created and then tap 'Generate Tasks' to convert your notes into actionable items."
+        return "Tap 'Generate Tasks' above to select note(s), then tap the 'Generate Tasks' button below to convert them into actionable items."
     case .generateTasks:
         return "Finally, tap 'Generate Tasks' to convert your notes into actionable items."
     case .finished:

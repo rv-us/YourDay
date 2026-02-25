@@ -330,8 +330,26 @@ class JournalViewModel: ObservableObject {
         showingJournalPrompt = false
 
         if let event = pendingJournalPrompt {
+            // Persist a minimal "skipped" journal entry so the prompt won't come back for this event
+            if let userId = Auth.auth().currentUser?.uid {
+                let skippedEntry = JournalEntry(
+                    userId: userId,
+                    eventId: event.eventId,
+                    taskTitle: event.taskTitle,
+                    scheduledStartTime: event.scheduledStartTime,
+                    scheduledEndTime: event.scheduledEndTime,
+                    whatDid: "Skipped",
+                    completionStatus: .notStarted,
+                    timestamp: Date(),
+                    dayOfWeek: event.dayOfWeek
+                )
+                firebaseManager.saveJournalEntry(skippedEntry) { error in
+                    if let error = error {
+                        print("JournalViewModel: Failed to save skipped journal entry: \(error.localizedDescription)")
+                    }
+                }
+            }
             taskEndMonitor.markEventAsJournaled(eventId: event.eventId)
-            // Cancel notification for this event
             notificationManager.cancelJournalPromptNotification(eventId: event.eventId)
         }
         pendingJournalPrompt = nil

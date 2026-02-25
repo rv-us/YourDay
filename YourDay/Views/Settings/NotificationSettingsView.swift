@@ -11,8 +11,6 @@ let locationRemindersEnabledKey = "locationRemindersEnabled"
 
 let scheduledReminderIDs: [String] = ["morningReminder", "nightReminder"] + (1...10).map { "extraReminder\($0)" }
 
-let profanityList: [String] = ["badword", "curse", "profane"]
-
 struct NotificationSettingsView: View {
     @AppStorage("hasCompletedNotificationsTutorial") private var hasCompletedNotificationsTutorial = false
     @State private var showNotificationsTutorial = false
@@ -375,16 +373,6 @@ struct NotificationSettingsView: View {
         .navigationViewStyle(.stack)
     }
 
-    private func containsProfanity(_ text: String) -> Bool {
-        let lowercasedText = text.lowercased()
-        for word in profanityList {
-            if lowercasedText.contains(word.lowercased()) {
-                return true
-            }
-        }
-        return false
-    }
-
     private func validateAndSaveDisplayName() {
         let trimmedName = editableDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
         
@@ -402,7 +390,7 @@ struct NotificationSettingsView: View {
             return
         }
 
-        if containsProfanity(trimmedName) {
+        if DisplayNameValidator.containsProfanity(trimmedName) {
             nameChangeMessageText = "Display name contains inappropriate language."
             nameChangeWasSuccessful = false
             showTempStatusMessage()

@@ -125,10 +125,45 @@ struct LastDayView: View {
         }
     }
 
+    /// Hero title: "Today", "Yesterday", or "Summary for [date]"
+    private var heroTitle: String {
+        guard let displayDate = currentDisplayDate else { return "Summary" }
+        if dateOffset == 0 { return "Today" }
+        if dateOffset == 1 { return "Yesterday" }
+        return "Summary for \(formatDate(displayDate))"
+    }
+
+    /// Short date subtitle (e.g. "Mon, Dec 23")
+    private var dateSubtitle: String? {
+        guard let displayDate = currentDisplayDate else { return nil }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEE, MMM d"
+        return formatter.string(from: displayDate)
+    }
+
+    /// Total points for the day before current display date (for comparison)
+    private var totalPointsPreviousDay: Double? {
+        guard dateOffset + 1 < navigableDates.count else { return nil }
+        let prevDate = navigableDates[dateOffset + 1]
+        let prevSummaries = allSummaries.filter { Calendar.current.isDate($0.date, inSameDayAs: prevDate) }
+        return prevSummaries.first?.xpEarnedOnDate
+    }
+
+    /// Top task by points for insights
+    private var topTaskByPoints: TaskPointResult? {
+        breakdownForDisplayDate
+            .filter { $0.totalPoints > 0 || $0.mainTaskCompletedOnTargetDay }
+            .max(by: { $0.totalPoints < $1.totalPoints })
+    }
+
+    private var hasContent: Bool {
+        !summariesForDisplayDate.isEmpty || (isModal && dateOffset == 0)
+    }
 
     var body: some View {
-        VStack(spacing: 16) {
-            if let displayDate = currentDisplayDate {
+        VStack(spacing: 20) {
+            // Date navigation header
+            if currentDisplayDate != nil {
                 HStack {
                     Button { if dateOffset < navigableDates.count - 1 { dateOffset += 1 }
                     } label: {
@@ -137,18 +172,21 @@ struct LastDayView: View {
                             .foregroundColor(dynamicPrimaryColor)
                     }
                     .disabled(dateOffset >= navigableDates.count - 1)
-                    
                     Spacer()
-                    
-                    Text("Summary for \(formatDate(displayDate))")
-                        .font(isModal ? .title2 : .title)
-                        .fontWeight(.bold)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                        .foregroundColor(dynamicTextColor)
-                    
+                    VStack(spacing: 2) {
+                        Text(heroTitle)
+                            .font(isModal ? .title2 : .title)
+                            .fontWeight(.bold)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                            .foregroundColor(dynamicTextColor)
+                        if let subtitle = dateSubtitle {
+                            Text(subtitle)
+                                .font(.subheadline)
+                                .foregroundColor(dynamicSecondaryTextColor)
+                        }
+                    }
                     Spacer()
-                    
                     Button { if dateOffset > 0 { dateOffset -= 1 }
                     } label: {
                         Image(systemName: "chevron.right.circle.fill")
@@ -163,56 +201,112 @@ struct LastDayView: View {
                     .font(.title2)
                     .foregroundColor(dynamicSecondaryTextColor)
             }
-            
-            if !summariesForDisplayDate.isEmpty || (isModal && dateOffset == 0) {
-                Text("+\(Int(animatedPointsTotal)) Points!")
-                    .font(.system(size: 40, weight: .heavy, design: .rounded))
-                    .foregroundColor(dynamicSecondaryColor)
-                    .id("animatedPointsText-\(dateOffset)")
-                
-                XPProgressView(
-                    levelBefore: xpInfoForDisplayDate.levelBefore,
-                    xpBefore: xpInfoForDisplayDate.xpBefore,
-                    levelAfter: xpInfoForDisplayDate.levelAfter,
-                    xpAfter: xpInfoForDisplayDate.xpAfter,
-                    xpGainedThisSession: xpInfoForDisplayDate.xpEarnedToday,
-                    xpForNextLevel: xpInfoForDisplayDate.xpToNextLevel,
-                    didLevelUp: xpInfoForDisplayDate.didLevelUp
-                )
-                .padding(.horizontal)
-                .id("xpProgressView-\(dateOffset)")
 
-
+            if hasContent {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 12) {
-                        ForEach(breakdownForDisplayDate) { taskResult in
-                            if taskResult.totalPoints > 0 || taskResult.mainTaskCompletedOnTargetDay {
-                                TaskSummaryRow(taskResult: taskResult)
+                    VStack(alignment: .leading, spacing: 16) {
+                        // Points card
+                        lastDayCard {
+                            VStack(spacing: 8) {
+                                Text("+\(Int(animatedPointsTotal)) Points!")
+                                    .font(.system(size: 36, weight: .heavy, design: .rounded))
+                                    .foregroundColor(dynamicSecondaryColor)
+                                    .id("animatedPointsText-\(dateOffset)")
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                        }
+
+                        // XP / Level card
+                        lastDayCard {
+                            XPProgressView(
+                                levelBefore: xpInfoForDisplayDate.levelBefore,
+                                xpBefore: xpInfoForDisplayDate.xpBefore,
+                                levelAfter: xpInfoForDisplayDate.levelAfter,
+                                xpAfter: xpInfoForDisplayDate.xpAfter,
+                                xpGainedThisSession: xpInfoForDisplayDate.xpEarnedToday,
+                                xpForNextLevel: xpInfoForDisplayDate.xpToNextLevel,
+                                didLevelUp: xpInfoForDisplayDate.didLevelUp
+                            )
+                            .id("xpProgressView-\(dateOffset)")
+                        }
+
+                        // Insights card
+                        if let snapshot = completionSnapshotForPieChart, snapshot.total > 0 {
+                            lastDayCard {
+                                VStack(alignment: .leading, spacing: 10) {
+                                    Text("At a glance")
+                                        .font(.headline)
+                                        .foregroundColor(dynamicTextColor)
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        insightRow(icon: "checkmark.circle.fill", text: "You completed \(snapshot.completed) of \(snapshot.total) tasks.")
+                                        insightRow(icon: "star.fill", text: "You earned \(Int(totalPointsForDisplayDate)) points.")
+                                        if let top = topTaskByPoints, !top.title.isEmpty {
+                                            insightRow(icon: "trophy.fill", text: "Most points from: \(top.title)")
+                                        }
+                                        if let prev = totalPointsPreviousDay, dateOffset <= 1 {
+                                            let diff = totalPointsForDisplayDate - prev
+                                            if diff > 0 {
+                                                insightRow(icon: "arrow.up.right", text: "\(Int(diff)) more points than the day before.")
+                                            } else if diff < 0 {
+                                                insightRow(icon: "arrow.down.right", text: "\(Int(-diff)) fewer points than the day before.")
+                                            }
+                                        }
+                                    }
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
+
+                        // Task breakdown card
+                        if !breakdownForDisplayDate.filter({ $0.totalPoints > 0 || $0.mainTaskCompletedOnTargetDay }).isEmpty {
+                            lastDayCard {
+                                VStack(alignment: .leading, spacing: 12) {
+                                    Text("Task breakdown")
+                                        .font(.headline)
+                                        .foregroundColor(dynamicTextColor)
+                                    ForEach(breakdownForDisplayDate) { taskResult in
+                                        if taskResult.totalPoints > 0 || taskResult.mainTaskCompletedOnTargetDay {
+                                            TaskSummaryRow(taskResult: taskResult)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Completion circle card
+                        if let snapshot = completionSnapshotForPieChart, snapshot.total > 0 {
+                            lastDayCard {
+                                VStack(spacing: 8) {
+                                    TasksCompletionProgressView(completedTasks: snapshot.completed, totalTasks: snapshot.total)
+                                        .frame(width: 120, height: 120)
+                                        .id("taskProgressView-\(dateOffset)")
+                                }
+                                .frame(maxWidth: .infinity)
                             }
                         }
                     }
                     .padding(.horizontal)
-                    .padding(.top, 5)
+                    .padding(.bottom, 24)
                 }
-
-                Spacer()
-
-                if let snapshot = completionSnapshotForPieChart, snapshot.total > 0 {
-                    TasksCompletionProgressView(completedTasks: snapshot.completed, totalTasks: snapshot.total)
-                        .frame(width: 120, height: 120)
-                        .padding(.bottom, 10)
-                        .id("taskProgressView-\(dateOffset)")
-                }
-
-
             } else {
-                Spacer()
-                Text("No task activity recorded for this day.")
-                    .font(.title3)
-                    .foregroundColor(dynamicSecondaryTextColor)
-                    .multilineTextAlignment(.center)
-                    .padding()
-                Spacer()
+                VStack(spacing: 12) {
+                    Spacer()
+                    Image(systemName: "calendar.badge.clock")
+                        .font(.system(size: 48))
+                        .foregroundColor(dynamicSecondaryTextColor.opacity(0.6))
+                    Text("No task activity recorded for this day.")
+                        .font(.title3)
+                        .foregroundColor(dynamicSecondaryTextColor)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
+                    Text("Complete tasks to see your summary here.")
+                        .font(.subheadline)
+                        .foregroundColor(dynamicSecondaryTextColor.opacity(0.8))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                    Spacer()
+                }
             }
 
             if isModal {
@@ -232,7 +326,7 @@ struct LastDayView: View {
                 .animation(.easeInOut.delay(0.2), value: showContinueButton)
             }
         }
-        .padding(.vertical)
+        .padding(.vertical, 16)
         .background(dynamicBackgroundColor.edgesIgnoringSafeArea(.all))
         .onAppear {
             let initialPoints = totalPointsForDisplayDate
@@ -260,6 +354,30 @@ struct LastDayView: View {
                     withAnimation(.spring(response: 0.4, dampingFraction: 0.6)) { self.showContinueButton = true }
                 }
             } else { self.showContinueButton = true }
+        }
+    }
+
+    @ViewBuilder
+    private func lastDayCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(dynamicSecondaryBackgroundColor)
+            .cornerRadius(14)
+            .shadow(color: Color.black.opacity(0.06), radius: 4, x: 0, y: 2)
+    }
+
+    private func insightRow(icon: String, text: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: icon)
+                .font(.subheadline)
+                .foregroundColor(dynamicPrimaryColor)
+                .frame(width: 22, alignment: .center)
+            Text(text)
+                .font(.subheadline)
+                .foregroundColor(dynamicTextColor)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
         }
     }
 }

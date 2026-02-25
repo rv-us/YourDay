@@ -18,7 +18,13 @@ struct NoteEditorView: View {
     @State private var text: String = ""
     @State private var createdNote: NoteItem? = nil
     @State private var saveTask: Task<Void, Never>?
+    /// Font size for new note before first save (persisted to note after).
+    @State private var pendingFontSize: Double? = nil
 
+    private static let fontSizes: [Double] = [14, 17, 20, 24]
+    private var currentFontSize: Double {
+        note?.fontSize ?? createdNote?.fontSize ?? pendingFontSize ?? 17
+    }
     private var isNewNote: Bool { note == nil }
     private var isSheet: Bool { isPresented != nil }
 
@@ -37,14 +43,18 @@ struct NoteEditorView: View {
 
     private var editorContent: some View {
         TextEditor(text: $text)
+            .font(.system(size: currentFontSize))
             .padding(.horizontal, 20)
             .padding(.top, 16)
-            .padding(.bottom, 20)
+            .padding(.bottom, 12)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .foregroundColor(dynamicTextColor)
             .scrollContentBackground(.hidden)
             .textInputAutocapitalization(.sentences)
             .background(dynamicBackgroundColor.edgesIgnoringSafeArea(.all))
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                noteFormatToolbar
+            }
         .onAppear {
             if let note = note {
                 text = note.content
@@ -117,6 +127,68 @@ struct NoteEditorView: View {
         }
     }
 
+    private var noteFormatToolbar: some View {
+        HStack(spacing: 24) {
+            Button {
+                insertBullet()
+            } label: {
+                Image(systemName: "list.bullet")
+                    .font(.system(size: 20))
+                    .foregroundColor(dynamicTextColor)
+            }
+            Button {
+                insertChecklist()
+            } label: {
+                Image(systemName: "checklist")
+                    .font(.system(size: 20))
+                    .foregroundColor(dynamicTextColor)
+            }
+            Button {
+                cycleFontSize()
+            } label: {
+                Image(systemName: "textformat.size")
+                    .font(.system(size: 20))
+                    .foregroundColor(dynamicTextColor)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .background(dynamicSecondaryBackgroundColor)
+    }
+
+    private func insertBullet() {
+        if text.isEmpty {
+            text = "• "
+        } else {
+            text += "\n• "
+        }
+    }
+
+    private func insertChecklist() {
+        if text.isEmpty {
+            text = "☐ "
+        } else {
+            text += "\n☐ "
+        }
+    }
+
+    private func cycleFontSize() {
+        let current = currentFontSize
+        let idx = Self.fontSizes.firstIndex(of: current) ?? 1
+        let next = Self.fontSizes[(idx + 1) % Self.fontSizes.count]
+        if let note = note {
+            note.fontSize = next
+            try? context.save()
+            syncNoteToFirebase(note)
+        } else if let created = createdNote {
+            created.fontSize = next
+            try? context.save()
+            syncNoteToFirebase(created)
+        } else {
+            pendingFontSize = next
+        }
+    }
+
     private func performAutoSave() {
         if let existing = note {
             existing.content = text
@@ -129,10 +201,11 @@ struct NoteEditorView: View {
                 try? context.save()
                 syncNoteToFirebase(created)
             } else if !trimmed.isEmpty {
-                let newNote = NoteItem(content: text)
+                let newNote = NoteItem(content: text, fontSize: pendingFontSize)
                 context.insert(newNote)
                 try? context.save()
                 createdNote = newNote
+                pendingFontSize = nil
                 syncNoteToFirebase(newNote)
                 onNoteCreated?()
             }

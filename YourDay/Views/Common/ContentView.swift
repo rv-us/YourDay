@@ -233,6 +233,23 @@ struct ContentView: View {
             moreTab
                 .tag(Tab.settings)
         }
+        .gesture(
+            DragGesture(minimumDistance: 50)
+                .onEnded { value in
+                    let dx = value.translation.width
+                    let dy = value.translation.height
+                    guard abs(dx) > abs(dy) else { return }
+                    let allTabs = Tab.allCases
+                    guard let idx = allTabs.firstIndex(of: selectedTab) else { return }
+                    if dx < -50 {
+                        let next = (idx + 1) % allTabs.count
+                        selectedTab = allTabs[next]
+                    } else if dx > 50 {
+                        let prev = idx == 0 ? allTabs.count - 1 : idx - 1
+                        selectedTab = allTabs[prev]
+                    }
+                }
+        )
     }
 
     @ViewBuilder

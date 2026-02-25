@@ -15,6 +15,7 @@ struct NoteItemCodable: Codable, Identifiable {
     var localNoteId: String
     var content: String
     var createdAt: Date
+    var fontSize: Double?
 
     // Firebase metadata
     var userId: String
@@ -28,6 +29,7 @@ struct NoteItemCodable: Codable, Identifiable {
         self.localNoteId = model.id.uuidString
         self.content = model.content
         self.createdAt = model.createdAt
+        self.fontSize = model.fontSize
 
         self.userId = userId
         self.updatedAt = Date()
@@ -39,6 +41,7 @@ struct NoteItemCodable: Codable, Identifiable {
         localNoteId: String = UUID().uuidString,
         content: String,
         createdAt: Date = Date(),
+        fontSize: Double? = nil,
         userId: String,
         updatedAt: Date = Date(),
         schemaVersion: Int = 1
@@ -46,6 +49,7 @@ struct NoteItemCodable: Codable, Identifiable {
         self.localNoteId = localNoteId
         self.content = content
         self.createdAt = createdAt
+        self.fontSize = fontSize
         self.userId = userId
         self.updatedAt = updatedAt
         self.schemaVersion = schemaVersion
@@ -62,6 +66,7 @@ struct NoteItemCodable: Codable, Identifiable {
         localNoteId = try container.decode(String.self, forKey: .localNoteId)
         content = try container.decode(String.self, forKey: .content)
         createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
+        fontSize = try container.decodeIfPresent(Double.self, forKey: .fontSize)
 
         userId = try container.decode(String.self, forKey: .userId)
         updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
@@ -82,13 +87,14 @@ struct NoteItemCodable: Codable, Identifiable {
         try container.encode(localNoteId, forKey: .localNoteId)
         try container.encode(content, forKey: .content)
         try container.encode(createdAt, forKey: .createdAt)
+        try container.encodeIfPresent(fontSize, forKey: .fontSize)
         try container.encode(userId, forKey: .userId)
         try container.encode(updatedAt, forKey: .updatedAt)
         try container.encode(schemaVersion, forKey: .schemaVersion)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case localNoteId, content, createdAt
+        case localNoteId, content, createdAt, fontSize
         case userId, updatedAt, schemaVersion
     }
 
@@ -98,12 +104,14 @@ struct NoteItemCodable: Codable, Identifiable {
     func toNoteItemProperties() -> (
         id: UUID,
         content: String,
-        createdAt: Date
+        createdAt: Date,
+        fontSize: Double?
     ) {
         return (
             id: UUID(uuidString: self.localNoteId) ?? UUID(),
             content: self.content,
-            createdAt: self.createdAt
+            createdAt: self.createdAt,
+            fontSize: self.fontSize
         )
     }
 }
