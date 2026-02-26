@@ -2,8 +2,20 @@ import SwiftUI
 import FirebaseAuth
 import FirebaseFirestore
 
+enum InboxContext {
+    case dm(friend: FriendEntry)
+    case group(groupId: String, groupName: String)
+
+    var displayTitle: String {
+        switch self {
+        case .dm(let friend): return friend.displayName
+        case .group(_, let name): return name
+        }
+    }
+}
+
 struct SharedTasksInboxView: View {
-    let friend: FriendEntry
+    let context: InboxContext
     @EnvironmentObject var firebaseManager: FirebaseManager
     @Environment(\.modelContext) private var modelContext
     @State private var tasks: [SharedTask] = []
@@ -29,6 +41,14 @@ struct SharedTasksInboxView: View {
                             }
                             Spacer()
                         }
+
+                        // Show sender name in group context
+                        if case .group = context, let senderName = task.senderDisplayName, !senderName.isEmpty {
+                            Text("From: \(senderName)")
+                                .font(.caption2)
+                                .foregroundColor(dynamicSecondaryTextColor)
+                        }
+
                         Text(task.detail)
                             .font(.caption)
                             .foregroundColor(dynamicSecondaryTextColor)
@@ -62,16 +82,11 @@ struct SharedTasksInboxView: View {
                                 }
                                 .buttonStyle(.bordered)
                             }
-                            // Nudge logic:
-                            // - Regular shared task (isProgressShare = false): sender can nudge receiver after acceptance
-                            // - Progress share (isProgressShare = true): receiver can nudge sender, sender cannot nudge
                             if task.isAccepted && !task.isCompleted {
-                                // Regular shared task: sender nudges receiver
                                 if !task.isProgressShare && task.senderId == Auth.auth().currentUser?.uid, let id = task.id {
                                     Button("Nudge") { firebaseManager.nudgeSharedTask(sharedTaskId: id, to: task.receiverId) { _ in } }
                                         .buttonStyle(.bordered)
                                 }
-                                // Progress share: receiver nudges sender
                                 if task.isProgressShare && task.receiverId == Auth.auth().currentUser?.uid, let id = task.id {
                                     Button("Nudge") { firebaseManager.nudgeSharedTask(sharedTaskId: id, to: task.senderId) { _ in } }
                                         .buttonStyle(.bordered)
@@ -99,8 +114,15 @@ struct SharedTasksInboxView: View {
             .toolbarBackground(dynamicSecondaryBackgroundColor, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .onAppear {
-                listener = firebaseManager.listenToSharedTasks(with: friend.userId) { updated in
-                    tasks = updated
+                switch context {
+                case .dm(let friend):
+                    listener = firebaseManager.listenToSharedTasks(with: friend.userId) { updated in
+                        tasks = updated
+                    }
+                case .group(let groupId, _):
+                    listener = firebaseManager.listenToSharedTasksInGroup(groupId: groupId) { updated in
+                        tasks = updated
+                    }
                 }
             }
             .onDisappear {
@@ -113,7 +135,6 @@ struct SharedTasksInboxView: View {
 
     private func accept(_ task: SharedTask) {
         firebaseManager.acceptSharedTask(task) { _ in
-            // Ensure it exists in main list for receiver
             let localSubtasks: [Subtask] = task.subtasks.map { Subtask(id: UUID(), title: $0.title, isDone: $0.isDone) }
             let todo = TodoItem(
                 title: task.title,
@@ -127,10 +148,9 @@ struct SharedTasksInboxView: View {
                 isSharedPending: false
             )
             modelContext.insert(todo)
-            do { 
+            do {
                 try modelContext.save()
-                
-                // Sync accepted task to Firebase
+
                 if let userId = FirebaseAuth.Auth.auth().currentUser?.uid {
                     let codableTask = TodoItemCodable(from: todo, userId: userId)
                     firebaseManager.saveTodoItem(codableTask) { error in
@@ -141,9 +161,9 @@ struct SharedTasksInboxView: View {
                         }
                     }
                 }
-            } catch { 
-                print("Failed to insert accepted task into main list: \(error)") 
+            } catch {
+                print("Failed to insert accepted task into main list: \(error)")
             }
         }
     }
-} 
+}

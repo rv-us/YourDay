@@ -219,11 +219,11 @@ struct ChatDetailView: View {
                 }
         }
         .sheet(isPresented: $showInbox) {
-            SharedTasksInboxView(friend: friend)
+            SharedTasksInboxView(context: .dm(friend: friend))
                 .environmentObject(firebaseManager)
         }
         .sheet(isPresented: $showShareProgressPicker) {
-            ShareProgressPickerView(friendId: friend.userId)
+            ShareProgressPickerView(target: .dm(friendId: friend.userId))
                 .environmentObject(firebaseManager)
         }
         .background(dynamicBackgroundColor.edgesIgnoringSafeArea(.all))

@@ -2523,4 +2523,298 @@ class FirebaseManager: ObservableObject {
                 onUpdate(items)
             }
     }
+
+    // MARK: - Group Chats
+
+    func createGroup(name: String, memberIds: [String], memberDisplayNames: [String: String], completion: @escaping (Error?, String?) -> Void) {
+        guard let currentUserId = Auth.auth().currentUser?.uid else {
+            completion(NSError(domain: "", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]), nil)
+            return
+        }
+        let groupRef = db.collection("group_chats").document()
+        let groupId = groupRef.documentID
+        let now = Date()
+        let batch = db.batch()
+
+        let groupData: [String: Any] = [
+            "name": name,
+            "adminId": currentUserId,
+            "memberIds": memberIds,
+            "lastMessageText": "",
+            "lastMessageAt": Timestamp(date: now),
+            "lastMessageSenderId": "",
+            "createdAt": Timestamp(date: now)
+        ]
+        batch.setData(groupData, forDocument: groupRef)
+
+        for memberId in memberIds {
+            let memberRef = groupRef.collection("members").document(memberId)
+            let memberData: [String: Any] = [
+                "displayName": memberDisplayNames[memberId] ?? "",
+                "joinedAt": Timestamp(date: now),
+                "role": memberId == currentUserId ? "admin" : "member"
+            ]
+            batch.setData(memberData, forDocument: memberRef)
+        }
+
+        batch.commit { error in
+            completion(error, error == nil ? groupId : nil)
+        }
+    }
+
+    func listenToMyGroups(onUpdate: @escaping ([GroupConversation]) -> Void) -> ListenerRegistration? {
+        guard let currentUserId = Auth.auth().currentUser?.uid else { return nil }
+        return db.collection("group_chats")
+            .whereField("memberIds", arrayContains: currentUserId)
+            .addSnapshotListener { snapshot, error in
+                guard let documents = snapshot?.documents else {
+                    onUpdate([])
+                    return
+                }
+                var groups = documents.compactMap { try? $0.data(as: GroupConversation.self) }
+                groups.sort { $0.lastMessageAt > $1.lastMessageAt }
+                onUpdate(groups)
+            }
+    }
+
+    func sendGroupMessage(groupId: String, content: String, senderDisplayName: String, completion: @escaping (Error?) -> Void) {
+        guard let currentUserId = Auth.auth().currentUser?.uid else {
+            completion(NSError(domain: "", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+        let groupRef = db.collection("group_chats").document(groupId)
+        let msgRef = groupRef.collection("messages").document()
+        let now = Date()
+        let msgData: [String: Any] = [
+            "senderId": currentUserId,
+            "senderDisplayName": senderDisplayName,
+            "receiverId": "",
+            "content": content,
+            "timestamp": Timestamp(date: now)
+        ]
+        msgRef.setData(msgData) { error in
+            if let error = error {
+                completion(error)
+                return
+            }
+            groupRef.updateData([
+                "lastMessageText": content,
+                "lastMessageAt": Timestamp(date: now),
+                "lastMessageSenderId": currentUserId
+            ]) { error in
+                completion(error)
+            }
+        }
+    }
+
+    func listenToGroupChat(groupId: String, onUpdate: @escaping ([ChatMessage]) -> Void) -> ListenerRegistration? {
+        return db.collection("group_chats").document(groupId).collection("messages")
+            .order(by: "timestamp")
+            .addSnapshotListener { snapshot, error in
+                guard let documents = snapshot?.documents else {
+                    onUpdate([])
+                    return
+                }
+                let messages: [ChatMessage] = documents.compactMap { doc in
+                    guard var msg = try? doc.data(as: ChatMessage.self) else { return nil }
+                    msg.groupId = groupId
+                    return msg
+                }
+                onUpdate(messages)
+            }
+    }
+
+    func fetchGroupMembers(groupId: String, completion: @escaping ([GroupMember]) -> Void) {
+        db.collection("group_chats").document(groupId).collection("members")
+            .getDocuments { snapshot, _ in
+                let members = snapshot?.documents.compactMap { try? $0.data(as: GroupMember.self) } ?? []
+                completion(members)
+            }
+    }
+
+    func addMemberToGroup(groupId: String, userId: String, displayName: String, completion: @escaping (Error?) -> Void) {
+        let groupRef = db.collection("group_chats").document(groupId)
+        let memberRef = groupRef.collection("members").document(userId)
+        let batch = db.batch()
+        let memberData: [String: Any] = [
+            "displayName": displayName,
+            "joinedAt": Timestamp(date: Date()),
+            "role": "member"
+        ]
+        batch.setData(memberData, forDocument: memberRef)
+        batch.updateData(["memberIds": FieldValue.arrayUnion([userId])], forDocument: groupRef)
+        batch.commit(completion: completion)
+    }
+
+    func removeMemberFromGroup(groupId: String, userId: String, completion: @escaping (Error?) -> Void) {
+        let groupRef = db.collection("group_chats").document(groupId)
+        let memberRef = groupRef.collection("members").document(userId)
+        let batch = db.batch()
+        batch.deleteDocument(memberRef)
+        batch.updateData(["memberIds": FieldValue.arrayRemove([userId])], forDocument: groupRef)
+        batch.commit(completion: completion)
+    }
+
+    func leaveGroup(groupId: String, completion: @escaping (Error?) -> Void) {
+        guard let currentUserId = Auth.auth().currentUser?.uid else {
+            completion(NSError(domain: "", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+        let groupRef = db.collection("group_chats").document(groupId)
+        groupRef.getDocument { [weak self] snapshot, error in
+            guard let self = self, let data = snapshot?.data() else {
+                completion(error)
+                return
+            }
+            let memberIds = data["memberIds"] as? [String] ?? []
+            let remaining = memberIds.filter { $0 != currentUserId }
+
+            if remaining.isEmpty {
+                // Last member — delete the group
+                groupRef.delete(completion: completion)
+                return
+            }
+
+            let isAdmin = (data["adminId"] as? String) == currentUserId
+            let batch = self.db.batch()
+            batch.deleteDocument(groupRef.collection("members").document(currentUserId))
+            batch.updateData(["memberIds": FieldValue.arrayRemove([currentUserId])], forDocument: groupRef)
+            if isAdmin {
+                // Transfer admin to the first remaining member
+                batch.updateData(["adminId": remaining[0]], forDocument: groupRef)
+            }
+            batch.commit(completion: completion)
+        }
+    }
+
+    func sendSharedTaskToGroup(groupId: String, groupName: String, recipientIds: [String], title: String, detail: String, dueDate: Date, subtasks: [SharedSubtask], senderDisplayName: String, completion: @escaping (Error?, [String]?) -> Void) {
+        guard let currentUserId = Auth.auth().currentUser?.uid else {
+            completion(NSError(domain: "", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]), nil)
+            return
+        }
+        let batch = db.batch()
+        var createdIds: [String] = []
+        let subtasksPayload = subtasks.map { ["id": $0.id, "title": $0.title, "isDone": $0.isDone] as [String: Any] }
+
+        for recipientId in recipientIds {
+            let docRef = db.collection("shared_tasks").document()
+            createdIds.append(docRef.documentID)
+            let payload: [String: Any] = [
+                "senderId": currentUserId,
+                "receiverId": recipientId,
+                "title": title,
+                "detail": detail,
+                "dueDate": Timestamp(date: dueDate),
+                "isAccepted": false,
+                "isCompleted": false,
+                "createdAt": FieldValue.serverTimestamp(),
+                "completedAt": NSNull(),
+                "isProgressShare": false,
+                "subtasks": subtasksPayload,
+                "groupId": groupId,
+                "senderDisplayName": senderDisplayName
+            ]
+            batch.setData(payload, forDocument: docRef)
+        }
+
+        // System message in group chat
+        let msgRef = db.collection("group_chats").document(groupId).collection("messages").document()
+        let now = Date()
+        batch.setData([
+            "senderId": currentUserId,
+            "senderDisplayName": senderDisplayName,
+            "receiverId": "",
+            "content": "Sent task: \(title)",
+            "timestamp": Timestamp(date: now)
+        ], forDocument: msgRef)
+
+        let groupRef = db.collection("group_chats").document(groupId)
+        batch.updateData([
+            "lastMessageText": "Sent task: \(title)",
+            "lastMessageAt": Timestamp(date: now),
+            "lastMessageSenderId": currentUserId
+        ], forDocument: groupRef)
+
+        batch.commit { error in
+            completion(error, error == nil ? createdIds : nil)
+        }
+    }
+
+    func shareProgressToGroup(groupId: String, recipientIds: [String], title: String, detail: String, dueDate: Date, subtasks: [SharedSubtask], isCompleted: Bool, senderDisplayName: String, completion: @escaping (Error?, [String]?) -> Void) {
+        guard let currentUserId = Auth.auth().currentUser?.uid else {
+            completion(NSError(domain: "", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]), nil)
+            return
+        }
+        let batch = db.batch()
+        var createdIds: [String] = []
+        let subtasksPayload = subtasks.map { ["id": $0.id, "title": $0.title, "isDone": $0.isDone] as [String: Any] }
+        let now = Date()
+
+        for recipientId in recipientIds {
+            let docRef = db.collection("shared_tasks").document()
+            createdIds.append(docRef.documentID)
+            let payload: [String: Any] = [
+                "senderId": currentUserId,
+                "receiverId": recipientId,
+                "title": title,
+                "detail": detail,
+                "dueDate": Timestamp(date: dueDate),
+                "isAccepted": true,
+                "isCompleted": isCompleted,
+                "createdAt": FieldValue.serverTimestamp(),
+                "completedAt": isCompleted ? Timestamp(date: now) : NSNull(),
+                "isProgressShare": true,
+                "subtasks": subtasksPayload,
+                "groupId": groupId,
+                "senderDisplayName": senderDisplayName
+            ]
+            batch.setData(payload, forDocument: docRef)
+        }
+
+        let msgRef = db.collection("group_chats").document(groupId).collection("messages").document()
+        batch.setData([
+            "senderId": currentUserId,
+            "senderDisplayName": senderDisplayName,
+            "receiverId": "",
+            "content": "Shared progress: \(title)",
+            "timestamp": Timestamp(date: now)
+        ], forDocument: msgRef)
+
+        let groupRef = db.collection("group_chats").document(groupId)
+        batch.updateData([
+            "lastMessageText": "Shared progress: \(title)",
+            "lastMessageAt": Timestamp(date: now),
+            "lastMessageSenderId": currentUserId
+        ], forDocument: groupRef)
+
+        batch.commit { error in
+            completion(error, error == nil ? createdIds : nil)
+        }
+    }
+
+    func listenToSharedTasksInGroup(groupId: String, onUpdate: @escaping ([SharedTask]) -> Void) -> ListenerRegistration? {
+        guard let currentUserId = Auth.auth().currentUser?.uid else { return nil }
+        return db.collection("shared_tasks")
+            .whereField("groupId", isEqualTo: groupId)
+            .whereFilter(Filter.orFilter([
+                Filter.whereField("senderId", isEqualTo: currentUserId),
+                Filter.whereField("receiverId", isEqualTo: currentUserId)
+            ]))
+            .addSnapshotListener { snapshot, error in
+                guard let documents = snapshot?.documents else {
+                    onUpdate([])
+                    return
+                }
+                var tasks = documents.compactMap { try? $0.data(as: SharedTask.self) }
+                tasks.sort { $0.createdAt < $1.createdAt }
+                onUpdate(tasks)
+            }
+    }
+
+    func fetchGroup(groupId: String, completion: @escaping (GroupConversation?) -> Void) {
+        db.collection("group_chats").document(groupId).getDocument { snapshot, _ in
+            let group = snapshot.flatMap { try? $0.data(as: GroupConversation.self) }
+            completion(group)
+        }
+    }
 }

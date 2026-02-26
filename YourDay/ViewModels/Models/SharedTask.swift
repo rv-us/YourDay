@@ -20,4 +20,6 @@ struct SharedTask: Identifiable, Codable {
     var completedAt: Date?
     var subtasks: [SharedSubtask] = []
     var isProgressShare: Bool = false // true if sender is sharing their own progress, false if assigning task to receiver
+    var groupId: String? = nil            // nil for DM tasks; set when sent from a group chat
+    var senderDisplayName: String? = nil  // nil for DM tasks; set for group context display
 } 
