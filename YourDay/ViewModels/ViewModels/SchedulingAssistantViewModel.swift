@@ -245,6 +245,65 @@ class SchedulingAssistantViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Memory Management
+
+    func deleteDayOfWeekMemory(day: String, memory: String) {
+        guard var currentMemories = schedulePreference?.dayOfWeekMemories else { return }
+        guard var dayMemories = currentMemories[day] else { return }
+        
+        dayMemories.removeAll { $0 == memory }
+        if dayMemories.isEmpty {
+            currentMemories.removeValue(forKey: day)
+        } else {
+            currentMemories[day] = dayMemories
+        }
+        
+        updateSchedulePreference(["dayOfWeekMemories": currentMemories])
+    }
+
+    func editDayOfWeekMemory(day: String, oldMemory: String, newMemory: String) {
+        guard var currentMemories = schedulePreference?.dayOfWeekMemories else { return }
+        guard var dayMemories = currentMemories[day] else { return }
+        
+        if let index = dayMemories.firstIndex(of: oldMemory) {
+            dayMemories[index] = newMemory
+            currentMemories[day] = dayMemories
+            updateSchedulePreference(["dayOfWeekMemories": currentMemories])
+        }
+    }
+
+    func deleteScheduleConstraint(at index: Int) {
+        guard var constraints = schedulePreference?.scheduleConstraints else { return }
+        guard index >= 0 && index < constraints.count else { return }
+        
+        constraints.remove(at: index)
+        
+        let constraintsDicts = constraints.map { c in
+            var dict: [String: Any] = ["reason": c.reason]
+            if let timeRange = c.timeRange { dict["timeRange"] = timeRange }
+            if let context = c.context { dict["context"] = context }
+            return dict
+        }
+        
+        updateSchedulePreference(["scheduleConstraints": constraintsDicts])
+    }
+    
+    func editScheduleConstraint(at index: Int, newConstraint: ScheduleConstraint) {
+        guard var constraints = schedulePreference?.scheduleConstraints else { return }
+        guard index >= 0 && index < constraints.count else { return }
+        
+        constraints[index] = newConstraint
+        
+        let constraintsDicts = constraints.map { c in
+            var dict: [String: Any] = ["reason": c.reason]
+            if let timeRange = c.timeRange { dict["timeRange"] = timeRange }
+            if let context = c.context { dict["context"] = context }
+            return dict
+        }
+        
+        updateSchedulePreference(["scheduleConstraints": constraintsDicts])
+    }
+
     // MARK: - Day Contexts
 
     func fetchDayContexts() {

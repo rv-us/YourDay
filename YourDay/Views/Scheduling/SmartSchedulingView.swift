@@ -702,12 +702,12 @@ struct AgentMemorySection: View {
                 .font(.headline)
                 .foregroundColor(dynamicTextColor)
             
-            Text("The agent remembers your preferences and patterns")
+            Text("Tap to expand and edit. Swipe left to delete.")
                 .font(.caption)
                 .foregroundColor(dynamicSecondaryTextColor)
 
             if let preference = schedulingViewModel.schedulePreference {
-                ScrollView {
+                ScrollView(.vertical, showsIndicators: true) {
                     VStack(alignment: .leading, spacing: 20) {
                         // Day-of-Week Memories
                         if let dayMemories = preference.dayOfWeekMemories, !dayMemories.isEmpty {
@@ -731,22 +731,13 @@ struct AgentMemorySection: View {
                                                 .textCase(.uppercase)
                                             
                                             ForEach(memories, id: \.self) { memory in
-                                                HStack(alignment: .top, spacing: 8) {
-                                                    Image(systemName: "checkmark.circle.fill")
-                                                        .font(.caption2)
-                                                        .foregroundColor(.green)
-                                                        .padding(.top, 2)
-                                                    Text(memory)
-                                                        .font(.caption)
-                                                        .foregroundColor(dynamicTextColor)
-                                                        .fixedSize(horizontal: false, vertical: true)
-                                                }
+                                                ExpandableMemoryCard(
+                                                    memory: memory,
+                                                    day: day,
+                                                    schedulingViewModel: schedulingViewModel
+                                                )
                                             }
                                         }
-                                        .padding(.vertical, 8)
-                                        .padding(.horizontal, 12)
-                                        .background(dynamicBackgroundColor)
-                                        .cornerRadius(8)
                                     }
                                 }
                             }
@@ -765,42 +756,11 @@ struct AgentMemorySection: View {
                                 }
                                 
                                 ForEach(Array(preference.scheduleConstraints.enumerated()), id: \.offset) { index, constraint in
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        HStack(alignment: .top, spacing: 8) {
-                                            Image(systemName: "info.circle.fill")
-                                                .font(.caption2)
-                                                .foregroundColor(.orange)
-                                                .padding(.top, 2)
-                                            Text(constraint.reason)
-                                                .font(.caption)
-                                                .foregroundColor(dynamicTextColor)
-                                                .fixedSize(horizontal: false, vertical: true)
-                                        }
-                                        
-                                        if let timeRange = constraint.timeRange {
-                                            HStack(spacing: 4) {
-                                                Image(systemName: "clock")
-                                                    .font(.caption2)
-                                                    .foregroundColor(dynamicSecondaryTextColor)
-                                                Text(timeRange)
-                                                    .font(.caption2)
-                                                    .foregroundColor(dynamicSecondaryTextColor)
-                                            }
-                                            .padding(.leading, 20)
-                                        }
-                                        
-                                        if let context = constraint.context {
-                                            Text(context)
-                                                .font(.caption2)
-                                                .foregroundColor(dynamicSecondaryTextColor)
-                                                .italic()
-                                                .padding(.leading, 20)
-                                        }
-                                    }
-                                    .padding(.vertical, 8)
-                                    .padding(.horizontal, 12)
-                                    .background(dynamicBackgroundColor)
-                                    .cornerRadius(8)
+                                    ExpandableConstraintCard(
+                                        constraint: constraint,
+                                        index: index,
+                                        schedulingViewModel: schedulingViewModel
+                                    )
                                 }
                             }
                         }
@@ -824,8 +784,9 @@ struct AgentMemorySection: View {
                         }
                     }
                     .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .frame(maxHeight: 400)
+                .frame(maxHeight: 600)
             } else {
                 VStack(spacing: 8) {
                     ProgressView()
@@ -840,6 +801,335 @@ struct AgentMemorySection: View {
         .padding()
         .background(dynamicSecondaryBackgroundColor)
         .cornerRadius(12)
+    }
+}
+
+// MARK: - Expandable Memory Card
+
+struct ExpandableMemoryCard: View {
+    let memory: String
+    let day: String
+    @ObservedObject var schedulingViewModel: SchedulingAssistantViewModel
+    
+    @State private var isExpanded = false
+    @State private var editedText: String = ""
+    @State private var offset: CGFloat = 0
+    
+    var body: some View {
+        ZStack(alignment: .trailing) {
+            // Delete background
+            if offset < 0 {
+                HStack {
+                    Spacer()
+                    Button(action: {
+                        withAnimation(.spring()) {
+                            schedulingViewModel.deleteDayOfWeekMemory(day: day, memory: memory)
+                        }
+                    }) {
+                        Image(systemName: "trash.fill")
+                            .font(.title3)
+                            .foregroundColor(.white)
+                            .frame(width: 60, height: 60)
+                            .background(dynamicDestructiveColor)
+                            .cornerRadius(8)
+                    }
+                    .padding(.trailing, 16)
+                }
+            }
+            
+            // Card content
+            VStack(alignment: .leading, spacing: 0) {
+                // Collapsed view
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.caption)
+                        .foregroundColor(.green)
+                        .padding(.top, 2)
+                    
+                    Text(memory)
+                        .font(.subheadline)
+                        .foregroundColor(dynamicTextColor)
+                        .fixedSize(horizontal: false, vertical: true)
+                    
+                    Spacer()
+                    
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.caption)
+                        .foregroundColor(dynamicSecondaryTextColor)
+                }
+                .padding()
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        isExpanded.toggle()
+                        if isExpanded {
+                            editedText = memory
+                        }
+                    }
+                }
+                
+                // Expanded edit view
+                if isExpanded {
+                    Divider()
+                    
+                    VStack(alignment: .leading, spacing: 12) {
+                        TextField("Edit memory", text: $editedText, axis: .vertical)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.subheadline)
+                            .lineLimit(3...10)
+                            .frame(minHeight: 60)
+                        
+                        HStack(spacing: 12) {
+                            Button(action: {
+                                withAnimation(.spring()) {
+                                    isExpanded = false
+                                }
+                            }) {
+                                Text("Cancel")
+                                    .font(.subheadline)
+                                    .foregroundColor(dynamicSecondaryTextColor)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 8)
+                                    .background(dynamicSecondaryBackgroundColor)
+                                    .cornerRadius(8)
+                            }
+                            
+                            Button(action: {
+                                if !editedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && editedText != memory {
+                                    schedulingViewModel.editDayOfWeekMemory(day: day, oldMemory: memory, newMemory: editedText)
+                                }
+                                withAnimation(.spring()) {
+                                    isExpanded = false
+                                }
+                            }) {
+                                Text("Save")
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 8)
+                                    .background(editedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? dynamicSecondaryTextColor.opacity(0.5) : dynamicPrimaryColor)
+                                    .cornerRadius(8)
+                            }
+                            .disabled(editedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        }
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .background(dynamicBackgroundColor)
+            .cornerRadius(12)
+            .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .offset(x: offset)
+            .gesture(
+                DragGesture()
+                    .onChanged { value in
+                        if value.translation.width < 0 {
+                            offset = max(value.translation.width, -80)
+                        }
+                    }
+                    .onEnded { value in
+                        withAnimation(.spring()) {
+                            if value.translation.width < -50 {
+                                offset = -80
+                            } else {
+                                offset = 0
+                            }
+                        }
+                    }
+            )
+        }
+    }
+}
+
+// MARK: - Expandable Constraint Card
+
+struct ExpandableConstraintCard: View {
+    let constraint: ScheduleConstraint
+    let index: Int
+    @ObservedObject var schedulingViewModel: SchedulingAssistantViewModel
+    
+    @State private var isExpanded = false
+    @State private var editedReason: String = ""
+    @State private var editedTimeRange: String = ""
+    @State private var editedContext: String = ""
+    @State private var offset: CGFloat = 0
+    
+    var body: some View {
+        ZStack(alignment: .trailing) {
+            // Delete background
+            if offset < 0 {
+                HStack {
+                    Spacer()
+                    Button(action: {
+                        withAnimation(.spring()) {
+                            schedulingViewModel.deleteScheduleConstraint(at: index)
+                        }
+                    }) {
+                        Image(systemName: "trash.fill")
+                            .font(.title3)
+                            .foregroundColor(.white)
+                            .frame(width: 60, height: 60)
+                            .background(dynamicDestructiveColor)
+                            .cornerRadius(8)
+                    }
+                    .padding(.trailing, 16)
+                }
+            }
+            
+            // Card content
+            VStack(alignment: .leading, spacing: 0) {
+                // Collapsed view
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: "info.circle.fill")
+                            .font(.caption)
+                            .foregroundColor(.orange)
+                            .padding(.top, 2)
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(constraint.reason)
+                                .font(.subheadline)
+                                .foregroundColor(dynamicTextColor)
+                                .fixedSize(horizontal: false, vertical: true)
+                            
+                            if let timeRange = constraint.timeRange {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "clock")
+                                        .font(.caption2)
+                                        .foregroundColor(dynamicSecondaryTextColor)
+                                    Text(timeRange)
+                                        .font(.caption)
+                                        .foregroundColor(dynamicSecondaryTextColor)
+                                }
+                            }
+                        }
+                        
+                        Spacer()
+                        
+                        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                            .font(.caption)
+                            .foregroundColor(dynamicSecondaryTextColor)
+                    }
+                }
+                .padding()
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        isExpanded.toggle()
+                        if isExpanded {
+                            editedReason = constraint.reason
+                            editedTimeRange = constraint.timeRange ?? ""
+                            editedContext = constraint.context ?? ""
+                        }
+                    }
+                }
+                
+                // Expanded edit view
+                if isExpanded {
+                    Divider()
+                    
+                    VStack(alignment: .leading, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Reason")
+                                .font(.caption)
+                                .foregroundColor(dynamicSecondaryTextColor)
+                            TextField("Reason", text: $editedReason, axis: .vertical)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.subheadline)
+                                .lineLimit(2...6)
+                                .frame(minHeight: 50)
+                        }
+                        
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Time Range (optional)")
+                                .font(.caption)
+                                .foregroundColor(dynamicSecondaryTextColor)
+                            TextField("e.g., 12:00-13:00", text: $editedTimeRange)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.subheadline)
+                        }
+                        
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Context (optional)")
+                                .font(.caption)
+                                .foregroundColor(dynamicSecondaryTextColor)
+                            TextField("Additional context", text: $editedContext, axis: .vertical)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.subheadline)
+                                .lineLimit(2...6)
+                                .frame(minHeight: 50)
+                        }
+                        
+                        HStack(spacing: 12) {
+                            Button(action: {
+                                withAnimation(.spring()) {
+                                    isExpanded = false
+                                }
+                            }) {
+                                Text("Cancel")
+                                    .font(.subheadline)
+                                    .foregroundColor(dynamicSecondaryTextColor)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 8)
+                                    .background(dynamicSecondaryBackgroundColor)
+                                    .cornerRadius(8)
+                            }
+                            
+                            Button(action: {
+                                if !editedReason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                    let newConstraint = ScheduleConstraint(
+                                        reason: editedReason,
+                                        timeRange: editedTimeRange.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : editedTimeRange,
+                                        context: editedContext.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : editedContext
+                                    )
+                                    schedulingViewModel.editScheduleConstraint(at: index, newConstraint: newConstraint)
+                                }
+                                withAnimation(.spring()) {
+                                    isExpanded = false
+                                }
+                            }) {
+                                Text("Save")
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 8)
+                                    .background(editedReason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? dynamicSecondaryTextColor.opacity(0.5) : dynamicPrimaryColor)
+                                    .cornerRadius(8)
+                            }
+                            .disabled(editedReason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        }
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .background(dynamicBackgroundColor)
+            .cornerRadius(12)
+            .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .offset(x: offset)
+            .gesture(
+                DragGesture()
+                    .onChanged { value in
+                        if value.translation.width < 0 {
+                            offset = max(value.translation.width, -80)
+                        }
+                    }
+                    .onEnded { value in
+                        withAnimation(.spring()) {
+                            if value.translation.width < -50 {
+                                offset = -80
+                            } else {
+                                offset = 0
+                            }
+                        }
+                    }
+            )
+        }
     }
 }
 

@@ -116,13 +116,8 @@ struct ContentView: View {
             .sheet(isPresented: $showLastDayView, onDismiss: {
                 if newDayEvaluationTriggeredLastDayView {
                     newDayEvaluationTriggeredLastDayView = false
-                    let tasksThatNeedReview = allTodoItems.filter { todoItem in
-                        !todoItem.isDone || todoItem.subtasks.contains(where: { !$0.isDone })
-                    }
-                    if !tasksThatNeedReview.isEmpty {
-                        isInDailyFlow = true
-                        self.showMigrateTasksView = true
-                    }
+                    isInDailyFlow = true
+                    self.showMigrateTasksView = true
                 }
             }) {
                 NavigationView {
@@ -199,6 +194,9 @@ struct ContentView: View {
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+                Task {
+                    await processNewDayLogicIfNeeded()
+                }
                 TaskEndMonitor.shared.forceCheck()
             }
             .onAppear {
@@ -233,23 +231,6 @@ struct ContentView: View {
             moreTab
                 .tag(Tab.settings)
         }
-        .gesture(
-            DragGesture(minimumDistance: 50)
-                .onEnded { value in
-                    let dx = value.translation.width
-                    let dy = value.translation.height
-                    guard abs(dx) > abs(dy) else { return }
-                    let allTabs = Tab.allCases
-                    guard let idx = allTabs.firstIndex(of: selectedTab) else { return }
-                    if dx < -50 {
-                        let next = (idx + 1) % allTabs.count
-                        selectedTab = allTabs[next]
-                    } else if dx > 50 {
-                        let prev = idx == 0 ? allTabs.count - 1 : idx - 1
-                        selectedTab = allTabs[prev]
-                    }
-                }
-        )
     }
 
     @ViewBuilder
@@ -330,7 +311,9 @@ struct ContentView: View {
     }
 
     private func processNewDayLogicIfNeeded() async {
+        print("🕒 [DEBUG] processNewDayLogicIfNeeded called")
         guard let stats = currentPlayerStats else {
+            print("🕒 [DEBUG] currentPlayerStats is nil, skipping new day logic")
             return
         }
 
@@ -340,6 +323,8 @@ struct ContentView: View {
         formatter.dateFormat = "yyyy-MM-dd"
         let todayString = formatter.string(from: today)
         var shouldSyncStats = false
+        
+        print("🕒 [DEBUG] todayString: \(todayString), lastSummaryDateString: \(lastSummaryDateString)")
 
         if todayString != lastAppOpenDateForWitheringCheckString {
             if let lastLoginActual = stats.lastLoginDate {
@@ -391,20 +376,10 @@ struct ContentView: View {
             let (points, _) = PointManager.evaluateDailyPoints(context: modelContext, tasks: allTodoItems)
             await deleteOldDoneTasks()
 
-            let tasksThatNeedReview = allTodoItems.filter { todoItem in
-                !todoItem.isDone || todoItem.subtasks.contains(where: { !$0.isDone })
-            }
-
-            if points > 0 {
-                newDayEvaluationTriggeredLastDayView = true
-                showLastDayView = true
-            } else {
-                newDayEvaluationTriggeredLastDayView = false
-                if !tasksThatNeedReview.isEmpty {
-                    isInDailyFlow = true
-                    showMigrateTasksView = true
-                }
-            }
+            // Always trigger the flow when a new day is detected
+            newDayEvaluationTriggeredLastDayView = true
+            showLastDayView = true
+            
             lastSummaryDateString = todayString
             shouldSyncStats = true
         } else {
