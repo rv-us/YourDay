@@ -15,12 +15,12 @@ export default function MessageBubble({ message, isOwn }) {
       <div
         style={{
           maxWidth: "70%",
-          padding: "8px 12px",
+          padding: "10px 13px",
           borderRadius: isOwn ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
-          background: isOwn ? "#56AB2F" : "white",
+          background: isOwn ? "linear-gradient(135deg, #315522, #67a347)" : "rgba(255,255,255,0.9)",
           color: isOwn ? "white" : "#1B2E0A",
-          border: isOwn ? "none" : "1px solid #C8DDB0",
-          boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+          border: isOwn ? "none" : "1px solid rgba(69, 90, 44, 0.08)",
+          boxShadow: "0 8px 18px rgba(0,0,0,0.06)",
         }}
       >
         <div style={{ fontSize: 14 }}>{message.content}</div>

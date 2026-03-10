@@ -9,7 +9,6 @@ import { getFriends } from "../api/friendsApi";
 import MessageBubble from "../components/chat/MessageBubble";
 import MessageInput from "../components/chat/MessageInput";
 import SharedTaskCard from "../components/chat/SharedTaskCard";
-import LoadingSpinner from "../components/shared/LoadingSpinner";
 
 export default function ChatDetailPage() {
   const { friendId } = useParams();
@@ -25,14 +24,14 @@ export default function ChatDetailPage() {
 
   useEffect(() => {
     getFriends().then((friends) => {
-      const f = friends.find((f) => f.userId === friendId);
-      if (f) setFriendName(f.displayName);
+      const friend = friends.find((item) => item.userId === friendId);
+      if (friend) setFriendName(friend.displayName);
     });
   }, [friendId]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, showTasks]);
 
   const handleSend = async (content) => {
     setSending(true);
@@ -43,9 +42,10 @@ export default function ChatDetailPage() {
     }
   };
 
-  const handleCreateTask = async (e) => {
-    e.preventDefault();
+  const handleCreateTask = async (event) => {
+    event.preventDefault();
     if (!newTask.title.trim()) return;
+
     await createSharedTask({
       receiverId: friendId,
       title: newTask.title,
@@ -53,144 +53,105 @@ export default function ChatDetailPage() {
       dueDate: newTask.dueDate || null,
       subtasks: [],
     });
+
     setNewTask({ title: "", detail: "", dueDate: "" });
     setShowNewTask(false);
   };
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        height: "calc(100vh - 56px)",
-        maxWidth: 700,
-        margin: "0 auto",
-      }}
-    >
-      {/* Header */}
-      <div
-        style={{
-          padding: "12px 16px",
-          background: "white",
-          borderBottom: "1px solid #C8DDB0",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <Link to="/chat" style={{ color: "#56AB2F", fontSize: 20, fontWeight: 700 }}>←</Link>
-          <div
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: "50%",
-              background: "linear-gradient(135deg, #56AB2F, #A8E063)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "white",
-              fontWeight: 700,
-            }}
-          >
-            {(friendName || "?")[0].toUpperCase()}
-          </div>
-          <span style={{ fontWeight: 700, fontSize: 16 }}>{friendName || friendId}</span>
-        </div>
-        <button
-          className="btn btn-secondary btn-sm"
-          onClick={() => setShowTasks(!showTasks)}
-        >
-          Tasks {sharedTasks.length > 0 && `(${sharedTasks.length})`}
-        </button>
-      </div>
-
-      {/* Shared tasks panel */}
-      {showTasks && (
-        <div
-          style={{
-            maxHeight: 300,
-            overflowY: "auto",
-            background: "#F5F1E8",
-            borderBottom: "1px solid #C8DDB0",
-            padding: "12px 16px",
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-            <h4 style={{ fontWeight: 700, fontSize: 14 }}>Shared Tasks</h4>
-            <button
-              className="btn btn-primary btn-sm"
-              onClick={() => setShowNewTask(!showNewTask)}
+    <div className="chat-shell fade-in">
+      <div className="chat-frame">
+        <div className="chat-header">
+          <div className="chat-header__title">
+            <Link to="/chat" className="btn btn-ghost btn-sm">Back</Link>
+            <div
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: "50%",
+                background: "linear-gradient(135deg, #56AB2F, #A8E063)",
+                display: "grid",
+                placeItems: "center",
+                color: "white",
+                fontWeight: 700,
+                flexShrink: 0,
+              }}
             >
-              + New Task
-            </button>
+              {(friendName || "?")[0].toUpperCase()}
+            </div>
+            <div className="list-item__copy">
+              <div className="list-item__title">{friendName || friendId}</div>
+            </div>
           </div>
 
-          {showNewTask && (
-            <form onSubmit={handleCreateTask} style={{ marginBottom: 12 }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8, background: "white", padding: 12, borderRadius: 10, border: "1px solid #C8DDB0" }}>
-                <input
-                  placeholder="Task title *"
-                  value={newTask.title}
-                  onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
-                  required
-                  style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #C8DDB0", fontSize: 13 }}
-                />
-                <input
-                  placeholder="Details (optional)"
-                  value={newTask.detail}
-                  onChange={(e) => setNewTask({ ...newTask, detail: e.target.value })}
-                  style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #C8DDB0", fontSize: 13 }}
-                />
-                <input
-                  type="date"
-                  value={newTask.dueDate}
-                  onChange={(e) => setNewTask({ ...newTask, dueDate: e.target.value })}
-                  style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #C8DDB0", fontSize: 13 }}
-                />
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button type="submit" className="btn btn-primary btn-sm">Send Task</button>
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowNewTask(false)}>Cancel</button>
-                </div>
-              </div>
-            </form>
-          )}
+          <button className="btn btn-secondary btn-sm" onClick={() => setShowTasks((value) => !value)}>
+            Tasks {sharedTasks.length > 0 ? `(${sharedTasks.length})` : ""}
+          </button>
+        </div>
 
-          {sharedTasks.length === 0 ? (
-            <p style={{ fontSize: 13, color: "#5A7A3A" }}>No shared tasks yet.</p>
+        {showTasks && (
+          <div className="chat-sidebar">
+            <div className="stack">
+              <div className="toolbar-actions" style={{ justifyContent: "space-between" }}>
+                <div className="section-title">Shared Tasks</div>
+                <button className="btn btn-primary btn-sm" onClick={() => setShowNewTask((value) => !value)}>
+                  {showNewTask ? "Close" : "New Task"}
+                </button>
+              </div>
+
+              {showNewTask && (
+                <form onSubmit={handleCreateTask} className="stack">
+                  <input
+                    placeholder="Task title"
+                    value={newTask.title}
+                    onChange={(event) => setNewTask({ ...newTask, title: event.target.value })}
+                    required
+                  />
+                  <input
+                    placeholder="Details"
+                    value={newTask.detail}
+                    onChange={(event) => setNewTask({ ...newTask, detail: event.target.value })}
+                  />
+                  <input
+                    type="date"
+                    value={newTask.dueDate}
+                    onChange={(event) => setNewTask({ ...newTask, dueDate: event.target.value })}
+                  />
+                  <div className="toolbar-actions">
+                    <button type="submit" className="btn btn-primary btn-sm">Send</button>
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowNewTask(false)}>Cancel</button>
+                  </div>
+                </form>
+              )}
+
+              {sharedTasks.length === 0 ? (
+                <div className="empty-state">No shared tasks.</div>
+              ) : (
+                <div className="list">
+                  {sharedTasks.map((task) => (
+                    <SharedTaskCard key={task.id} task={task} onUpdate={() => {}} />
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        <div className="chat-body">
+          {messages.length === 0 ? (
+            <p className="list-item__meta" style={{ textAlign: "center", marginTop: 40 }}>
+              No messages yet.
+            </p>
           ) : (
-            sharedTasks.map((task) => (
-              <SharedTaskCard
-                key={task.id}
-                task={task}
-                onUpdate={() => {}}
-              />
+            messages.map((message) => (
+              <MessageBubble key={message.id} message={message} isOwn={message.senderId === user?.uid} />
             ))
           )}
+          <div ref={bottomRef} />
         </div>
-      )}
 
-      {/* Messages */}
-      <div
-        style={{
-          flex: 1,
-          overflowY: "auto",
-          padding: "16px",
-          background: "#F5F1E8",
-        }}
-      >
-        {messages.length === 0 && (
-          <p style={{ textAlign: "center", color: "#8FA87A", fontSize: 13, marginTop: 40 }}>
-            No messages yet. Say hi!
-          </p>
-        )}
-        {messages.map((msg) => (
-          <MessageBubble key={msg.id} message={msg} isOwn={msg.senderId === user?.uid} />
-        ))}
-        <div ref={bottomRef} />
+        <MessageInput onSend={handleSend} disabled={sending} />
       </div>
-
-      <MessageInput onSend={handleSend} disabled={sending} />
     </div>
   );
 }

@@ -7,6 +7,7 @@ import DashboardPage from "./pages/DashboardPage";
 import TasksPage from "./pages/TasksPage";
 import ProfilePage from "./pages/ProfilePage";
 import GardenPage from "./pages/GardenPage";
+import CalendarPage from "./pages/CalendarPage";
 import LeaderboardPage from "./pages/LeaderboardPage";
 import SocialPage from "./pages/SocialPage";
 import ChatListPage from "./pages/ChatListPage";
@@ -42,6 +43,7 @@ export default function App() {
                     <Route path="/tasks" element={<TasksPage />} />
                     <Route path="/profile" element={<ProfilePage />} />
                     <Route path="/garden" element={<GardenPage />} />
+                    <Route path="/calendar" element={<CalendarPage />} />
                     <Route path="/leaderboard" element={<LeaderboardPage />} />
                     <Route path="/social" element={<SocialPage />} />
                     <Route path="/chat" element={<ChatListPage />} />

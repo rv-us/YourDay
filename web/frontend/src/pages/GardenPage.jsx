@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { getGarden } from "../api/gardenApi";
 import GardenGrid from "../components/garden/GardenGrid";
 import LoadingSpinner from "../components/shared/LoadingSpinner";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { getPlantDisplayName } from "../lib/plantCatalog";
 
 function getCurrentSeason() {
   const month = new Date().getMonth() + 1;
@@ -62,24 +63,20 @@ export default function GardenPage() {
           <CardContent>
             <div className="hero-layout">
               <div className="stack">
-                <span className="eyebrow">{season} cultivation</span>
                 <h1 className="page-title page-title--serif">Your garden should feel earned.</h1>
-                <p className="page-summary">
-                  This is the visual proof of your consistency: plots you own, plants you have grown, and inventory
-                  waiting for the next session.
-                </p>
+                <div className="status-pill status-pill--warm">{season}</div>
               </div>
 
               <div className="hero-metrics">
                 <div className="metric-card">
-                  <div className="metric-label">Garden value</div>
+                  <div className="metric-label">Value</div>
                   <div className="metric-value">{Math.round(garden.gardenValue)}</div>
-                  <div className="metric-meta">current cultivated value</div>
+                  <div className="metric-meta">garden</div>
                 </div>
                 <div className="metric-card">
-                  <div className="metric-label">Fully grown</div>
+                  <div className="metric-label">Grown</div>
                   <div className="metric-value">{grownCount}</div>
-                  <div className="metric-meta">mature plants on the island</div>
+                  <div className="metric-meta">plants</div>
                 </div>
               </div>
             </div>
@@ -109,9 +106,7 @@ export default function GardenPage() {
           <Card>
             <CardHeader>
               <div>
-                <span className="eyebrow">Island view</span>
                 <CardTitle>Garden Grid</CardTitle>
-                <CardDescription>Track planted plots and inspect growth without leaving the dashboard flow.</CardDescription>
               </div>
             </CardHeader>
             <CardContent>
@@ -144,18 +139,18 @@ export default function GardenPage() {
                   style={{
                     position: "absolute",
                     left: "50%",
-                    bottom: 0,
+                    bottom: "4%",
                     transform: "translateX(-50%)",
                     maxWidth: "82%",
                     maxHeight: "80%",
                     pointerEvents: "none",
                   }}
                 />
-                <div style={{ position: "relative", zIndex: 1, display: "grid", gap: "1rem", justifyItems: "center" }}>
+                <div style={{ position: "relative", zIndex: 1, display: "grid", gap: "1rem", justifyItems: "center", minHeight: "100%" }}>
                   <div className="status-pill status-pill--warm">{season} season active</div>
                   {garden.placedPlants?.length === 0 && garden.numberOfOwnedPlots === 0 ? (
                     <div className="empty-state" style={{ maxWidth: 420 }}>
-                      No plots yet. Buy your first seeds in the app to start building the island.
+                      No plots yet.
                     </div>
                   ) : (
                     <GardenGrid
@@ -172,9 +167,7 @@ export default function GardenPage() {
             <Card variant="accent">
               <CardHeader>
                 <div>
-                  <span className="eyebrow">Seasonal status</span>
                   <CardTitle>Growth Snapshot</CardTitle>
-                  <CardDescription>Keep an eye on what is mature, what is planted, and what still needs tending.</CardDescription>
                 </div>
               </CardHeader>
               <CardContent>
@@ -182,21 +175,21 @@ export default function GardenPage() {
                   <div className="list-item">
                     <div className="list-item__copy">
                       <span className="list-item__title">Mature plants</span>
-                      <span className="list-item__meta">{grownCount} plots are fully grown.</span>
+                      <span className="list-item__meta">{grownCount} ready</span>
                     </div>
                     <span className="status-pill">{grownCount}</span>
                   </div>
                   <div className="list-item">
                     <div className="list-item__copy">
                       <span className="list-item__title">Active placements</span>
-                      <span className="list-item__meta">{(garden.placedPlants || []).length} plants are on the island.</span>
+                      <span className="list-item__meta">{(garden.placedPlants || []).length} on the island</span>
                     </div>
                     <span className="status-pill status-pill--warm">{(garden.placedPlants || []).length}</span>
                   </div>
                   <div className="list-item">
                     <div className="list-item__copy">
                       <span className="list-item__title">Support inventory</span>
-                      <span className="list-item__meta">{garden.fertilizerCount} fertilizer boosts available.</span>
+                      <span className="list-item__meta">{garden.fertilizerCount} fertilizer</span>
                     </div>
                     <span className="status-pill">{garden.fertilizerCount}</span>
                   </div>
@@ -208,9 +201,7 @@ export default function GardenPage() {
               <Card variant="muted">
                 <CardHeader>
                   <div>
-                    <span className="eyebrow">Inventory</span>
                     <CardTitle>Unplaced Plants</CardTitle>
-                    <CardDescription>These plants are available but not yet staged in a plot.</CardDescription>
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -218,8 +209,8 @@ export default function GardenPage() {
                     {Object.entries(garden.unplacedPlantsInventory).map(([id, count]) => (
                       <div key={id} className="list-item">
                         <div className="list-item__copy">
-                          <span className="list-item__title">{id}</span>
-                          <span className="list-item__meta">Ready to be placed in the next open plot.</span>
+                          <span className="list-item__title">{getPlantDisplayName(id)}</span>
+                          <span className="list-item__meta">ready to place</span>
                         </div>
                         <span className="status-pill">{count}</span>
                       </div>

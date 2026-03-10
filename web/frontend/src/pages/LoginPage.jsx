@@ -43,44 +43,33 @@ export default function LoginPage() {
       <div className="auth-layout">
         <section className="auth-showcase">
           <div className="stack">
-            <span className="eyebrow" style={{ color: "rgba(247,244,234,0.68)" }}>
-              Professional task garden
-            </span>
-            <h1 className="page-title page-title--serif">A task dashboard with better posture.</h1>
-            <p className="page-summary" style={{ color: "rgba(247,244,234,0.78)" }}>
-              YourDay blends disciplined task management with a cultivated garden system so progress feels visible
-              without looking playful or loose.
-            </p>
+            <h1 className="page-title page-title--serif">Plan. Finish. Grow.</h1>
           </div>
 
           <div className="auth-showcase__grid">
             <div className="metric-card">
-              <div className="metric-label">Plan the day</div>
+              <div className="metric-label">Tasks</div>
               <div className="metric-value" style={{ fontSize: "1.4rem" }}>
                 Tight boards
               </div>
-              <div className="metric-meta">Daily and master lists stay separated.</div>
             </div>
             <div className="metric-card">
-              <div className="metric-label">Grow progress</div>
+              <div className="metric-label">Garden</div>
               <div className="metric-value" style={{ fontSize: "1.4rem" }}>
                 Visible rewards
               </div>
-              <div className="metric-meta">Consistency feeds the island and your profile.</div>
             </div>
             <div className="metric-card">
-              <div className="metric-label">Stay aligned</div>
+              <div className="metric-label">Social</div>
               <div className="metric-value" style={{ fontSize: "1.4rem" }}>
                 Shared momentum
               </div>
-              <div className="metric-meta">Friends, notes, and summaries stay connected.</div>
             </div>
             <div className="metric-card">
-              <div className="metric-label">Keep context</div>
+              <div className="metric-label">Notes</div>
               <div className="metric-value" style={{ fontSize: "1.4rem" }}>
                 Workspace memory
               </div>
-              <div className="metric-meta">Notes and journals support the daily loop.</div>
             </div>
           </div>
         </section>
@@ -96,7 +85,7 @@ export default function LoginPage() {
               </span>
               <div>
                 <div className="auth-brand__title">YourDay</div>
-                <div className="auth-brand__copy">Sign in to the control center</div>
+                <div className="auth-brand__copy">Sign in</div>
               </div>
             </div>
           </div>

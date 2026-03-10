@@ -9,7 +9,6 @@ import LoadingSpinner from "../components/shared/LoadingSpinner";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "../components/ui/card";
@@ -83,104 +82,49 @@ export default function DashboardPage() {
           <CardContent>
             <div className="hero-layout">
               <div className="stack">
-                <span className="eyebrow">Garden Control Center</span>
-                <div className="stack--sm">
-                  <p className="page-title page-title--serif">{getGreeting(displayName)}</p>
-                  <p className="page-summary">
-                    Keep today tight: clear priorities, watch your garden momentum, and stay synced with the people
-                    pushing alongside you.
-                  </p>
-                </div>
-                <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+                <p className="page-title page-title--serif">{getGreeting(displayName)}</p>
+                <div className="toolbar-actions">
                   <Link to="/tasks" className="btn btn-secondary">
-                    Review Today
+                    Tasks
                   </Link>
                   <Link to="/garden" className="btn btn-ghost" style={{ color: "#f8f5ee", borderColor: "rgba(255,255,255,0.16)" }}>
-                    Visit Garden
+                    Garden
                   </Link>
                 </div>
               </div>
 
               <div className="hero-metrics">
                 <div className="metric-card">
-                  <div className="metric-label">Today queue</div>
+                  <div className="metric-label">Open</div>
                   <div className="metric-value">{pendingToday.length}</div>
-                  <div className="metric-meta">tasks still need attention</div>
+                  <div className="metric-meta">today</div>
                 </div>
                 <div className="metric-card">
                   <div className="metric-label">Completion</div>
                   <div className="metric-value">{completionPct}%</div>
-                  <div className="metric-meta">{completedToday.length} finished today</div>
+                  <div className="metric-meta">{completedToday.length} done</div>
                 </div>
                 <div className="metric-card">
-                  <div className="metric-label">Notes captured</div>
+                  <div className="metric-label">Notes</div>
                   <div className="metric-value">{notes.length}</div>
-                  <div className="metric-meta">thoughts saved in your workspace</div>
+                  <div className="metric-meta">saved</div>
                 </div>
                 <div className="metric-card">
-                  <div className="metric-label">Social pulse</div>
+                  <div className="metric-label">Friends</div>
                   <div className="metric-value">{activeFriends}</div>
-                  <div className="metric-meta">friends showed movement yesterday</div>
+                  <div className="metric-meta">active</div>
                 </div>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <div className="stats-grid">
-          <Card variant="accent">
-            <CardContent>
-              <div className="mini-stat">
-                <span className="metric-label">Focus load</span>
-                <span className="mini-stat__value">{pendingToday.length || "0"}</span>
-                <span className="mini-stat__label">
-                  {pendingToday.length > 0 ? "Top priority items still open" : "You are clear for today"}
-                </span>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent>
-              <div className="mini-stat">
-                <span className="metric-label">Notes bank</span>
-                <span className="mini-stat__value">{notes.length}</span>
-                <span className="mini-stat__label">Ideas and references ready to pull from</span>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent>
-              <div className="mini-stat">
-                <span className="metric-label">Friends active</span>
-                <span className="mini-stat__value">{activeFriends}</span>
-                <span className="mini-stat__label">Recent activity from your circle</span>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card variant="muted">
-            <CardContent>
-              <div className="mini-stat">
-                <span className="metric-label">Journal cadence</span>
-                <span className="mini-stat__value">{notes.length + completedToday.length}</span>
-                <span className="mini-stat__label">Signals worth carrying into your summary</span>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
         <div className="dashboard-grid dashboard-grid--two">
           <div className="stack">
             <Card>
               <CardHeader>
                 <div>
-                  <span className="eyebrow">Today</span>
                   <CardTitle>Focus Board</CardTitle>
-                  <CardDescription>
-                    Prioritized tasks for the current day, kept intentionally narrow.
-                  </CardDescription>
                 </div>
                 <span className={`status-pill${pendingToday.length ? "" : " status-pill--warm"}`}>
                   {pendingToday.length ? `${pendingToday.length} in motion` : "cleared"}
@@ -193,7 +137,7 @@ export default function DashboardPage() {
                   </div>
 
                   {pendingToday.length === 0 ? (
-                    <div className="empty-state">No tasks due today. Use this time to plan ahead or tend the garden.</div>
+                    <div className="empty-state">No tasks due today.</div>
                   ) : (
                     <div className="list">
                       {pendingToday.slice(0, 5).map((task) => (
@@ -218,17 +162,15 @@ export default function DashboardPage() {
             <Card>
               <CardHeader>
                 <div>
-                  <span className="eyebrow">Capture</span>
                   <CardTitle>Recent Notes</CardTitle>
-                  <CardDescription>Quick references and ideas worth keeping close.</CardDescription>
                 </div>
                 <Link to="/notes" className="section-link">
-                  Open Notes
+                  Notes
                 </Link>
               </CardHeader>
               <CardContent>
                 {recentNotes.length === 0 ? (
-                  <div className="empty-state">No notes yet. Start a note to build your workspace memory.</div>
+                  <div className="empty-state">No notes yet.</div>
                 ) : (
                   <div className="list">
                     {recentNotes.map((note) => (
@@ -255,9 +197,7 @@ export default function DashboardPage() {
             <Card variant="accent">
               <CardHeader>
                 <div>
-                  <span className="eyebrow">Social</span>
                   <CardTitle>Friends Activity</CardTitle>
-                  <CardDescription>Momentum snapshots from the rest of your garden circle.</CardDescription>
                 </div>
                 {friendCards.length > 1 && (
                   <span className="status-pill">{friendCardIndex + 1} / {friendCards.length}</span>
@@ -265,7 +205,7 @@ export default function DashboardPage() {
               </CardHeader>
               <CardContent>
                 {friendCards.length === 0 ? (
-                  <div className="empty-state">Add friends to compare streaks, completed tasks, and daily movement.</div>
+                  <div className="empty-state">No friend activity yet.</div>
                 ) : (
                   <div className="stack--sm">
                     <FriendActivityCard card={friendCards[friendCardIndex]} />
@@ -297,9 +237,7 @@ export default function DashboardPage() {
             <Card variant="muted">
               <CardHeader>
                 <div>
-                  <span className="eyebrow">Reflection</span>
                   <CardTitle>Daily Summary</CardTitle>
-                  <CardDescription>What you should carry into journaling before the day closes.</CardDescription>
                 </div>
               </CardHeader>
               <CardContent>
@@ -310,7 +248,7 @@ export default function DashboardPage() {
                       {completedToday.length}
                     </div>
                     <div className="metric-meta" style={{ color: "var(--text-secondary)" }}>
-                      tasks completed
+                      completed
                     </div>
                   </div>
                   <div className="metric-card metric-card--light">
@@ -319,13 +257,13 @@ export default function DashboardPage() {
                       {notes.length}
                     </div>
                     <div className="metric-meta" style={{ color: "var(--text-secondary)" }}>
-                      notes logged
+                      captured
                     </div>
                   </div>
                 </div>
                 <div style={{ marginTop: "1rem" }}>
                   <Link to="/journal" className="btn btn-primary" style={{ width: "100%" }}>
-                    Open Daily Journal
+                    Journal
                   </Link>
                 </div>
               </CardContent>

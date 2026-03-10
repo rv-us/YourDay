@@ -17,23 +17,21 @@ export default function MessageInput({ onSend, disabled }) {
         display: "flex",
         gap: 8,
         padding: "12px 16px",
-        borderTop: "1px solid #C8DDB0",
-        background: "white",
+        borderTop: "1px solid rgba(69, 90, 44, 0.08)",
+        background: "rgba(255,255,255,0.78)",
       }}
     >
       <input
         type="text"
-        placeholder="Type a message..."
+        placeholder="Message"
         value={text}
         onChange={(e) => setText(e.target.value)}
         disabled={disabled}
         style={{
           flex: 1,
+          width: "auto",
           padding: "8px 14px",
           borderRadius: 20,
-          border: "1px solid #C8DDB0",
-          fontSize: 14,
-          outline: "none",
         }}
       />
       <button

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { getNotes, saveNote, deleteNote } from "../api/notesApi";
 import LoadingSpinner from "../components/shared/LoadingSpinner";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 
 function formatDate(iso) {
   if (!iso) return "Undated";
@@ -77,12 +77,8 @@ export default function NotesPage() {
           <CardContent>
             <div className="hero-layout">
               <div className="stack">
-                <span className="eyebrow">Workspace memory</span>
-                <h1 className="page-title">Notes that stay within reach.</h1>
-                <p className="page-summary">
-                  Capture quick thinking, rough plans, and references without turning the workspace into clutter.
-                </p>
-                <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+                <h1 className="page-title">Notes</h1>
+                <div className="toolbar-actions">
                   <button className="btn btn-secondary" onClick={() => setShowNewNote(true)}>
                     New Note
                   </button>
@@ -94,16 +90,16 @@ export default function NotesPage() {
 
               <div className="hero-metrics">
                 <div className="metric-card">
-                  <div className="metric-label">Note count</div>
+                  <div className="metric-label">Count</div>
                   <div className="metric-value">{notes.length}</div>
-                  <div className="metric-meta">cloud-synced entries</div>
+                  <div className="metric-meta">saved</div>
                 </div>
                 <div className="metric-card">
                   <div className="metric-label">State</div>
                   <div className="metric-value" style={{ fontSize: "1.15rem" }}>
                     {notes.length ? "Organized" : "Empty"}
                   </div>
-                  <div className="metric-meta">ready for quick capture</div>
+                  <div className="metric-meta">workspace</div>
                 </div>
               </div>
             </div>
@@ -114,9 +110,7 @@ export default function NotesPage() {
           <Card variant="accent">
             <CardHeader>
               <div>
-                <span className="eyebrow">New entry</span>
-                <CardTitle>Capture a fresh note</CardTitle>
-                <CardDescription>Short is fine. Use this as a quick scratchpad or reference shelf.</CardDescription>
+                <CardTitle>New Note</CardTitle>
               </div>
             </CardHeader>
             <CardContent>
@@ -153,7 +147,7 @@ export default function NotesPage() {
         ) : notes.length === 0 ? (
           <Card>
             <CardContent>
-              <div className="empty-state">No notes yet. Create the first entry to start building your workspace memory.</div>
+              <div className="empty-state">No notes yet.</div>
             </CardContent>
           </Card>
         ) : (

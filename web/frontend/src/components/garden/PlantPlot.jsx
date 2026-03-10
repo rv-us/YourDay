@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { theme } from "../../styles/theme";
+import { resolvePlantAssetName } from "../../lib/plantCatalog";
 
 function getCurrentSeason() {
   const month = new Date().getMonth() + 1;
@@ -10,7 +11,10 @@ function getCurrentSeason() {
 }
 
 function getGrowthImageSrc(plant) {
-  if (plant.daysLeftTillFullyGrown <= 0) return `/plants/${plant.assetName}.png`;
+  if (plant.daysLeftTillFullyGrown <= 0) {
+    const assetName = resolvePlantAssetName(plant);
+    return assetName ? `/plants/${assetName}.png` : null;
+  }
   if (plant.initialDaysToGrow > 0 && plant.daysLeftTillFullyGrown <= plant.initialDaysToGrow / 2) {
     return "/plants/seedling.png";
   }
@@ -26,76 +30,85 @@ export default function PlantPlot({ plant, onClick }) {
   const imgSrc = getGrowthImageSrc(plant);
 
   return (
-    <div
+    <button
+      type="button"
       onClick={onClick}
       style={{
-        border: `2px solid ${rarityColor}`,
-        borderRadius: 10,
-        background: `${rarityColor}18`,
+        width: "100%",
+        height: "100%",
+        border: 0,
+        padding: 0,
+        background: "transparent",
         cursor: "pointer",
-        overflow: "hidden",
-        position: "relative",
-        aspectRatio: "1",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        transition: "transform 0.15s, box-shadow 0.15s",
-      }}
-      onMouseEnter={(event) => {
-        event.currentTarget.style.transform = "scale(1.04)";
-        event.currentTarget.style.boxShadow = `0 4px 12px ${rarityColor}44`;
-      }}
-      onMouseLeave={(event) => {
-        event.currentTarget.style.transform = "scale(1)";
-        event.currentTarget.style.boxShadow = "none";
       }}
     >
-      {!imgError ? (
-        <img
-          src={imgSrc}
-          alt={plant.name}
-          onError={() => setImgError(true)}
-          style={{ width: "80%", height: "80%", objectFit: "contain" }}
-        />
-      ) : (
-        <div
-          style={{
-            width: "80%",
-            height: "80%",
-            background: `${rarityColor}44`,
-            borderRadius: 6,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 11,
-            color: rarityColor,
-            fontWeight: 700,
-            textAlign: "center",
-            padding: 4,
-          }}
-        >
-          {plant.name.slice(0, 2)}
-        </div>
-      )}
-
       <div
         style={{
-          position: "absolute",
-          bottom: 2,
-          left: 2,
-          right: 2,
-          textAlign: "center",
-          fontSize: 9,
-          fontWeight: 700,
-          color: isGrown ? "#2E6B10" : "#BF360C",
-          background: isGrown ? "#C8E6C9" : "#FBE9E7",
-          borderRadius: 4,
-          padding: "1px 2px",
+          width: "100%",
+          height: "100%",
+          position: "relative",
+          display: "grid",
+          placeItems: "center",
+          transition: "transform 0.15s ease",
+        }}
+        onMouseEnter={(event) => {
+          event.currentTarget.style.transform = "translateY(-2px) scale(1.04)";
+        }}
+        onMouseLeave={(event) => {
+          event.currentTarget.style.transform = "translateY(0) scale(1)";
         }}
       >
-        {isGrown ? (hasBonus ? "Season Bonus" : "Grown") : `${plant.daysLeftTillFullyGrown}d left`}
+        {!imgError && imgSrc ? (
+          <img
+            src={imgSrc}
+            alt={plant.name}
+            onError={() => setImgError(true)}
+            style={{
+              width: isGrown ? "92%" : "58%",
+              height: isGrown ? "92%" : "58%",
+              objectFit: "contain",
+              filter: `drop-shadow(0 10px 16px ${rarityColor}44)`,
+            }}
+          />
+        ) : (
+          <div
+            style={{
+              width: "72%",
+              height: "72%",
+              background: `${rarityColor}44`,
+              borderRadius: 12,
+              display: "grid",
+              placeItems: "center",
+              fontSize: 12,
+              color: rarityColor,
+              fontWeight: 700,
+              textAlign: "center",
+              padding: 4,
+            }}
+          >
+            {plant.name.slice(0, 2)}
+          </div>
+        )}
+
+        <div
+          style={{
+            position: "absolute",
+            bottom: "-6%",
+            left: "50%",
+            transform: "translateX(-50%)",
+            textAlign: "center",
+            fontSize: 9,
+            fontWeight: 700,
+            color: isGrown ? "#2E6B10" : "#BF360C",
+            background: isGrown ? "rgba(200, 230, 201, 0.95)" : "rgba(251, 233, 231, 0.95)",
+            borderRadius: 999,
+            padding: "2px 6px",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {isGrown ? (hasBonus ? "Season Bonus" : "Grown") : `${plant.daysLeftTillFullyGrown}d left`}
+        </div>
       </div>
-    </div>
+    </button>
   );
 }

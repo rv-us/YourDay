@@ -1,6 +1,7 @@
 import { useState } from "react";
 import RarityBadge from "../shared/RarityBadge";
 import { theme } from "../../styles/theme";
+import { resolvePlantAssetName } from "../../lib/plantCatalog";
 
 function getCurrentSeason() {
   const m = new Date().getMonth() + 1;
@@ -22,6 +23,7 @@ export default function PlantInfoModal({ plant, onClose }) {
   const season = getCurrentSeason();
   const hasBonus = plant.daysLeftTillFullyGrown <= 0 && plant.theme === season;
   const dynamicValue = getDynamicValue(plant);
+  const assetName = resolvePlantAssetName(plant);
 
   return (
     <div
@@ -51,7 +53,7 @@ export default function PlantInfoModal({ plant, onClose }) {
         <div style={{ textAlign: "center", marginBottom: 16 }}>
           {!imgError ? (
             <img
-              src={`/plants/${plant.assetName}.png`}
+              src={assetName ? `/plants/${assetName}.png` : ""}
               alt={plant.name}
               onError={() => setImgError(true)}
               style={{ width: 100, height: 100, objectFit: "contain" }}

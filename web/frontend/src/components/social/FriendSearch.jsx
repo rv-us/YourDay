@@ -14,6 +14,7 @@ export default function FriendSearch({ onRequestSent }) {
       debounceRef.current = setTimeout(() => setResults([]), 0);
       return;
     }
+
     debounceRef.current = setTimeout(() => {
       setLoading(true);
       searchUsers(query)
@@ -39,51 +40,25 @@ export default function FriendSearch({ onRequestSent }) {
     <div>
       <input
         type="text"
-        placeholder="Search by display name..."
+        placeholder="Search display name"
         value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        style={{
-          width: "100%",
-          padding: "10px 14px",
-          borderRadius: 10,
-          border: "1px solid #C8DDB0",
-          fontSize: 14,
-          outline: "none",
-          background: "white",
-        }}
+        onChange={(event) => setQuery(event.target.value)}
       />
-      {loading && <p style={{ fontSize: 12, color: "#5A7A3A", marginTop: 8 }}>Searching...</p>}
+      {loading && <p className="list-item__meta" style={{ marginTop: 8 }}>Searching...</p>}
       {results.length > 0 && (
-        <div
-          style={{
-            marginTop: 8,
-            background: "white",
-            borderRadius: 10,
-            border: "1px solid #C8DDB0",
-            overflow: "hidden",
-          }}
-        >
+        <div className="list" style={{ marginTop: 8 }}>
           {results.map((user) => (
-            <div
-              key={user.userId}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: "10px 14px",
-                borderBottom: "1px solid #F0F0F0",
-              }}
-            >
-              <div>
-                <div style={{ fontWeight: 600, fontSize: 14 }}>{user.displayName}</div>
-                <div style={{ fontSize: 11, color: "#5A7A3A" }}>Level {user.playerLevel}</div>
+            <div key={user.userId} className="list-item">
+              <div className="list-item__copy">
+                <div className="list-item__title">{user.displayName}</div>
+                <div className="list-item__meta">Level {user.playerLevel}</div>
               </div>
               <button
                 className="btn btn-primary btn-sm"
                 onClick={() => handleSend(user.displayName)}
                 disabled={sent[user.displayName]}
               >
-                {sent[user.displayName] ? "Sent ✓" : "Add"}
+                {sent[user.displayName] ? "Sent" : "Add"}
               </button>
             </div>
           ))}

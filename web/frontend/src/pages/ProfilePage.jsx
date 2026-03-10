@@ -7,7 +7,7 @@ import { useAuth } from "../context/AuthContext";
 import XPBar from "../components/shared/XPBar";
 import StatBadge from "../components/shared/StatBadge";
 import LoadingSpinner from "../components/shared/LoadingSpinner";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 
 function xpForNextLevel(level) {
   if (level <= 0) return 100;
@@ -59,7 +59,6 @@ export default function ProfilePage() {
           <CardContent>
             <div className="hero-layout">
               <div className="stack">
-                <span className="eyebrow">Player profile</span>
                 <h1 className="page-title">{user?.displayName || user?.email?.split("@")[0] || "Gardener"}</h1>
                 <p className="page-summary">{user?.email}</p>
                 <XPBar currentXP={stats.currentXP} xpToNext={xpToNext} level={stats.playerLevel} />
@@ -67,14 +66,14 @@ export default function ProfilePage() {
 
               <div className="hero-metrics">
                 <div className="metric-card">
-                  <div className="metric-label">Total points</div>
+                  <div className="metric-label">Points</div>
                   <div className="metric-value">{Math.round(stats.totalPoints)}</div>
-                  <div className="metric-meta">across all completed work</div>
+                  <div className="metric-meta">total</div>
                 </div>
                 <div className="metric-card">
-                  <div className="metric-label">Garden value</div>
+                  <div className="metric-label">Garden</div>
                   <div className="metric-value">{Math.round(stats.gardenValue)}</div>
-                  <div className="metric-meta">current cultivated total</div>
+                  <div className="metric-meta">value</div>
                 </div>
               </div>
             </div>
@@ -93,9 +92,7 @@ export default function ProfilePage() {
             <Card variant="accent">
               <CardHeader>
                 <div>
-                  <span className="eyebrow">Inventory</span>
                   <CardTitle>Stored Plants</CardTitle>
-                  <CardDescription>Blueprints and inventory that can still be placed into the garden.</CardDescription>
                 </div>
               </CardHeader>
               <CardContent>
@@ -104,7 +101,7 @@ export default function ProfilePage() {
                     <div key={blueprintId} className="list-item">
                       <div className="list-item__copy">
                         <span className="list-item__title">{blueprintId}</span>
-                        <span className="list-item__meta">Available for the next planting session.</span>
+                        <span className="list-item__meta">available</span>
                       </div>
                       <span className="status-pill">{count}</span>
                     </div>
@@ -117,9 +114,7 @@ export default function ProfilePage() {
           <Card>
             <CardHeader>
               <div>
-                <span className="eyebrow">Account</span>
                 <CardTitle>Profile Settings</CardTitle>
-                <CardDescription>Basic account details and session controls.</CardDescription>
               </div>
             </CardHeader>
             <CardContent>

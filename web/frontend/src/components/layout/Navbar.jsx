@@ -36,6 +36,21 @@ const PRIMARY_TABS = [
       </svg>
     ),
   },
+  {
+    to: "/calendar",
+    label: "Calendar",
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M8 2V6" />
+        <path d="M16 2V6" />
+        <rect x="3" y="4" width="18" height="17" rx="2" />
+        <path d="M3 10H21" />
+        <path d="M8 14H8.01" />
+        <path d="M12 14H12.01" />
+        <path d="M16 14H16.01" />
+      </svg>
+    ),
+  },
 ];
 
 const SOCIAL_LINKS = [
@@ -62,6 +77,7 @@ export default function Navbar() {
 
   const displayName = user?.displayName || user?.email?.split("@")[0] || "Gardener";
   const initials = displayName.slice(0, 2).toUpperCase();
+  const links = [...PRIMARY_TABS, ...SOCIAL_LINKS, ...MORE_LINKS];
 
   return (
     <nav className="topbar">
@@ -75,9 +91,7 @@ export default function Navbar() {
               </svg>
             </span>
             <span className="topbar__brand-copy">
-              <span className="topbar__eyebrow">Garden Workspace</span>
               <span className="topbar__title">YourDay</span>
-              <span className="topbar__subtitle">Task management with a cultivated edge</span>
             </span>
           </Link>
 
@@ -95,42 +109,15 @@ export default function Navbar() {
         </div>
 
         <div className="topbar__nav">
-          <div className="nav-cluster">
-            <span className="nav-cluster__label">Core</span>
-            {PRIMARY_TABS.map((tab) => {
-              const active = location.pathname.startsWith(tab.to);
-              return (
-                <Link key={tab.to} to={tab.to} className={`nav-chip${active ? " nav-chip--active" : ""}`}>
-                  {tab.icon}
-                  {tab.label}
-                </Link>
-              );
-            })}
-          </div>
-
-          <div className="nav-cluster">
-            <span className="nav-cluster__label">Connect</span>
-            {SOCIAL_LINKS.map((link) => {
-              const active = location.pathname.startsWith(link.to);
-              return (
-                <Link key={link.to} to={link.to} className={`nav-chip${active ? " nav-chip--active" : ""}`}>
-                  {link.label}
-                </Link>
-              );
-            })}
-          </div>
-
-          <div className="nav-cluster">
-            <span className="nav-cluster__label">Workspace</span>
-            {MORE_LINKS.map((link) => {
-              const active = location.pathname.startsWith(link.to);
-              return (
-                <Link key={link.to} to={link.to} className={`nav-chip${active ? " nav-chip--active" : ""}`}>
-                  {link.label}
-                </Link>
-              );
-            })}
-          </div>
+          {links.map((link) => {
+            const active = location.pathname.startsWith(link.to);
+            return (
+              <Link key={link.to} to={link.to} className={`nav-chip${active ? " nav-chip--active" : ""}`}>
+                {link.icon}
+                {link.label}
+              </Link>
+            );
+          })}
         </div>
       </div>
     </nav>

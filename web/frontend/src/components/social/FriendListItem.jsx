@@ -9,20 +9,11 @@ export default function FriendListItem({ friend, onRemove }) {
   };
 
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        padding: "12px 16px",
-        background: "white",
-        borderRadius: 10,
-        border: "1px solid #C8DDB0",
-        marginBottom: 8,
-      }}
-    >
-      <div style={{ fontWeight: 600, fontSize: 14 }}>{friend.displayName}</div>
-      <div style={{ display: "flex", gap: 8 }}>
+    <div className="list-item">
+      <div className="list-item__copy">
+        <div className="list-item__title">{friend.displayName}</div>
+      </div>
+      <div className="toolbar-actions">
         <Link to={`/chat/${friend.userId}`}>
           <button className="btn btn-secondary btn-sm">Chat</button>
         </Link>

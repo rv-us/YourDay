@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
 import { getJournalEntries } from "../api/journalApi";
 import LoadingSpinner from "../components/shared/LoadingSpinner";
+import { Card, CardContent } from "../components/ui/card";
 
-const STATUS_COLORS = {
-  completed: { bg: "#E8F5E9", color: "#2E7D32", label: "Completed" },
-  partial:   { bg: "#FFF8E1", color: "#F57F17", label: "Partial" },
-  notStarted:{ bg: "#FFEBEE", color: "#C62828", label: "Not Started" },
+const STATUS_META = {
+  completed: { className: "", label: "Completed" },
+  partial: { className: " status-pill--warm", label: "Partial" },
+  notStarted: { className: " status-pill--danger", label: "Not Started" },
 };
 
 function formatTime(iso) {
@@ -30,81 +31,83 @@ export default function JournalPage() {
   }, []);
 
   return (
-    <div className="page-container">
-      <div
-        style={{
-          background: "linear-gradient(135deg, #4A148C 0%, #7B1FA2 100%)",
-          borderRadius: 20,
-          padding: "20px 24px",
-          color: "white",
-          marginBottom: 20,
-        }}
-      >
-        <h2 style={{ fontSize: 22, fontWeight: 800 }}>Journal</h2>
-        <p style={{ fontSize: 13, opacity: 0.85 }}>{entries.length} entries</p>
-      </div>
-
-      {loading ? (
-        <div className="loading-center"><LoadingSpinner /></div>
-      ) : entries.length === 0 ? (
-        <div className="card">
-          <p style={{ color: "#5A7A3A" }}>No journal entries yet. Complete scheduled tasks in the iOS app to create entries.</p>
-        </div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {entries.map((entry) => {
-            const status = STATUS_COLORS[entry.completionStatus] || STATUS_COLORS.completed;
-            const isExp = expanded === entry.id;
-            return (
-              <div
-                key={entry.id}
-                className="card"
-                style={{ cursor: "pointer", borderLeft: `4px solid ${status.color}` }}
-                onClick={() => setExpanded(isExp ? null : entry.id)}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 2 }}>{entry.taskTitle}</div>
-                    <div style={{ fontSize: 12, color: "#5A7A3A" }}>
-                      {formatDate(entry.scheduledStartTime)} · {formatTime(entry.scheduledStartTime)} – {formatTime(entry.scheduledEndTime)}
-                    </div>
-                  </div>
-                  <span
-                    style={{
-                      background: status.bg,
-                      color: status.color,
-                      fontSize: 11,
-                      fontWeight: 700,
-                      padding: "2px 8px",
-                      borderRadius: 10,
-                      marginLeft: 8,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {status.label}
-                  </span>
-                </div>
-
-                {isExp && (
-                  <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-                    {[
-                      { label: "What I did", value: entry.whatDid },
-                      { label: "How it went", value: entry.howWent },
-                      { label: "What I learned", value: entry.learned },
-                      { label: "Distractions", value: entry.distractions },
-                    ].filter(({ value }) => value).map(({ label, value }) => (
-                      <div key={label} style={{ background: "#F5F1E8", borderRadius: 8, padding: "8px 12px" }}>
-                        <div style={{ fontSize: 11, color: "#5A7A3A", fontWeight: 600, marginBottom: 2 }}>{label}</div>
-                        <div style={{ fontSize: 13, color: "#1B2E0A", whiteSpace: "pre-wrap" }}>{value}</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+    <div className="page-container fade-in">
+      <div className="stack">
+        <Card variant="hero">
+          <CardContent>
+            <div className="hero-layout">
+              <div className="stack">
+                <h1 className="page-title">Journal</h1>
               </div>
-            );
-          })}
-        </div>
-      )}
+              <div className="hero-metrics">
+                <div className="metric-card">
+                  <div className="metric-label">Entries</div>
+                  <div className="metric-value">{entries.length}</div>
+                  <div className="metric-meta">recorded</div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {loading ? (
+          <div className="loading-center"><LoadingSpinner /></div>
+        ) : entries.length === 0 ? (
+          <Card>
+            <CardContent>
+              <div className="empty-state">No journal entries yet.</div>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="list">
+            {entries.map((entry) => {
+              const status = STATUS_META[entry.completionStatus] || STATUS_META.completed;
+              const isExpanded = expanded === entry.id;
+
+              return (
+                <Card key={entry.id}>
+                  <CardContent>
+                    <div className="stack--sm">
+                      <button
+                        type="button"
+                        className="list-item"
+                        onClick={() => setExpanded(isExpanded ? null : entry.id)}
+                        style={{ width: "100%", textAlign: "left", border: "1px solid rgba(69, 90, 44, 0.08)" }}
+                      >
+                        <div className="list-item__copy">
+                          <div className="list-item__title">{entry.taskTitle}</div>
+                          <div className="list-item__meta">
+                            {formatDate(entry.scheduledStartTime)} · {formatTime(entry.scheduledStartTime)} - {formatTime(entry.scheduledEndTime)}
+                          </div>
+                        </div>
+                        <span className={`status-pill${status.className}`}>{status.label}</span>
+                      </button>
+
+                      {isExpanded && (
+                        <div className="list">
+                          {[
+                            { label: "What I did", value: entry.whatDid },
+                            { label: "How it went", value: entry.howWent },
+                            { label: "What I learned", value: entry.learned },
+                            { label: "Distractions", value: entry.distractions },
+                          ].filter(({ value }) => value).map(({ label, value }) => (
+                            <div key={label} className="list-item" style={{ alignItems: "flex-start" }}>
+                              <div className="list-item__copy">
+                                <div className="list-item__title">{label}</div>
+                                <div className="list-item__meta" style={{ whiteSpace: "pre-wrap" }}>{value}</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
