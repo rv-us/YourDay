@@ -1,0 +1,40 @@
+export const theme = {
+  colors: {
+    primary: "#56AB2F",
+    primaryLight: "#A8E063",
+    primaryDark: "#2E6B10",
+    secondary: "#FFA000",
+    background: "#F5F1E8",
+    surface: "#FFFFFF",
+    surfaceGarden: "#E8F5E9",
+    text: "#1B2E0A",
+    textSecondary: "#5A7A3A",
+    textMuted: "#8FA87A",
+    destructive: "#D32F2F",
+    border: "#C8DDB0",
+    rarity: {
+      Common: "#9E9E9E",
+      Uncommon: "#4CAF50",
+      Rare: "#2196F3",
+      Epic: "#9C27B0",
+      Legendary: "#FF9800",
+    },
+    season: {
+      Spring: "#E91E63",
+      Summer: "#FFC107",
+      Fall: "#FF5722",
+      Winter: "#2196F3",
+    },
+  },
+  borderRadius: {
+    sm: "6px",
+    md: "10px",
+    lg: "16px",
+    xl: "24px",
+  },
+  shadow: {
+    sm: "0 1px 3px rgba(0,0,0,0.1)",
+    md: "0 2px 8px rgba(0,0,0,0.12)",
+    lg: "0 4px 16px rgba(0,0,0,0.15)",
+  },
+};

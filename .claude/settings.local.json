@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C:*)",
+      "Bash(find:*)",
+      "Bash(dir:*)",
+      "Bash(npm create:*)",
+      "Bash(npm install:*)",
+      "Bash(for dir in \"C:/Users/rachi/Projects/YourDay/YourDay/Assets.xcassets/Flowers\"/*/)",
+      "Bash(do cp \"$dir\"*.png \"C:/Users/rachi/Projects/YourDay/web/frontend/public/plants/\")",
+      "Bash(done)",
+      "Bash(powershell -Command \"New-Item -ItemType Directory -Force -Path ''C:\\\\Users\\\\rachi\\\\Projects\\\\YourDay\\\\web\\\\frontend\\\\public\\\\plants''\")",
+      "Bash(powershell -Command:*)",
+      "Bash(npm run build:*)",
+      "Bash(tar:*)"
+    ]
+  }
+}
