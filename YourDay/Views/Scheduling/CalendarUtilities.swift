@@ -88,6 +88,32 @@ struct CalendarTimeFormatter {
         return "\(startString) - \(endString)"
     }
     
+    private static let compactHM: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "h:mm"
+        return f
+    }()
+    
+    private static let compactA: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "a"
+        return f
+    }()
+    
+    /// Shorter range for small calendar blocks (e.g. "2:30–3:15pm").
+    static func formatTimeRangeCompact(start: Date, end: Date) -> String {
+        let s = compactHM.string(from: start)
+        let e = compactHM.string(from: end)
+        let sPeriod = compactA.string(from: start)
+        let ePeriod = compactA.string(from: end)
+        if sPeriod == ePeriod {
+            return "\(s)–\(e)\(ePeriod.lowercased())"
+        }
+        return "\(s)\(sPeriod.lowercased())–\(e)\(ePeriod.lowercased())"
+    }
+    
     /// Formats an hour for a specific date (e.g., "2PM")
     static func formatHour(_ hour: Int, date: Date) -> String {
         let calendar = Calendar.current

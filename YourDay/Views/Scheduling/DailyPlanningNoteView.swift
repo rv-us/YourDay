@@ -13,17 +13,34 @@ import FirebaseAuth
 struct DailyPlanningNoteView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
-    
+
     @Binding var isPresented: Bool
     @State private var noteText: String = ""
     @State private var isGenerating = false
     @State private var generatedTasks: [TodoItem] = []
     @State private var showingConfirmGeneratedTasks = false
-    
+
+    /// Typewriter + fade cycle for empty editor (cancelled when user types).
+    @State private var placeholderDisplayedText: String = ""
+    @State private var placeholderOpacity: Double = 0
+    @State private var suggestionCycleTask: Task<Void, Never>?
+
     var onComplete: (() -> Void)? = nil
-    
+
     private let today = Calendar.current.startOfDay(for: Date())
-    
+
+    private static let planningSuggestions: [String] = [
+        "I'd like to finish my essay draft and submit it before 5pm…",
+        "Complete the HR onboarding form and upload my documents…",
+        "Run errands: groceries, pharmacy, then prep dinner…",
+        "Call the dentist back and schedule a cleaning for next week…",
+        "Study two chapters for the exam and do the practice quiz…",
+    ]
+
+    private var isNoteEffectivelyEmpty: Bool {
+        noteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
@@ -38,20 +55,38 @@ struct DailyPlanningNoteView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(dynamicBackgroundColor)
                 } else {
-                    TextEditor(text: $noteText)
-                        .padding()
-                        .background(dynamicSecondaryBackgroundColor)
-                        .cornerRadius(12)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(dynamicSecondaryTextColor.opacity(0.5), lineWidth: 1)
-                        )
-                        .frame(minHeight: 250, idealHeight: 400, maxHeight: .infinity)
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 16) {
+                            Text("What else are you planning today?")
+                                .font(.title2.weight(.bold))
+                                .foregroundColor(dynamicTextColor)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .minimumScaleFactor(0.85)
+
+                            Text("Jot down what you want to get done—we'll turn it into tasks.")
+                                .font(.subheadline)
+                                .foregroundColor(dynamicSecondaryTextColor)
+                                .fixedSize(horizontal: false, vertical: true)
+
+                            HStack(alignment: .top, spacing: 10) {
+                                Image(systemName: "sparkles")
+                                    .font(.subheadline)
+                                    .foregroundColor(dynamicPrimaryColor)
+                                    .frame(width: 22, alignment: .center)
+                                Text("Be specific: names, times, and locations help us extract better tasks.")
+                                    .font(.caption)
+                                    .foregroundColor(dynamicSecondaryTextColor)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+
+                            planningEditorCard
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal)
-                        .padding(.vertical, 10)
-                        .foregroundColor(dynamicTextColor)
-                        .textInputAutocapitalization(.sentences)
-                        .scrollContentBackground(.hidden)
+                        .padding(.top, 8)
+                        .padding(.bottom, 24)
+                    }
+                    .background(dynamicBackgroundColor)
                 }
             }
             .background(dynamicBackgroundColor.edgesIgnoringSafeArea(.all))
@@ -62,23 +97,52 @@ struct DailyPlanningNoteView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Skip") {
+                        stopSuggestionCycle()
                         onComplete?()
                         isPresented = false
                     }
                     .foregroundColor(dynamicPrimaryColor)
                 }
                 ToolbarItem(placement: .principal) {
-                    Text("What else are you planning today?")
+                    Text("Today's plans")
+                        .font(.headline)
                         .fontWeight(.bold)
                         .foregroundColor(dynamicTextColor)
-                        .multilineTextAlignment(.center)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Save") {
                         extractAndSaveTasks()
                     }
-                    .disabled(noteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isGenerating)
-                    .foregroundColor(noteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isGenerating ? dynamicSecondaryTextColor.opacity(0.5) : dynamicPrimaryColor)
+                    .disabled(isNoteEffectivelyEmpty || isGenerating)
+                    .foregroundColor(isNoteEffectivelyEmpty || isGenerating ? dynamicSecondaryTextColor.opacity(0.5) : dynamicPrimaryColor)
+                }
+            }
+            .onAppear {
+                if isNoteEffectivelyEmpty, !isGenerating {
+                    startSuggestionCycle()
+                }
+            }
+            .onDisappear {
+                stopSuggestionCycle()
+            }
+            .onChange(of: noteText) { _, _ in
+                if isNoteEffectivelyEmpty, !isGenerating {
+                    startSuggestionCycle()
+                } else {
+                    stopSuggestionCycle()
+                    placeholderDisplayedText = ""
+                    placeholderOpacity = 0
+                }
+            }
+            .onChange(of: isGenerating) { _, generating in
+                if generating {
+                    stopSuggestionCycle()
+                    placeholderDisplayedText = ""
+                    placeholderOpacity = 0
+                } else if isNoteEffectivelyEmpty {
+                    startSuggestionCycle()
                 }
             }
         }
@@ -87,7 +151,7 @@ struct DailyPlanningNoteView: View {
             ConfirmGeneratedTasksView(tasks: generatedTasks) { selectedTasks in
                 for task in selectedTasks {
                     context.insert(task)
-                    
+
                     // Sync new task to Firebase
                     if let userId = FirebaseAuth.Auth.auth().currentUser?.uid {
                         let codableTask = TodoItemCodable(from: task, userId: userId)
@@ -112,13 +176,83 @@ struct DailyPlanningNoteView: View {
             }
         }
     }
-    
+
+    private var planningEditorCard: some View {
+        ZStack(alignment: .topLeading) {
+            TextEditor(text: $noteText)
+                .scrollContentBackground(.hidden)
+                .frame(minHeight: 200, idealHeight: 240, maxHeight: 280)
+                .padding(10)
+                .foregroundColor(dynamicTextColor)
+                .textInputAutocapitalization(.sentences)
+
+            if isNoteEffectivelyEmpty {
+                Text(placeholderDisplayedText.isEmpty ? " " : placeholderDisplayedText)
+                    .font(.body)
+                    .foregroundColor(dynamicSecondaryTextColor.opacity(0.5 * placeholderOpacity))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 18)
+                    .multilineTextAlignment(.leading)
+                    .allowsHitTesting(false)
+            }
+        }
+        .background(dynamicSecondaryBackgroundColor)
+        .cornerRadius(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(dynamicSecondaryTextColor.opacity(0.5), lineWidth: 1)
+        )
+    }
+
+    private func startSuggestionCycle() {
+        stopSuggestionCycle()
+        guard isNoteEffectivelyEmpty, !isGenerating else { return }
+
+        suggestionCycleTask = Task { @MainActor in
+            var suggestionIndex = 0
+            while !Task.isCancelled {
+                guard isNoteEffectivelyEmpty, !isGenerating else { break }
+
+                let fullText = Self.planningSuggestions[suggestionIndex % Self.planningSuggestions.count]
+                placeholderOpacity = 1
+                placeholderDisplayedText = ""
+
+                for charCount in 1...fullText.count {
+                    guard !Task.isCancelled, isNoteEffectivelyEmpty, !isGenerating else { break }
+                    let end = fullText.index(fullText.startIndex, offsetBy: charCount)
+                    placeholderDisplayedText = String(fullText[..<end])
+                    try? await Task.sleep(nanoseconds: 42_000_000)
+                }
+
+                guard !Task.isCancelled, isNoteEffectivelyEmpty, !isGenerating else { break }
+                try? await Task.sleep(nanoseconds: 1_100_000_000)
+
+                guard !Task.isCancelled, isNoteEffectivelyEmpty, !isGenerating else { break }
+                withAnimation(.easeOut(duration: 0.45)) {
+                    placeholderOpacity = 0
+                }
+                try? await Task.sleep(nanoseconds: 480_000_000)
+
+                guard !Task.isCancelled, isNoteEffectivelyEmpty, !isGenerating else { break }
+                placeholderDisplayedText = ""
+                placeholderOpacity = 1
+                suggestionIndex += 1
+            }
+        }
+    }
+
+    private func stopSuggestionCycle() {
+        suggestionCycleTask?.cancel()
+        suggestionCycleTask = nil
+    }
+
     private func extractAndSaveTasks() {
         let trimmedText = noteText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedText.isEmpty else { return }
-        
+
+        stopSuggestionCycle()
         isGenerating = true
-        
+
         Task {
             do {
                 let prompt = """
@@ -149,10 +283,10 @@ struct DailyPlanningNoteView: View {
 
                 let userMessage = ModelContent(role: "user", parts: [TextPart(prompt)])
                 let response = try await model.generateContent([userMessage])
-                
+
                 DispatchQueue.main.async {
                     isGenerating = false
-                    
+
                     if let text = response.text {
                         let tasks = parseGeminiResponse(text)
                         if !tasks.isEmpty {
@@ -181,13 +315,13 @@ struct DailyPlanningNoteView: View {
             }
         }
     }
-    
+
     private func formatDateForPrompt(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.string(from: date)
     }
-    
+
     private func parseGeminiResponse(_ text: String) -> [TodoItem] {
         var tasks: [TodoItem] = []
 
@@ -252,11 +386,10 @@ struct DailyPlanningNoteView: View {
 
         return tasks
     }
-    
+
     private func parseDate(_ str: String) -> Date? {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.date(from: str)
     }
-}	
-
+}

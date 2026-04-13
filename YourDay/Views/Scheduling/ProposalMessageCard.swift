@@ -28,6 +28,8 @@ struct ProposalMessageCard: View {
     @State private var pendingModifiedTime = "" // Captured modified time for popup
     @State private var originalTasks: [String]
     @State private var appeared = false
+    @State private var showingAcceptCalendarFailure = false
+    @State private var acceptCalendarFailureMessage = ""
 
     init(
         proposal: Binding<ProposedSession>,
@@ -286,6 +288,8 @@ struct ProposalMessageCard: View {
                         let originalTime = proposal.workingSessionTime
                         let modifiedTimeStr = timeRangeString
 
+                        schedulingViewModel.clearCalendarOperationError()
+
                         // Update proposal with modifications before accepting
                         if wasModified {
                             proposal.adjustedStartTime = selectedStartTime
@@ -318,6 +322,9 @@ struct ProposalMessageCard: View {
                                 } else {
                                     onAccept(scheduledTasks)
                                 }
+                            } else if let err = schedulingViewModel.calendarOperationError {
+                                acceptCalendarFailureMessage = err
+                                showingAcceptCalendarFailure = true
                             }
                         }
                     }) {
@@ -385,8 +392,17 @@ struct ProposalMessageCard: View {
             withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
                 appeared = true
             }
+            schedulingViewModel.clearCalendarOperationError()
         }
         .id("proposal")
+        .alert("Could not add to calendar", isPresented: $showingAcceptCalendarFailure, actions: {
+            Button("OK", role: .cancel) {
+                schedulingViewModel.clearCalendarOperationError()
+                acceptCalendarFailureMessage = ""
+            }
+        }, message: {
+            Text(acceptCalendarFailureMessage)
+        })
         .sheet(isPresented: $showingCalendarView) {
             DraggableCalendarView(
                 proposedStartTime: $selectedStartTime,

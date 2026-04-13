@@ -27,8 +27,10 @@ class TodoItem {
     var sharedTaskId: String? = nil
     var isSharedPending: Bool = false
     var proofPostId: String? = nil
+    /// Google Calendar event id for the block created/updated via Manual Scheduling (move instead of duplicate).
+    var manualScheduleGoogleEventId: String? = nil
 
-    init(localTaskId: String = UUID().uuidString, title: String, detail: String, dueDate: Date, isDone: Bool = false, subtasks: [Subtask] = [], position: Int = 0, origin: TaskOrigin = TaskOrigin.today, sharedTaskId: String? = nil, isSharedPending: Bool = false, proofPostId: String? = nil) {
+    init(localTaskId: String = UUID().uuidString, title: String, detail: String, dueDate: Date, isDone: Bool = false, subtasks: [Subtask] = [], position: Int = 0, origin: TaskOrigin = TaskOrigin.today, sharedTaskId: String? = nil, isSharedPending: Bool = false, proofPostId: String? = nil, manualScheduleGoogleEventId: String? = nil) {
         self.localTaskId = localTaskId
         self.title = title
         self.detail = detail
@@ -40,5 +42,6 @@ class TodoItem {
         self.sharedTaskId = sharedTaskId
         self.isSharedPending = isSharedPending
         self.proofPostId = proofPostId
+        self.manualScheduleGoogleEventId = manualScheduleGoogleEventId
     }
 }

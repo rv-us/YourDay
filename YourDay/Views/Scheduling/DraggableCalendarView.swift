@@ -12,6 +12,10 @@ struct DraggableCalendarView: View {
     @Binding var proposedDuration: Int
     let events: [GoogleCalendarEvent]
     let selectedDate: Date
+    /// Shown on the draggable block instead of "Proposed Session" when set.
+    var sessionTitle: String? = nil
+    /// When true, the block has a bottom handle to change `proposedDuration` in 15-minute steps.
+    var allowsDurationResize: Bool = false
     @Environment(\.dismiss) private var dismiss
     
     @State private var dragOffset: CGSize = .zero
@@ -120,7 +124,9 @@ struct DraggableCalendarView: View {
                                 proposedStartTime = snappedTime
                             }
                             dragOffset = .zero
-                        }
+                        },
+                        draggableSessionTitle: sessionTitle,
+                        durationMinutesBinding: allowsDurationResize ? $proposedDuration : nil
                     )
                 }
                 .padding(.horizontal)
@@ -130,6 +136,13 @@ struct DraggableCalendarView: View {
             .navigationTitle("Adjust Time")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                if allowsDurationResize {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Text("\(proposedDuration) min")
+                            .font(.subheadline)
+                            .foregroundColor(dynamicSecondaryTextColor)
+                    }
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") {
                         dismiss()

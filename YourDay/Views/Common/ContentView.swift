@@ -372,8 +372,24 @@ struct ContentView: View {
         print("🕒 [DEBUG] Saving lastLoginDate: \(String(describing: stats.lastLoginDate))")
         shouldSyncStats = true
 
+        var proofTallyForCleanup: YesterdayTaskProofTallyResult?
         if todayString != lastSummaryDateString {
-            let (points, _) = PointManager.evaluateDailyPoints(context: modelContext, tasks: allTodoItems)
+            print("[DailyEval] new calendar day — running daily point evaluation (today=\(todayString))")
+            let tally = await withCheckedContinuation { (continuation: CheckedContinuation<YesterdayTaskProofTallyResult, Never>) in
+                firebaseManager.fetchYesterdayTaskProofTallyForPoints(evaluationDate: Date()) { result in
+                    continuation.resume(returning: result)
+                }
+            }
+            proofTallyForCleanup = tally
+            print("[DailyEval] proof tally complete — qualifyingPosts=\(tally.qualifyingPostIds.count) eligibleLocalTasks=\(tally.eligibleLocalTaskIds.count) eligibleSharedTasks=\(tally.eligibleSharedTaskIds.count) → calling evaluateDailyPoints")
+            _ = PointManager.evaluateDailyPoints(
+                context: modelContext,
+                tasks: allTodoItems,
+                proofBonusEligibleLocalTaskIds: tally.eligibleLocalTaskIds,
+                proofBonusEligibleSharedTaskIds: tally.eligibleSharedTaskIds,
+                proofVoteRollupsByLocalTaskId: tally.proofVoteRollupsByLocalTaskId,
+                proofVoteRollupsBySharedTaskId: tally.proofVoteRollupsBySharedTaskId
+            )
             await deleteOldDoneTasks()
 
             // Always trigger the flow when a new day is detected
@@ -390,6 +406,33 @@ struct ContentView: View {
             try modelContext.save()
             if shouldSyncStats {
                 loginViewModel.syncLocalPlayerStatsToFirestore(playerStatsModel: stats)
+            }
+            if let tally = proofTallyForCleanup, !tally.qualifyingPostIds.isEmpty {
+                print("[DailyEval] deleting \(tally.qualifyingPostIds.count) qualifying proof post(s) from Firestore/Storage")
+                for postId in tally.qualifyingPostIds {
+                    print("[DailyEval] deleting proof post id=\(postId) …")
+                    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                        firebaseManager.deleteTaskProofPost(postId: postId) { error in
+                            if let error {
+                                print("[DailyEval] deleteTaskProofPost failed for \(postId): \(error.localizedDescription)")
+                            } else {
+                                print("[DailyEval] deleteTaskProofPost finished for \(postId)")
+                            }
+                            continuation.resume()
+                        }
+                    }
+                }
+                var clearedProofIds = 0
+                for item in allTodoItems {
+                    if let pid = item.proofPostId, tally.qualifyingPostIds.contains(pid) {
+                        item.proofPostId = nil
+                        clearedProofIds += 1
+                    }
+                }
+                print("[DailyEval] cleared proofPostId on \(clearedProofIds) local TodoItem(s)")
+                try modelContext.save()
+            } else if proofTallyForCleanup != nil {
+                print("[DailyEval] no qualifying proof posts to delete (per-post vote gate not met or no posts)")
             }
         } catch {
             // Error saving PlayerStats

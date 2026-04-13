@@ -67,7 +67,7 @@ struct LastDayView: View {
 
     @Query private var playerStatsList: [PlayerStats]
 
-    @State private var dateOffset: Int = 0
+    @State private var dateOffset: Int = 1
     @State private var animatedPointsTotal: Double = 0
     @State private var showContinueButton: Bool = false
     
@@ -95,16 +95,20 @@ struct LastDayView: View {
     }
 
     private var breakdownForDisplayDate: [TaskPointResult] {
-        summariesForDisplayDate.map { summary in
-            let subtasks = zip(summary.subtaskTitles, summary.subtaskPoints)
-                .map { (title: $0.0, earned: $0.1) }
-            return TaskPointResult(
-                title: summary.taskTitle, date: summary.date,
-                basePoints: summary.taskMaxPossiblePoints, subtaskPoints: subtasks,
-                totalPoints: summary.totalPoints, mainTaskCompletedOnTargetDay: summary.mainTaskCompleted,
-                origin: summary.origin
-            )
-        }
+        summariesForDisplayDate.map { taskPointResult(from: $0) }
+    }
+
+    private func taskPointResult(from summary: DailySummaryTask) -> TaskPointResult {
+        let subtasks = zip(summary.subtaskTitles, summary.subtaskPoints)
+            .map { (title: $0.0, earned: $0.1) }
+        return TaskPointResult(
+            title: summary.taskTitle, date: summary.date,
+            basePoints: summary.taskMaxPossiblePoints, subtaskPoints: subtasks,
+            totalPoints: summary.totalPoints, mainTaskCompletedOnTargetDay: summary.mainTaskCompleted,
+            origin: summary.origin,
+            localTaskId: "",
+            sharedTaskId: nil
+        )
     }
 
     private var totalPointsForDisplayDate: Double {
@@ -265,9 +269,17 @@ struct LastDayView: View {
                                     Text("Task breakdown")
                                         .font(.headline)
                                         .foregroundColor(dynamicTextColor)
-                                    ForEach(breakdownForDisplayDate) { taskResult in
+                                    ForEach(summariesForDisplayDate, id: \.id) { summary in
+                                        let taskResult = taskPointResult(from: summary)
                                         if taskResult.totalPoints > 0 || taskResult.mainTaskCompletedOnTargetDay {
-                                            TaskSummaryRow(taskResult: taskResult)
+                                            TaskSummaryRow(
+                                                taskResult: taskResult,
+                                                hasProofFeedBreakdown: summary.hasProofFeedBreakdown,
+                                                proofFeedCheckVotes: summary.proofFeedCheckVotes,
+                                                proofFeedXVotes: summary.proofFeedXVotes,
+                                                proofFeedPointsMultiplierApplied: summary.proofFeedPointsMultiplierApplied,
+                                                proofFeedBonusExtraPoints: summary.proofFeedBonusExtraPoints
+                                            )
                                         }
                                     }
                                 }
@@ -384,6 +396,12 @@ struct LastDayView: View {
 
 struct TaskSummaryRow: View {
     let taskResult: TaskPointResult
+    var hasProofFeedBreakdown: Bool = false
+    var proofFeedCheckVotes: Int = 0
+    var proofFeedXVotes: Int = 0
+    var proofFeedPointsMultiplierApplied: Double = 1.0
+    var proofFeedBonusExtraPoints: Double = 0
+
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack {
@@ -412,6 +430,35 @@ struct TaskSummaryRow: View {
                     .font(.caption)
                     .fontWeight(.semibold)
                     .foregroundColor(dynamicPrimaryColor)
+            }
+            if hasProofFeedBreakdown {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "person.2.fill")
+                        .font(.caption)
+                        .foregroundColor(dynamicSecondaryTextColor)
+                        .frame(width: 18, alignment: .center)
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 12) {
+                            Label("\(proofFeedCheckVotes)", systemImage: "checkmark.circle.fill")
+                                .font(.caption)
+                                .foregroundColor(dynamicSecondaryTextColor)
+                            Label("\(proofFeedXVotes)", systemImage: "xmark.circle.fill")
+                                .font(.caption)
+                                .foregroundColor(dynamicSecondaryTextColor)
+                        }
+                        if proofFeedPointsMultiplierApplied > 1.0 + 0.001 {
+                            Text("Proof boost: \(String(format: "%.1f×", proofFeedPointsMultiplierApplied)) (+\(Int((proofFeedBonusExtraPoints).rounded()))) pts)")
+                                .font(.caption)
+                                .fontWeight(.medium)
+                                .foregroundColor(dynamicPrimaryColor)
+                        } else {
+                            Text("Proof boost: none (need friends to vote more checks than Xs)")
+                                .font(.caption2)
+                                .foregroundColor(dynamicSecondaryTextColor)
+                        }
+                    }
+                }
+                .padding(.leading, 4)
             }
             if !taskResult.subtaskPoints.isEmpty {
                 ForEach(taskResult.subtaskPoints.filter { $0.earned > 0 }, id: \.title) { sub in
