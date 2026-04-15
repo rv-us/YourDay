@@ -31,6 +31,16 @@ final class TaskProofFeedListenerToken {
     }
 }
 
+/// Per-task proof bonus: task ids that earned 1.5× yesterday; `qualifyingPostIds` are deleted after daily eval when save succeeds.
+/// `proofVoteRollups*` aggregate all check/x votes (including self) per linked task for summary UI.
+struct YesterdayTaskProofTallyResult {
+    let eligibleLocalTaskIds: Set<String>
+    let eligibleSharedTaskIds: Set<String>
+    let qualifyingPostIds: [String]
+    let proofVoteRollupsByLocalTaskId: [String: ProofFeedVoteRollup]
+    let proofVoteRollupsBySharedTaskId: [String: ProofFeedVoteRollup]
+}
+
 class FirebaseManager: ObservableObject {
     static let shared = FirebaseManager()
     private var db = Firestore.firestore()
@@ -1145,6 +1155,151 @@ class FirebaseManager: ObservableObject {
                 }
             }
         }
+    }
+
+    /// Fetches yesterday-window proof posts; per post, if non-self votes satisfy checks > xs, links that task for 1.5× XP and lists the post for deletion.
+    /// On error or no auth, returns empty sets.
+    func fetchYesterdayTaskProofTallyForPoints(evaluationDate: Date = Date(), completion: @escaping (YesterdayTaskProofTallyResult) -> Void) {
+        let empty = YesterdayTaskProofTallyResult(
+            eligibleLocalTaskIds: Set(),
+            eligibleSharedTaskIds: Set(),
+            qualifyingPostIds: [],
+            proofVoteRollupsByLocalTaskId: [:],
+            proofVoteRollupsBySharedTaskId: [:]
+        )
+
+        guard let uid = Auth.auth().currentUser?.uid else {
+            print("[DailyEval] proof tally: skip (no signed-in user)")
+            completion(empty)
+            return
+        }
+
+        let calendar = Calendar.current
+        let todayStart = calendar.startOfDay(for: evaluationDate)
+        guard let yesterdayStart = calendar.date(byAdding: .day, value: -1, to: todayStart) else {
+            print("[DailyEval] proof tally: skip (could not compute yesterday)")
+            completion(empty)
+            return
+        }
+
+        let dayFmt = DateFormatter()
+        dayFmt.dateFormat = "yyyy-MM-dd"
+        print("[DailyEval] proof tally: querying posts with createdAt in [\(dayFmt.string(from: yesterdayStart)), \(dayFmt.string(from: todayStart))) authorId=\(uid)")
+
+        let startTs = Timestamp(date: yesterdayStart)
+        let endTs = Timestamp(date: todayStart)
+
+        db.collection("task_proof_posts")
+            .whereField("authorId", isEqualTo: uid)
+            .whereField("createdAt", isGreaterThanOrEqualTo: startTs)
+            .whereField("createdAt", isLessThan: endTs)
+            .limit(to: 50)
+            .getDocuments { [weak self] snapshot, error in
+                guard self != nil else {
+                    print("[DailyEval] proof tally: aborted (FirebaseManager deallocated)")
+                    completion(empty)
+                    return
+                }
+                if let error {
+                    print("[DailyEval] proof tally: Firestore query failed — \(error.localizedDescription)")
+                    completion(empty)
+                    return
+                }
+
+                let docs = snapshot?.documents ?? []
+                if docs.isEmpty {
+                    print("[DailyEval] proof tally: 0 posts in window → no per-task bonus, no deletions")
+                    completion(empty)
+                    return
+                }
+
+                let postIds = docs.map(\.documentID)
+                print("[DailyEval] proof tally: found \(docs.count) post(s) ids=\(postIds.joined(separator: ", ")) — fetching votes per post")
+
+                var eligibleLocalTaskIds = Set<String>()
+                var eligibleSharedTaskIds = Set<String>()
+                var qualifyingPostIds: [String] = []
+                var rollupsLocal: [String: (checks: Int, xs: Int)] = [:]
+                var rollupsShared: [String: (checks: Int, xs: Int)] = [:]
+                let tallyLock = NSLock()
+                let group = DispatchGroup()
+
+                for doc in docs {
+                    group.enter()
+                    let postId = doc.documentID
+                    let postOptional = try? doc.data(as: TaskProofPost.self)
+
+                    doc.reference.collection("votes").getDocuments { voteSnapshot, voteError in
+                        defer { group.leave() }
+                        if let voteError {
+                            print("[DailyEval] proof tally: votes read failed for post \(postId) — \(voteError.localizedDescription)")
+                            return
+                        }
+                        guard let post = postOptional else {
+                            print("[DailyEval] proof tally: post \(postId) skipped — TaskProofPost decode failed")
+                            return
+                        }
+
+                        let votes = voteSnapshot?.documents.compactMap { try? $0.data(as: TaskProofVote.self) } ?? []
+                        var allChecks = 0
+                        var allXs = 0
+                        var nonSelfChecks = 0
+                        var nonSelfXs = 0
+                        var sawNonSelf = false
+                        for vote in votes {
+                            switch vote.voteType {
+                            case .check: allChecks += 1
+                            case .xmark: allXs += 1
+                            }
+                            if vote.voterId != uid {
+                                sawNonSelf = true
+                                switch vote.voteType {
+                                case .check: nonSelfChecks += 1
+                                case .xmark: nonSelfXs += 1
+                                }
+                            }
+                        }
+                        let postEligible = sawNonSelf && nonSelfChecks > nonSelfXs
+                        print("[DailyEval] proof tally: post \(postId) rawVotes=\(votes.count) allChecks=\(allChecks) allXs=\(allXs) nonSelfChecks=\(nonSelfChecks) nonSelfXs=\(nonSelfXs) perPostEligible=\(postEligible)")
+
+                        let linkLocal = post.localTaskId.flatMap { $0.isEmpty ? nil : $0 }
+                        let linkShared = post.sharedTaskId.flatMap { $0.isEmpty ? nil : $0 }
+
+                        tallyLock.lock()
+                        if let lid = linkLocal {
+                            let cur = rollupsLocal[lid] ?? (0, 0)
+                            rollupsLocal[lid] = (cur.checks + allChecks, cur.xs + allXs)
+                            if postEligible {
+                                qualifyingPostIds.append(postId)
+                                eligibleLocalTaskIds.insert(lid)
+                            }
+                        } else if let sid = linkShared {
+                            let cur = rollupsShared[sid] ?? (0, 0)
+                            rollupsShared[sid] = (cur.checks + allChecks, cur.xs + allXs)
+                            if postEligible {
+                                qualifyingPostIds.append(postId)
+                                eligibleSharedTaskIds.insert(sid)
+                            }
+                        } else if postEligible {
+                            print("[DailyEval] proof tally: post \(postId) vote-eligible but no localTaskId/sharedTaskId (e.g. scheduled journal) — no XP bonus and no auto-delete")
+                        }
+                        tallyLock.unlock()
+                    }
+                }
+
+                group.notify(queue: .main) {
+                    let mapLocal: [String: ProofFeedVoteRollup] = rollupsLocal.mapValues { ProofFeedVoteRollup(allCheckVotes: $0.checks, allXVotes: $0.xs) }
+                    let mapShared: [String: ProofFeedVoteRollup] = rollupsShared.mapValues { ProofFeedVoteRollup(allCheckVotes: $0.checks, allXVotes: $0.xs) }
+                    print("[DailyEval] proof tally: done eligibleLocal=\(eligibleLocalTaskIds.sorted()) eligibleShared=\(eligibleSharedTaskIds.sorted()) qualifyingPosts=\(qualifyingPostIds.count) rollupLocalKeys=\(mapLocal.keys.count) rollupSharedKeys=\(mapShared.keys.count)")
+                    completion(YesterdayTaskProofTallyResult(
+                        eligibleLocalTaskIds: eligibleLocalTaskIds,
+                        eligibleSharedTaskIds: eligibleSharedTaskIds,
+                        qualifyingPostIds: qualifyingPostIds,
+                        proofVoteRollupsByLocalTaskId: mapLocal,
+                        proofVoteRollupsBySharedTaskId: mapShared
+                    ))
+                }
+            }
     }
 
     func fetchAcceptedFriendsWithSince(completion: @escaping ([FriendWithSince]) -> Void) {

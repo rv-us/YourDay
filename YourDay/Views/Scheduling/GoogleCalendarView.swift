@@ -10,7 +10,7 @@ import GoogleSignIn
 import FirebaseCore
 import Foundation
 
-struct GoogleCalendarEvent: Identifiable, Codable {
+struct GoogleCalendarEvent: Identifiable, Codable, Equatable {
     let id: String
     let summary: String
     let start: EventDateTime
@@ -19,7 +19,7 @@ struct GoogleCalendarEvent: Identifiable, Codable {
     let location: String?
     let htmlLink: String?
     
-    struct EventDateTime: Codable {
+    struct EventDateTime: Codable, Equatable {
         let date: String?
         let dateTime: String?
         let timeZone: String?

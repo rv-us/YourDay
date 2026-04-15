@@ -814,7 +814,8 @@ class LoginViewModel: ObservableObject {
                                 origin: props.origin,
                                 sharedTaskId: props.sharedTaskId,
                                 isSharedPending: props.isSharedPending,
-                                proofPostId: props.proofPostId
+                                proofPostId: props.proofPostId,
+                                manualScheduleGoogleEventId: props.manualScheduleGoogleEventId
                             )
                             newTask.completedAt = props.completedAt
                             modelContext.insert(newTask)
@@ -838,6 +839,7 @@ class LoginViewModel: ObservableObject {
                             localTask.sharedTaskId = props.sharedTaskId
                             localTask.isSharedPending = props.isSharedPending
                             localTask.proofPostId = props.proofPostId
+                            localTask.manualScheduleGoogleEventId = props.manualScheduleGoogleEventId
                         }
                     }
 

@@ -9,6 +9,18 @@ import SwiftUI
 import SwiftData
 import FirebaseAuth
 
+// MARK: - Feature toggles (agent scheduling)
+/// Set to `true` to show the Agent / Manual segmented control and the AI scheduling UI again.
+private enum SmartSchedulingFeatureFlags {
+    static let showAgentSchedulingOption = false
+}
+
+private enum SmartSchedulingMode: String, CaseIterable, Identifiable {
+    case agent = "Agent"
+    case manual = "Manual"
+    var id: String { rawValue }
+}
+
 struct SmartSchedulingView: View {
     let initialDate: Date?
     let autoStart: Bool
@@ -39,6 +51,7 @@ struct SmartSchedulingView: View {
     @State private var showingJournalView = false
     @State private var hasAutoStarted = false // Track if auto-start has been triggered
     @State private var showingNoTasksAlert = false
+    @State private var schedulingMode: SmartSchedulingMode = .agent
     
     private var defaultProposal: ProposedSession {
         ProposedSession(tasks: [], workingSessionTime: "", startTime: nil, endTime: nil, reason: nil)
@@ -65,10 +78,44 @@ struct SmartSchedulingView: View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 16) {
-                    sessionHeader
-                    sessionStatus
-                    proposalSection
-                    configurationSections
+                    if SmartSchedulingFeatureFlags.showAgentSchedulingOption {
+                        Picker("Mode", selection: $schedulingMode) {
+                            ForEach(SmartSchedulingMode.allCases) { mode in
+                                Text(mode.rawValue).tag(mode)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                    }
+
+                    if !SmartSchedulingFeatureFlags.showAgentSchedulingOption || schedulingMode == .manual {
+                        Button(action: {
+                            showingDatePicker = true
+                        }) {
+                            HStack {
+                                Image(systemName: "calendar")
+                                Text(selectedDate, style: .date)
+                                Spacer()
+                                Image(systemName: "chevron.down")
+                                    .font(.caption)
+                            }
+                            .foregroundColor(dynamicTextColor)
+                            .padding()
+                            .background(dynamicSecondaryBackgroundColor)
+                            .cornerRadius(8)
+                        }
+                        .buttonStyle(.plain)
+
+                        ManualSchedulingView(
+                            selectedDate: $selectedDate,
+                            todoItems: todoItems,
+                            schedulingViewModel: schedulingViewModel
+                        )
+                    } else {
+                        sessionHeader
+                        sessionStatus
+                        proposalSection
+                        configurationSections
+                    }
                 }
                 .padding()
             }
@@ -203,6 +250,7 @@ struct SmartSchedulingView: View {
                 if let initialDate = initialDate {
                     selectedDate = initialDate
                 }
+                schedulingViewModel.selectedDate = selectedDate
                 
                 refreshData()
                 // Ensure schedule preferences (including memories) are loaded on view appear
@@ -211,7 +259,7 @@ struct SmartSchedulingView: View {
                 TaskEndMonitor.shared.startMonitoring()
                 
                 // Auto-start scheduling if requested and not already started
-                if autoStart && !hasAutoStarted {
+                if SmartSchedulingFeatureFlags.showAgentSchedulingOption, schedulingMode == .agent, autoStart && !hasAutoStarted {
                     hasAutoStarted = true
                     // Delay to ensure view is fully rendered and backlog is loaded
                     // The backlog fetch happens in refreshData(), so we wait a bit longer
@@ -229,6 +277,9 @@ struct SmartSchedulingView: View {
                         }
                     }
                 }
+            }
+            .onChange(of: selectedDate) { _, newValue in
+                schedulingViewModel.selectedDate = newValue
             }
             .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("JournalEntrySaved"))) { _ in
                 // Trigger AI analysis when journal entry is saved
@@ -336,6 +387,19 @@ struct SmartSchedulingView: View {
     
     private var sessionStatus: some View {
         VStack(alignment: .leading, spacing: 10) {
+            if SmartSchedulingFeatureFlags.showAgentSchedulingOption, schedulingMode == .agent, let fetchError = schedulingViewModel.calendarFetchError {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "calendar.badge.exclamationmark")
+                        .foregroundColor(.orange)
+                    Text(fetchError)
+                        .font(.caption)
+                        .foregroundColor(dynamicTextColor)
+                    Spacer(minLength: 0)
+                }
+                .padding()
+                .background(dynamicSecondaryBackgroundColor)
+                .cornerRadius(12)
+            }
             if let statusMessage = schedulingViewModel.statusMessage {
                 HStack(spacing: 8) {
                     ProgressView()

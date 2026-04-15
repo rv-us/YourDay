@@ -40,6 +40,10 @@ class SchedulingAssistantViewModel: ObservableObject {
     @Published var recentInteractions: [ProposalInteraction] = []
     @Published var statusMessage: String? // Status message for current agent operation
     @Published var isGeneratingMemory = false // Track when memory is being generated
+    /// Set when adding an event to Google Calendar fails (e.g. accept proposal or manual schedule).
+    @Published var calendarOperationError: String?
+    /// Set when calendar events cannot be loaded (e.g. not signed in or missing scope).
+    @Published var calendarFetchError: String?
 
     private let firebaseManager = FirebaseManager.shared
     private let calendarManager = GoogleCalendarManager.shared
@@ -80,7 +84,17 @@ class SchedulingAssistantViewModel: ObservableObject {
         showingRescheduleConfirmation = false
         pendingRescheduleBacklogItems = []
         declinedTasks = []
+        calendarOperationError = nil
+        calendarFetchError = nil
         clearSessionContext()
+    }
+    
+    func clearCalendarOperationError() {
+        calendarOperationError = nil
+    }
+    
+    func clearCalendarFetchError() {
+        calendarFetchError = nil
     }
     
     func clearSessionContext() {
@@ -121,6 +135,8 @@ class SchedulingAssistantViewModel: ObservableObject {
     
     func fetchCalendarEvents(for date: Date = Date()) {
         guard let user = GIDSignIn.sharedInstance.currentUser else {
+            calendarFetchError = "Sign in with Google and grant calendar access to load your schedule."
+            calendarEvents = []
             calendarFetchCompletion?()
             calendarFetchCompletion = nil
             isFetchingCalendar = false
@@ -129,6 +145,18 @@ class SchedulingAssistantViewModel: ObservableObject {
         
         let accessToken = user.accessToken.tokenString
         guard !accessToken.isEmpty else {
+            calendarFetchError = "Sign in with Google and grant calendar access to load your schedule."
+            calendarEvents = []
+            calendarFetchCompletion?()
+            calendarFetchCompletion = nil
+            isFetchingCalendar = false
+            return
+        }
+        
+        let calendarScope = "https://www.googleapis.com/auth/calendar"
+        if user.grantedScopes?.contains(calendarScope) != true {
+            calendarFetchError = "Grant calendar access in Google sign-in to load your schedule."
+            calendarEvents = []
             calendarFetchCompletion?()
             calendarFetchCompletion = nil
             isFetchingCalendar = false
@@ -136,6 +164,7 @@ class SchedulingAssistantViewModel: ObservableObject {
         }
         
         isFetchingCalendar = true
+        calendarFetchError = nil
         showStatus("Fetching calendar events...")
         
         // Fetch events for the specified date
@@ -157,6 +186,7 @@ class SchedulingAssistantViewModel: ObservableObject {
         ]
         
         guard let url = urlComponents.url else {
+            calendarFetchError = "Could not build calendar request."
             calendarFetchCompletion?()
             calendarFetchCompletion = nil
             isFetchingCalendar = false
@@ -182,23 +212,44 @@ class SchedulingAssistantViewModel: ObservableObject {
             if let error = error {
                 DispatchQueue.main.async {
                     self.clearStatus()
+                    self.calendarFetchError = "Could not load calendar: \(error.localizedDescription)"
                 }
                 print("Error fetching calendar events: \(error.localizedDescription)")
                 return
             }
             
-            guard let data = data else { return }
+            guard let data = data else {
+                DispatchQueue.main.async {
+                    self.clearStatus()
+                    self.calendarFetchError = "No data received from Google Calendar."
+                }
+                return
+            }
+            
+            if let http = response as? HTTPURLResponse, http.statusCode != 200 {
+                DispatchQueue.main.async {
+                    self.clearStatus()
+                    if http.statusCode == 401 || http.statusCode == 403 {
+                        self.calendarFetchError = "Calendar access expired or denied. Sign in again."
+                    } else {
+                        self.calendarFetchError = "Could not load calendar (error \(http.statusCode))."
+                    }
+                }
+                return
+            }
             
             do {
                 let response = try JSONDecoder().decode(GoogleCalendarResponse.self, from: data)
                 DispatchQueue.main.async {
                     self.calendarEvents = response.items
+                    self.calendarFetchError = nil
                     self.clearStatus()
                     print("📅 Fetched \(response.items.count) calendar events for date")
                 }
             } catch {
                 DispatchQueue.main.async {
                     self.clearStatus()
+                    self.calendarFetchError = "Could not read calendar events."
                 }
                 print("Error decoding calendar events: \(error.localizedDescription)")
             }
@@ -1257,6 +1308,7 @@ class SchedulingAssistantViewModel: ObservableObject {
 
     func acceptProposal(backlogItems: [UnifiedBacklogItem], onComplete: @escaping ([String]) -> Void) {
         guard let proposal = currentProposal else { return }
+        calendarOperationError = nil
 
         // Determine if this is an acceptance with modifications
         let hasModifications = proposal.hasModifications
@@ -1306,83 +1358,95 @@ class SchedulingAssistantViewModel: ObservableObject {
             let scheduledTaskMarker = "\n\n[YourDay Scheduled Task]"
             let fullDescription = "Tasks:\n• \(tasksDescription)\n\n\(proposal.reason ?? "")\(scheduledTaskMarker)"
 
-            calendarManager.createCalendarEvent(
-                title: tasksTitle,
-                start: adjustedStartTime,
-                end: adjustedEndTime,
-                description: fullDescription
-            ) { [weak self] eventId, error in
+            calendarManager.ensureCalendarWriteAccess { [weak self] accessResult in
                 guard let self = self else { return }
-
-                // Dispatch to main thread for @Published property updates
                 DispatchQueue.main.async {
-                    if let error = error {
-                        print("Error creating calendar event: \(error.localizedDescription)")
-                        onComplete(proposal.tasks)
-                    } else {
-                        print("✅ Created working session calendar event")
-                        
-                        // Track this event as a scheduled task for journaling
-                        if let eventId = eventId {
-                            self.firebaseManager.saveScheduledEvent(
-                                eventId: eventId,
-                                taskTitle: tasksTitle,
-                                tasks: proposal.tasks,
-                                startTime: adjustedStartTime,
-                                endTime: adjustedEndTime
-                            ) { error in
+                    switch accessResult {
+                    case .failure(let err):
+                        self.calendarOperationError = err.localizedDescription
+                        onComplete([])
+                    case .success:
+                        self.calendarManager.createCalendarEvent(
+                            title: tasksTitle,
+                            start: adjustedStartTime,
+                            end: adjustedEndTime,
+                            description: fullDescription
+                        ) { [weak self] eventId, error in
+                            guard let self = self else { return }
+                            DispatchQueue.main.async {
                                 if let error = error {
-                                    print("Error saving scheduled event mapping: \(error.localizedDescription)")
-                                } else {
-                                    print("✅ Saved scheduled event mapping for journaling")
-                                    NotificationManager.shared.scheduleJournalPromptNotification(
-                                        eventId: eventId,
-                                        taskTitle: tasksTitle,
-                                        scheduledEndTime: adjustedEndTime
-                                    )
+                                    print("Error creating calendar event: \(error.localizedDescription)")
+                                    self.calendarOperationError = error.localizedDescription
+                                    onComplete([])
+                                    return
                                 }
-                            }
-                        }
-
-                        // Record interaction for learning
-                        let duration = Int(adjustedEndTime.timeIntervalSince(adjustedStartTime) / 60)
-                        let interaction = ProposalInteraction(
-                            proposedTasks: proposal.tasks,
-                            proposedTime: proposal.workingSessionTime,
-                            proposedDuration: proposal.effectiveDuration ?? duration,
-                            action: hasModifications ? .acceptedWithChanges : .accepted,
-                            modifiedTime: hasModifications ? proposal.effectiveTimeString : nil,
-                            modifiedDuration: proposal.adjustedDuration,
-                            declineReason: nil,
-                            dayOfWeek: self.getDayOfWeekString(from: self.selectedDate)
-                        )
-                        self.recordInteraction(interaction)
-
-                        self.currentProposal = nil
-
-                        // Refresh calendar events to get the newly created event
-                        // Wait a moment for Google Calendar to sync
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                            self.fetchCalendarEvents(for: self.selectedDate)
-
-                            // Wait a bit more for the fetch to complete, then call onComplete
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                                // Save acceptance message
-                                if let userId = Auth.auth().currentUser?.uid {
-                                    let tasksList = proposal.tasks.joined(separator: ", ")
-                                    let timeStr = hasModifications ? proposal.effectiveTimeString : proposal.workingSessionTime
-                                    let message = SchedulingMessage(
-                                        userId: userId,
-                                        role: .user,
-                                        content: hasModifications
-                                            ? "Accepted with changes: \(tasksList) at \(timeStr)"
-                                            : "Accepted: \(tasksList) at \(timeStr)"
-                                    )
-                                    self.messages.append(message)
-                                    self.firebaseManager.saveSchedulingMessage(message) { _ in }
+                                guard let eventId = eventId, !eventId.isEmpty else {
+                                    self.calendarOperationError = "Could not confirm the calendar event."
+                                    onComplete([])
+                                    return
                                 }
 
-                                onComplete(proposal.tasks)
+                                self.firebaseManager.saveScheduledEvent(
+                                    eventId: eventId,
+                                    taskTitle: tasksTitle,
+                                    tasks: proposal.tasks,
+                                    startTime: adjustedStartTime,
+                                    endTime: adjustedEndTime
+                                ) { [weak self] saveError in
+                                    guard let self = self else { return }
+                                    DispatchQueue.main.async {
+                                        if let saveError = saveError {
+                                            print("Error saving scheduled event mapping: \(saveError.localizedDescription)")
+                                            self.calendarOperationError = saveError.localizedDescription
+                                            onComplete([])
+                                            return
+                                        }
+
+                                        print("✅ Created working session calendar event")
+                                        NotificationManager.shared.scheduleJournalPromptNotification(
+                                            eventId: eventId,
+                                            taskTitle: tasksTitle,
+                                            scheduledEndTime: adjustedEndTime
+                                        )
+
+                                        let duration = Int(adjustedEndTime.timeIntervalSince(adjustedStartTime) / 60)
+                                        let interaction = ProposalInteraction(
+                                            proposedTasks: proposal.tasks,
+                                            proposedTime: proposal.workingSessionTime,
+                                            proposedDuration: proposal.effectiveDuration ?? duration,
+                                            action: hasModifications ? .acceptedWithChanges : .accepted,
+                                            modifiedTime: hasModifications ? proposal.effectiveTimeString : nil,
+                                            modifiedDuration: proposal.adjustedDuration,
+                                            declineReason: nil,
+                                            dayOfWeek: self.getDayOfWeekString(from: self.selectedDate)
+                                        )
+                                        self.recordInteraction(interaction)
+
+                                        self.currentProposal = nil
+
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                            self.fetchCalendarEvents(for: self.selectedDate)
+
+                                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                                                if let userId = Auth.auth().currentUser?.uid {
+                                                    let tasksList = proposal.tasks.joined(separator: ", ")
+                                                    let timeStr = hasModifications ? proposal.effectiveTimeString : proposal.workingSessionTime
+                                                    let message = SchedulingMessage(
+                                                        userId: userId,
+                                                        role: .user,
+                                                        content: hasModifications
+                                                            ? "Accepted with changes: \(tasksList) at \(timeStr)"
+                                                            : "Accepted: \(tasksList) at \(timeStr)"
+                                                    )
+                                                    self.messages.append(message)
+                                                    self.firebaseManager.saveSchedulingMessage(message) { _ in }
+                                                }
+
+                                                onComplete(proposal.tasks)
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }

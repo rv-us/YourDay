@@ -31,6 +31,13 @@ class DailySummaryTask {
     var xpEarnedOnDate: Double // Actual XP points gained on this date
     var xpToNextLevelAfterXP: Double // Total XP needed for the level player is at *after* this day's XP gain
 
+    /// Proof feed on the evaluated day (yesterday window when summary was created).
+    var hasProofFeedBreakdown: Bool = false
+    var proofFeedCheckVotes: Int = 0
+    var proofFeedXVotes: Int = 0
+    var proofFeedPointsMultiplierApplied: Double = 1.0
+    var proofFeedBonusExtraPoints: Double = 0
+
     init(
         taskTitle: String,
         date: Date,
@@ -48,7 +55,12 @@ class DailySummaryTask {
         levelAfterXP: Int,
         xpAfterXP: Double,
         xpEarnedOnDate: Double,
-        xpToNextLevelAfterXP: Double
+        xpToNextLevelAfterXP: Double,
+        hasProofFeedBreakdown: Bool = false,
+        proofFeedCheckVotes: Int = 0,
+        proofFeedXVotes: Int = 0,
+        proofFeedPointsMultiplierApplied: Double = 1.0,
+        proofFeedBonusExtraPoints: Double = 0
     ) {
         self.id = UUID()
         self.taskTitle = taskTitle
@@ -67,5 +79,10 @@ class DailySummaryTask {
         self.xpAfterXP = xpAfterXP
         self.xpEarnedOnDate = xpEarnedOnDate
         self.xpToNextLevelAfterXP = xpToNextLevelAfterXP
+        self.hasProofFeedBreakdown = hasProofFeedBreakdown
+        self.proofFeedCheckVotes = proofFeedCheckVotes
+        self.proofFeedXVotes = proofFeedXVotes
+        self.proofFeedPointsMultiplierApplied = proofFeedPointsMultiplierApplied
+        self.proofFeedBonusExtraPoints = proofFeedBonusExtraPoints
     }
 }

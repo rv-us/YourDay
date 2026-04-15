@@ -148,10 +148,31 @@ struct DraggableEventBlock: View {
     @Binding var dragOffset: CGSize
     @Binding var isDragging: Bool
     var onDragEnd: ((CGSize) -> Void)?
+    /// When non-nil and draggable, replaces the default "Proposed Session" label.
+    var draggableSessionTitle: String?
+    /// When non-nil, shows a bottom resize handle that edits duration in minutes (snapped to 15, clamped).
+    var durationMinutesBinding: Binding<Int>?
+    
+    @State private var isResizingDuration = false
+    @State private var durationAtResizeStart: Int = 0
+    /// Continuous minutes during resize (not snapped); avoids layout flashing until gesture ends.
+    @State private var resizePreviewMinutes: CGFloat?
     
     private let calendar = Calendar.current
     
-    init(event: GoogleCalendarEvent?, eventStart: Date, eventEnd: Date, selectedDate: Date, hourHeight: CGFloat, isDraggable: Bool, dragOffset: Binding<CGSize> = .constant(.zero), isDragging: Binding<Bool> = .constant(false), onDragEnd: ((CGSize) -> Void)? = nil) {
+    init(
+        event: GoogleCalendarEvent?,
+        eventStart: Date,
+        eventEnd: Date,
+        selectedDate: Date,
+        hourHeight: CGFloat,
+        isDraggable: Bool,
+        dragOffset: Binding<CGSize> = .constant(.zero),
+        isDragging: Binding<Bool> = .constant(false),
+        onDragEnd: ((CGSize) -> Void)? = nil,
+        draggableSessionTitle: String? = nil,
+        durationMinutesBinding: Binding<Int>? = nil
+    ) {
         self.event = event
         self.eventStart = eventStart
         self.eventEnd = eventEnd
@@ -161,6 +182,8 @@ struct DraggableEventBlock: View {
         self._dragOffset = dragOffset
         self._isDragging = isDragging
         self.onDragEnd = onDragEnd
+        self.draggableSessionTitle = draggableSessionTitle
+        self.durationMinutesBinding = durationMinutesBinding
     }
     
     private var topOffset: CGFloat {
@@ -169,8 +192,37 @@ struct DraggableEventBlock: View {
         return baseOffset + dragY
     }
     
+    /// Duration in minutes (fractional while resizing for smooth feedback).
+    private var effectiveDurationMinutes: CGFloat {
+        if let preview = resizePreviewMinutes {
+            return preview
+        }
+        return CGFloat(eventEnd.timeIntervalSince(eventStart) / 60.0)
+    }
+    
+    private var displayEndDate: Date {
+        eventStart.addingTimeInterval(TimeInterval(effectiveDurationMinutes * 60))
+    }
+    
     private var height: CGFloat {
-        CalendarEventFilter.calculateEventHeight(start: eventStart, end: eventEnd, hourHeight: hourHeight)
+        let raw = CGFloat(effectiveDurationMinutes / 60.0) * hourHeight
+        // Keep short events visible and tappable without breaking grid math too badly.
+        return max(22, raw)
+    }
+    
+    /// Typography / padding scale from block height (short events shrink to fit).
+    private var blockContentScale: CGFloat {
+        let hourPx = max(hourHeight, 1)
+        let reference = hourPx * 1.0 // one hour row == full scale
+        return min(1.15, max(0.42, height / reference))
+    }
+    
+    private var isCompactBlock: Bool {
+        effectiveDurationMinutes < 60 || height < hourHeight * 0.92
+    }
+    
+    private var isMicroBlock: Bool {
+        effectiveDurationMinutes < 35 || height < hourHeight * 0.55
     }
     
     /// Theme orange for Google Calendar events, theme green for YourDay scheduled/proposed sessions.
@@ -180,53 +232,159 @@ struct DraggableEventBlock: View {
         return dynamicSecondaryColor
     }
     
+    private var draggableTitleText: String {
+        if let draggableSessionTitle, !draggableSessionTitle.isEmpty {
+            return draggableSessionTitle
+        }
+        return "Proposed Session"
+    }
+    
+    @ViewBuilder
+    private var draggableContent: some View {
+        let scale = blockContentScale
+        let hPad = max(4, 8 * scale)
+        let vPad = max(3, 6 * scale)
+        let titleSize = max(9, (isMicroBlock ? 10 : (isCompactBlock ? 12 : 17)) * scale)
+        let timeSize = max(8, (isMicroBlock ? 9 : (isCompactBlock ? 10 : 12)) * scale)
+        let lineSpacing = max(1, 3 * scale)
+        
+        if isDraggable {
+            if isMicroBlock {
+                VStack(alignment: .leading, spacing: lineSpacing) {
+                    Text(draggableTitleText)
+                        .font(.system(size: titleSize, weight: .semibold))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.5)
+                    Text(compactTimeRangeString)
+                        .font(.system(size: timeSize, weight: .medium))
+                        .foregroundColor(.white.opacity(0.92))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.55)
+                }
+                .padding(.horizontal, hPad)
+                .padding(.vertical, vPad)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            } else {
+                VStack(alignment: .leading, spacing: lineSpacing) {
+                    Text(draggableTitleText)
+                        .font(.system(size: titleSize, weight: .semibold))
+                        .foregroundColor(.white)
+                        .lineLimit(isCompactBlock ? 1 : 2)
+                        .minimumScaleFactor(0.65)
+                    Text(isCompactBlock ? compactTimeRangeString : displayTimeRangeString)
+                        .font(.system(size: timeSize, weight: .medium))
+                        .foregroundColor(.white.opacity(0.9))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                }
+                .padding(.horizontal, hPad)
+                .padding(.vertical, vPad)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
+        } else if let event = event {
+            VStack(alignment: .leading, spacing: lineSpacing) {
+                Text(event.summary)
+                    .font(.system(size: titleSize, weight: .semibold))
+                    .foregroundColor(.white)
+                    .lineLimit(isCompactBlock ? 1 : 2)
+                    .minimumScaleFactor(0.65)
+                Text(isCompactBlock ? compactTimeRangeString : displayTimeRangeString)
+                    .font(.system(size: timeSize, weight: .medium))
+                    .foregroundColor(.white.opacity(0.9))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+            }
+            .padding(.horizontal, hPad)
+            .padding(.vertical, vPad)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        } else {
+            EmptyView()
+        }
+    }
+    
+    /// Shorter time strings for small blocks (saves vertical space).
+    private var compactTimeRangeString: String {
+        CalendarTimeFormatter.formatTimeRangeCompact(start: eventStart, end: displayEndDate)
+    }
+    
+    private var displayTimeRangeString: String {
+        CalendarTimeFormatter.formatTimeRange(start: eventStart, end: displayEndDate)
+    }
+    
     var body: some View {
-        RoundedRectangle(cornerRadius: 8)
+        let corner: CGFloat = max(4, 8 * min(1, blockContentScale))
+        RoundedRectangle(cornerRadius: corner)
             .fill(blockColor.opacity(isDraggable ? 1 : 0.9))
             .frame(width: UIScreen.main.bounds.width - 120, height: height)
-            .overlay(
-                VStack(alignment: .leading, spacing: 4) {
-                    if isDraggable {
-                        Text("Proposed Session")
-                            .font(.headline)
-                            .foregroundColor(.white)
-                        Text(timeRangeString)
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.9))
-                    } else if let event = event {
-                        Text(event.summary)
-                            .font(.headline)
-                            .foregroundColor(.white)
-                        Text(timeRangeString)
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.9))
+            .overlay(draggableContent, alignment: .topLeading)
+            .overlay(alignment: .bottom) {
+                if isDraggable, durationMinutesBinding != nil {
+                    let gripH: CGFloat = min(18, max(12, height * 0.28))
+                    VStack(spacing: 2) {
+                        Image(systemName: "line.3.horizontal")
+                            .font(.system(size: max(8, 11 * blockContentScale)))
+                            .foregroundColor(.white.opacity(0.95))
                     }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: gripH)
+                    .contentShape(Rectangle())
+                    .highPriorityGesture(
+                        DragGesture(minimumDistance: 1)
+                            .onChanged { value in
+                                guard let binding = durationMinutesBinding else { return }
+                                if !isResizingDuration {
+                                    isResizingDuration = true
+                                    durationAtResizeStart = binding.wrappedValue
+                                    resizePreviewMinutes = CGFloat(durationAtResizeStart)
+                                }
+                                let delta = value.translation.height / max(hourHeight, 1) * 60
+                                let raw = CGFloat(durationAtResizeStart) + delta
+                                resizePreviewMinutes = min(480, max(15, raw))
+                            }
+                            .onEnded { value in
+                                guard let binding = durationMinutesBinding else {
+                                    resizePreviewMinutes = nil
+                                    isResizingDuration = false
+                                    return
+                                }
+                                let baseMinutes = isResizingDuration ? durationAtResizeStart : binding.wrappedValue
+                                let delta = value.translation.height / max(hourHeight, 1) * 60
+                                let raw = CGFloat(baseMinutes) + delta
+                                let clamped = min(480, max(15, raw))
+                                let snapped = (Int(round(clamped / 15)) * 15)
+                                let final = min(480, max(15, snapped))
+                                binding.wrappedValue = final
+                                resizePreviewMinutes = nil
+                                isResizingDuration = false
+                            }
+                    )
                 }
-                .padding(8),
-                alignment: .topLeading
-            )
+            }
             .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(isDraggable ? Color.white : Color.clear, lineWidth: 2)
+                RoundedRectangle(cornerRadius: corner)
+                    .stroke(isDraggable ? Color.white : Color.clear, lineWidth: max(1, 2 * min(1, blockContentScale)))
             )
             .offset(x: 80, y: topOffset)
+            .transaction { tx in
+                if resizePreviewMinutes != nil {
+                    tx.animation = nil
+                }
+            }
             .gesture(
                 isDraggable ? DragGesture()
                     .onChanged { value in
+                        guard !isResizingDuration else { return }
                         isDragging = true
                         dragOffset = value.translation
                     }
                     .onEnded { value in
+                        guard !isResizingDuration else { return }
                         isDragging = false
                         onDragEnd?(value.translation)
                     } : nil
             )
-            .scaleEffect(isDragging ? 1.05 : 1.0)
-            .animation(.spring(response: 0.3), value: isDragging)
-    }
-    
-    private var timeRangeString: String {
-        CalendarTimeFormatter.formatTimeRange(start: eventStart, end: eventEnd)
+            .scaleEffect(isDragging && !isResizingDuration ? 1.03 : 1.0)
     }
 }
 
@@ -340,6 +498,7 @@ struct ScheduledTaskPopupSheet: View {
     @State private var matchedItems: [TodoItem] = []
     @State private var isLoading = true
     @State private var fallbackCheckedOff: Set<Int> = []
+    @State private var pendingTaskProofCapture: TaskProofCaptureContext?
     
     private let calendar = Calendar.current
     private var timeRangeString: String {
@@ -367,8 +526,13 @@ struct ScheduledTaskPopupSheet: View {
                                     .foregroundColor(dynamicTextColor)
                             }
                             ForEach(matchedItems) { item in
-                                ScheduledTaskItemRow(item: item, modelContext: modelContext)
-                                    .environmentObject(firebaseManager)
+                                ScheduledTaskItemRow(
+                                    item: item,
+                                    modelContext: modelContext,
+                                    scheduledCalendarEventId: event.id,
+                                    onRequestProofCapture: { pendingTaskProofCapture = $0 }
+                                )
+                                .environmentObject(firebaseManager)
                             }
                         }
                         .padding()
@@ -431,6 +595,27 @@ struct ScheduledTaskPopupSheet: View {
         .onAppear {
             loadScheduledEvent()
         }
+        .sheet(item: $pendingTaskProofCapture, onDismiss: { pendingTaskProofCapture = nil }) { proofContext in
+            TaskProofCaptureView(
+                context: proofContext,
+                onSkip: { pendingTaskProofCapture = nil },
+                onPosted: { postId in
+                    applyProofPostId(postId, localTaskId: proofContext.localTaskId)
+                    pendingTaskProofCapture = nil
+                }
+            )
+            .environmentObject(firebaseManager)
+        }
+    }
+    
+    private func applyProofPostId(_ postId: String, localTaskId: String?) {
+        guard let localTaskId else { return }
+        let descriptor = FetchDescriptor<TodoItem>(
+            predicate: #Predicate<TodoItem> { $0.localTaskId == localTaskId }
+        )
+        guard let todo = try? modelContext.fetch(descriptor).first else { return }
+        todo.proofPostId = postId
+        try? modelContext.save()
     }
     
     private func loadScheduledEvent() {
@@ -474,6 +659,9 @@ struct ScheduledTaskPopupSheet: View {
 struct ScheduledTaskItemRow: View {
     @Bindable var item: TodoItem
     var modelContext: ModelContext
+    /// Google Calendar event id when opened from the calendar (for proof `sourceType` / `scheduledEventId`).
+    var scheduledCalendarEventId: String?
+    var onRequestProofCapture: ((TaskProofCaptureContext) -> Void)?
     @EnvironmentObject var firebaseManager: FirebaseManager
     
     var body: some View {
@@ -533,8 +721,10 @@ struct ScheduledTaskItemRow: View {
     }
     
     private func toggleMainTask() {
+        let wasDone = item.isDone
         item.isDone.toggle()
         item.completedAt = item.isDone ? Date() : nil
+        
         if let sharedId = item.sharedTaskId {
             firebaseManager.updateSharedTaskProgress(sharedTaskId: sharedId, isCompleted: item.isDone) { _ in }
         }
@@ -547,6 +737,34 @@ struct ScheduledTaskItemRow: View {
                     print("CalendarEventComponents: Failed to sync task toggle to Firebase: \(error.localizedDescription)")
                 } else {
                     print("CalendarEventComponents: Successfully synced task toggle to Firebase")
+                }
+            }
+        }
+        
+        if !wasDone && item.isDone {
+            let sourceType: TaskProofSourceType
+            if item.sharedTaskId != nil {
+                sourceType = .shared
+            } else if scheduledCalendarEventId != nil {
+                sourceType = .scheduled
+            } else {
+                sourceType = .unscheduled
+            }
+            onRequestProofCapture?(
+                TaskProofCaptureContext(
+                    taskTitle: item.title,
+                    sourceType: sourceType,
+                    scheduledEventId: scheduledCalendarEventId,
+                    localTaskId: item.localTaskId,
+                    sharedTaskId: item.sharedTaskId,
+                    completedAt: item.completedAt ?? Date()
+                )
+            )
+        } else if wasDone && !item.isDone, let proofPostId = item.proofPostId {
+            item.proofPostId = nil
+            firebaseManager.deleteTaskProofPost(postId: proofPostId) { error in
+                if let error = error {
+                    print("CalendarEventComponents: Failed to delete proof post: \(error.localizedDescription)")
                 }
             }
         }

@@ -24,6 +24,7 @@ struct TodoItemCodable: Codable, Identifiable {
     var sharedTaskId: String?
     var isSharedPending: Bool
     var proofPostId: String?
+    var manualScheduleGoogleEventId: String?
 
     // Firebase metadata
     var userId: String
@@ -47,6 +48,7 @@ struct TodoItemCodable: Codable, Identifiable {
         self.sharedTaskId = model.sharedTaskId
         self.isSharedPending = model.isSharedPending
         self.proofPostId = model.proofPostId
+        self.manualScheduleGoogleEventId = model.manualScheduleGoogleEventId
 
         self.userId = userId
         self.createdAt = Date()
@@ -68,6 +70,7 @@ struct TodoItemCodable: Codable, Identifiable {
         sharedTaskId: String? = nil,
         isSharedPending: Bool = false,
         proofPostId: String? = nil,
+        manualScheduleGoogleEventId: String? = nil,
         userId: String,
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
@@ -85,6 +88,7 @@ struct TodoItemCodable: Codable, Identifiable {
         self.sharedTaskId = sharedTaskId
         self.isSharedPending = isSharedPending
         self.proofPostId = proofPostId
+        self.manualScheduleGoogleEventId = manualScheduleGoogleEventId
         self.userId = userId
         self.createdAt = createdAt
         self.updatedAt = updatedAt
@@ -111,6 +115,7 @@ struct TodoItemCodable: Codable, Identifiable {
         sharedTaskId = try container.decodeIfPresent(String.self, forKey: .sharedTaskId)
         isSharedPending = try container.decodeIfPresent(Bool.self, forKey: .isSharedPending) ?? false
         proofPostId = try container.decodeIfPresent(String.self, forKey: .proofPostId)
+        manualScheduleGoogleEventId = try container.decodeIfPresent(String.self, forKey: .manualScheduleGoogleEventId)
 
         userId = try container.decode(String.self, forKey: .userId)
         createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
@@ -141,6 +146,7 @@ struct TodoItemCodable: Codable, Identifiable {
         try container.encodeIfPresent(sharedTaskId, forKey: .sharedTaskId)
         try container.encode(isSharedPending, forKey: .isSharedPending)
         try container.encodeIfPresent(proofPostId, forKey: .proofPostId)
+        try container.encodeIfPresent(manualScheduleGoogleEventId, forKey: .manualScheduleGoogleEventId)
         try container.encode(userId, forKey: .userId)
         try container.encode(createdAt, forKey: .createdAt)
         try container.encode(updatedAt, forKey: .updatedAt)
@@ -149,7 +155,7 @@ struct TodoItemCodable: Codable, Identifiable {
 
     private enum CodingKeys: String, CodingKey {
         case localTaskId, title, detail, dueDate, isDone, subtasks, completedAt
-        case origin, position, sharedTaskId, isSharedPending, proofPostId
+        case origin, position, sharedTaskId, isSharedPending, proofPostId, manualScheduleGoogleEventId
         case userId, createdAt, updatedAt, schemaVersion
     }
 
@@ -168,7 +174,8 @@ struct TodoItemCodable: Codable, Identifiable {
         position: Int,
         sharedTaskId: String?,
         isSharedPending: Bool,
-        proofPostId: String?
+        proofPostId: String?,
+        manualScheduleGoogleEventId: String?
     ) {
         return (
             localTaskId: self.localTaskId,
@@ -182,7 +189,8 @@ struct TodoItemCodable: Codable, Identifiable {
             position: self.position,
             sharedTaskId: self.sharedTaskId,
             isSharedPending: self.isSharedPending,
-            proofPostId: self.proofPostId
+            proofPostId: self.proofPostId,
+            manualScheduleGoogleEventId: self.manualScheduleGoogleEventId
         )
     }
 }

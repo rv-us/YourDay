@@ -37,3 +37,9 @@ struct FriendWithSince: Identifiable {
     let userId: String
     let since: Date
 }
+
+/// Aggregated proof-feed vote counts (all voters) for a task, for daily summary UI.
+struct ProofFeedVoteRollup: Equatable, Sendable {
+    var allCheckVotes: Int
+    var allXVotes: Int
+}

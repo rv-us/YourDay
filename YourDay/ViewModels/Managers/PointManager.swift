@@ -17,6 +17,9 @@ struct TaskPointResult: Identifiable {
     let totalPoints: Double
     let mainTaskCompletedOnTargetDay: Bool
     let origin: TaskOrigin
+    /// Matches `TodoItem.localTaskId` / `sharedTaskId` for proof bonus; empty when reconstructed from summary-only UI.
+    let localTaskId: String
+    let sharedTaskId: String?
 }
 
 class PointManager {
@@ -44,7 +47,35 @@ class PointManager {
         return 1
     }
 
-    static func evaluateDailyPoints(context: ModelContext, tasks: [TodoItem], on date: Date = Date()) -> (total: Double, breakdown: [TaskPointResult]) {
+    private static func proofBonusMultiplier(
+        for result: TaskPointResult,
+        eligibleLocalTaskIds: Set<String>,
+        eligibleSharedTaskIds: Set<String>
+    ) -> Double {
+        if eligibleLocalTaskIds.contains(result.localTaskId) { return 1.5 }
+        if let sid = result.sharedTaskId, eligibleSharedTaskIds.contains(sid) { return 1.5 }
+        return 1.0
+    }
+
+    private static func proofVoteRollup(
+        for result: TaskPointResult,
+        proofVoteRollupsByLocalTaskId: [String: ProofFeedVoteRollup],
+        proofVoteRollupsBySharedTaskId: [String: ProofFeedVoteRollup]
+    ) -> ProofFeedVoteRollup? {
+        if let r = proofVoteRollupsByLocalTaskId[result.localTaskId] { return r }
+        if let sid = result.sharedTaskId, let r = proofVoteRollupsBySharedTaskId[sid] { return r }
+        return nil
+    }
+
+    static func evaluateDailyPoints(
+        context: ModelContext,
+        tasks: [TodoItem],
+        on date: Date = Date(),
+        proofBonusEligibleLocalTaskIds: Set<String> = [],
+        proofBonusEligibleSharedTaskIds: Set<String> = [],
+        proofVoteRollupsByLocalTaskId: [String: ProofFeedVoteRollup] = [:],
+        proofVoteRollupsBySharedTaskId: [String: ProofFeedVoteRollup] = [:]
+    ) -> (total: Double, breakdown: [TaskPointResult]) {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: date)
         let yesterday = calendar.date(byAdding: .day, value: -1, to: today)!
@@ -70,6 +101,15 @@ class PointManager {
             playerGardenValue: stats.gardenValue
         )
 
+        let adjustedTotal = breakdown.reduce(0.0) { partial, result in
+            partial + result.totalPoints * proofBonusMultiplier(
+                for: result,
+                eligibleLocalTaskIds: proofBonusEligibleLocalTaskIds,
+                eligibleSharedTaskIds: proofBonusEligibleSharedTaskIds
+            )
+        }
+        print("[DailyEval] evaluateDailyPoints: baseEarned=\(earnedPoints) adjustedTotal=\(adjustedTotal) tasks=\(tasks.count) proofBonusLocals=\(proofBonusEligibleLocalTaskIds.count) proofBonusShared=\(proofBonusEligibleSharedTaskIds.count)")
+
         let previousLastEvaluated = stats.lastEvaluated
         let previousCompletedTasks = stats.lastDailyCompletedTasks
         let previousStreak = stats.taskCompletionStreak
@@ -88,11 +128,11 @@ class PointManager {
         // Store player's state *before* adding today's XP
         let levelBeforeXP = stats.playerLevel
         let xpBeforeXP = stats.currentXP
-        let xpEarnedToday = earnedPoints // Points earned today are XP
+        let xpEarnedToday = adjustedTotal
 
-        if earnedPoints > 0 {
-            stats.totalPoints += earnedPoints // Add to currency
-            stats.addXP(earnedPoints)        // Add to experience and handle level ups
+        if adjustedTotal > 0 {
+            stats.totalPoints += adjustedTotal
+            stats.addXP(adjustedTotal)
         }
         
         // Player's state *after* adding today's XP
@@ -102,17 +142,31 @@ class PointManager {
 
 
         for result in breakdown where result.totalPoints > 0 {
+            let m = proofBonusMultiplier(
+                for: result,
+                eligibleLocalTaskIds: proofBonusEligibleLocalTaskIds,
+                eligibleSharedTaskIds: proofBonusEligibleSharedTaskIds
+            )
+            let rollup = proofVoteRollup(
+                for: result,
+                proofVoteRollupsByLocalTaskId: proofVoteRollupsByLocalTaskId,
+                proofVoteRollupsBySharedTaskId: proofVoteRollupsBySharedTaskId
+            )
+            let hasProof = rollup != nil
+            let baseTaskPoints = result.totalPoints
+            let bonusExtra = m > 1 ? baseTaskPoints * (m - 1.0) : 0
+
             let subtaskTitles = result.subtaskPoints.map { $0.title }
-            let subtaskPointsValues = result.subtaskPoints.map { $0.earned }
+            let subtaskPointsValues = result.subtaskPoints.map { $0.earned * m }
 
             let summary = DailySummaryTask(
                 taskTitle: result.title,
                 date: result.date,
-                totalPoints: result.totalPoints,
+                totalPoints: result.totalPoints * m,
                 subtaskTitles: subtaskTitles,
                 subtaskPoints: subtaskPointsValues,
                 mainTaskCompleted: result.mainTaskCompletedOnTargetDay,
-                taskMaxPossiblePoints: result.basePoints,
+                taskMaxPossiblePoints: result.basePoints * m,
                 origin: result.origin,
                 dayCompletionSnapshot_CompletedCount: completedMainTasksForYesterday,
                 dayCompletionSnapshot_TotalTasksCount: totalTasksWhenEvaluated,
@@ -122,12 +176,17 @@ class PointManager {
                 levelAfterXP: levelAfterXP,
                 xpAfterXP: xpAfterXP,
                 xpEarnedOnDate: xpEarnedToday,
-                xpToNextLevelAfterXP: xpToNextLevelAfterXP
+                xpToNextLevelAfterXP: xpToNextLevelAfterXP,
+                hasProofFeedBreakdown: hasProof,
+                proofFeedCheckVotes: rollup?.allCheckVotes ?? 0,
+                proofFeedXVotes: rollup?.allXVotes ?? 0,
+                proofFeedPointsMultiplierApplied: m,
+                proofFeedBonusExtraPoints: bonusExtra
             )
             context.insert(summary)
         }
         
-        stats.lastDailyPointsEarned = earnedPoints
+        stats.lastDailyPointsEarned = adjustedTotal
         stats.lastDailyCompletedTasks = completedMainTasksForYesterday
         stats.lastDailyTotalTasks = totalTasksWhenEvaluated
         stats.taskCompletionStreak = updatedStreak
@@ -135,7 +194,26 @@ class PointManager {
         // No need to call context.insert(stats) again if it was already inserted or fetched.
         // SwiftData tracks changes to managed objects.
 
-        return (earnedPoints, breakdown)
+        let scaledBreakdown: [TaskPointResult] = breakdown.map { result in
+            let m = proofBonusMultiplier(
+                for: result,
+                eligibleLocalTaskIds: proofBonusEligibleLocalTaskIds,
+                eligibleSharedTaskIds: proofBonusEligibleSharedTaskIds
+            )
+            return TaskPointResult(
+                title: result.title,
+                date: result.date,
+                basePoints: result.basePoints * m,
+                subtaskPoints: result.subtaskPoints.map { ($0.title, $0.earned * m) },
+                totalPoints: result.totalPoints * m,
+                mainTaskCompletedOnTargetDay: result.mainTaskCompletedOnTargetDay,
+                origin: result.origin,
+                localTaskId: result.localTaskId,
+                sharedTaskId: result.sharedTaskId
+            )
+        }
+
+        return (adjustedTotal, scaledBreakdown)
     }
 
     static func calculatePointsEarned(
@@ -184,7 +262,9 @@ class PointManager {
                     subtaskPoints: subtaskBreakdown,
                     totalPoints: earnedForTask,
                     mainTaskCompletedOnTargetDay: isMainTaskCompletedOnTargetDay,
-                    origin: task.origin
+                    origin: task.origin,
+                    localTaskId: task.localTaskId,
+                    sharedTaskId: task.sharedTaskId
                 ))
             }
         }
