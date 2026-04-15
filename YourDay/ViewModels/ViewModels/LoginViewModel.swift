@@ -74,6 +74,7 @@ class LoginViewModel: ObservableObject {
                 if newAuthStatus && !self.isGuest {
                     self.userDisplayName = user?.displayName
                     self.userEmail = user?.email
+                    FCMTokenManager.shared.saveCurrentToken()
                 }
                 
                 if !newAuthStatus {
@@ -1392,15 +1393,17 @@ class LoginViewModel: ObservableObject {
 
     private func performFirebaseAndGoogleSignOut(completion: @escaping (_ didSignOut: Bool, _ errorMessage: String?) -> Void) {
         self.isProcessingFreshLogin = false
-        do {
-            try Auth.auth().signOut()
-            GIDSignIn.sharedInstance.signOut()
-            print("LoginViewModel: Firebase and Google Sign-Out performed.")
-            self.isLoading = false
-            completion(true, nil)
-        } catch let signOutError as NSError {
-            let msg = "Sign out error: \(signOutError.localizedDescription)"
-            self.errorMessage = msg; self.isLoading = false; completion(false, msg)
+        FCMTokenManager.shared.deleteCurrentToken {
+            do {
+                try Auth.auth().signOut()
+                GIDSignIn.sharedInstance.signOut()
+                print("LoginViewModel: Firebase and Google Sign-Out performed.")
+                self.isLoading = false
+                completion(true, nil)
+            } catch let signOutError as NSError {
+                let msg = "Sign out error: \(signOutError.localizedDescription)"
+                self.errorMessage = msg; self.isLoading = false; completion(false, msg)
+            }
         }
     }
     func attemptSignOut(currentPlayerStatsToSync: PlayerStats?, completion: @escaping (_ didSignOut: Bool, _ errorMessage: String?) -> Void) {

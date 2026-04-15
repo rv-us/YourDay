@@ -202,20 +202,25 @@ struct ContentView: View {
             .onAppear {
                 JournalNotificationDelegate.shared.setJournalViewModel(journalViewModel)
                 startIncomingChatListenerIfNeeded()
+                updateLocationManagerTaskSummary()
             }
+            .onChange(of: allTodoItems.map { "\($0.title)-\($0.isDone)" }.sorted().joined(separator: "|")) { _, _ in
+                updateLocationManagerTaskSummary()
+            }
+    }
+
+    private func updateLocationManagerTaskSummary() {
+        let summary = allTodoItems.filter { !$0.isDone }.map(\.title).joined(separator: ", ")
+        locationManager.updateTaskSummary(summary.isEmpty ? "No tasks" : summary)
     }
 
     private func startIncomingChatListenerIfNeeded() {
         guard loginViewModel.isAuthenticated, !loginViewModel.isGuest, incomingChatListener == nil else { return }
-        incomingChatListener = firebaseManager.listenToIncomingChatMessages { message, senderName in
-            if loginViewModel.currentChatFriendId != message.senderId {
-                NotificationManager.shared.scheduleChatMessageNotification(
-                    senderName: senderName,
-                    messagePreview: message.content,
-                    senderId: message.senderId
-                )
-            }
-        }
+        // Remote push (FCM Cloud Function) now handles chat notifications when the app is
+        // backgrounded or terminated. The Firestore listener is kept so the app can update
+        // unread state while foregrounded, but we no longer fire a local notification here
+        // to avoid duplicates with the remote push.
+        incomingChatListener = firebaseManager.listenToIncomingChatMessages { _, _ in }
     }
 
     private var mainTabView: some View {

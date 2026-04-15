@@ -40,6 +40,7 @@ private func resetDefaultSwiftDataStoreFiles() {
 
 @main
 struct YourDayApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var locationManager = LocationManager()
     
     private static var sharedModelContainer: ModelContainer = {
@@ -78,6 +79,19 @@ struct YourDayApp: App {
         
         // Set up notification delegate for journal prompts
         UNUserNotificationCenter.current().delegate = JournalNotificationDelegate.shared
+
+        // Request notification permission at launch and log the current status
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+            if let error {
+                print("App: ❌ Notification auth error – \(error.localizedDescription)")
+            } else {
+                print("App: Notification permission granted = \(granted)")
+            }
+        }
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            print("App: Notification authorizationStatus = \(settings.authorizationStatus.rawValue)")
+            // 0=notDetermined 1=denied 2=authorized 3=provisional 4=ephemeral
+        }
         
         let appearance = UITabBarAppearance()
         appearance.configureWithOpaqueBackground()

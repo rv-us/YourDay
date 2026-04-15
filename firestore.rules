@@ -1,0 +1,27 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Users may read/write their own top-level user document
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+
+      // Only the owning user may manage their own FCM tokens.
+      // Cloud Functions use Admin SDK which bypasses these rules.
+      match /fcmTokens/{token} {
+        allow write: if request.auth != null && request.auth.uid == userId;
+        allow read: if false; // only Admin SDK (Cloud Function) reads tokens
+      }
+
+      // Allow authenticated users to read/write other subcollections as before
+      match /{subcollection}/{docId} {
+        allow read, write: if request.auth != null;
+      }
+    }
+
+    // Allow authenticated access to all other collections (preserve existing behavior)
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}

@@ -276,7 +276,7 @@ class NotificationManager: ObservableObject {
 
     /// Schedules a local notification for an incoming chat message. Respects the app's notificationsEnabled setting.
     func scheduleChatMessageNotification(senderName: String, messagePreview: String, senderId: String) {
-        let notificationsEnabled = UserDefaults.standard.bool(forKey: "notificationsEnabled")
+        let notificationsEnabled = UserDefaults.standard.object(forKey: "notificationsEnabled") as? Bool ?? true
         guard notificationsEnabled else { return }
 
         let content = UNMutableNotificationContent()

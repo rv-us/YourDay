@@ -29,10 +29,14 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             locationManager.requestWhenInUseAuthorization()
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                 let authStatus = self.locationManager.authorizationStatus
-                completion(authStatus == .authorizedAlways ||
-                           authStatus == .authorizedWhenInUse)
+                let granted = authStatus == .authorizedAlways || authStatus == .authorizedWhenInUse
+                completion(granted)
+                if granted {
+                    self.locationManager.startUpdatingLocation()
+                }
             }
         case .authorizedAlways, .authorizedWhenInUse:
+            locationManager.startUpdatingLocation()
             completion(true)
         default:
             completion(false)
@@ -47,20 +51,26 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         }
     }
 
+    /// Call from a view that has task data to keep location reminders context-aware.
+    func updateTaskSummary(_ summary: String) {
+        cachedTaskSummary = summary
+    }
+
+    private var cachedTaskSummary: String = ""
+
     private func handleLocationUpdate(location: CLLocation) {
-        let locationRemindersEnabled = UserDefaults.standard.bool(forKey: locationRemindersEnabledKey)
-        let notificationsEnabled = UserDefaults.standard.bool(forKey: notificationsEnabledKey)
+        let locationRemindersEnabled = UserDefaults.standard.object(forKey: locationRemindersEnabledKey) as? Bool ?? true
+        let notificationsEnabled = UserDefaults.standard.object(forKey: notificationsEnabledKey) as? Bool ?? true
 
         guard notificationsEnabled && locationRemindersEnabled else { return }
 
-        let maxReminders = UserDefaults.standard.integer(forKey: extraNotificationsKey)
+        let maxReminders = UserDefaults.standard.object(forKey: extraNotificationsKey) as? Int ?? 3
         resetDailyReminderCountIfNeeded()
         let sentCount = UserDefaults.standard.integer(forKey: "totalExtraRemindersSentToday")
         guard sentCount < maxReminders else { return }
 
-        // Simulated idle time and task summary (you can replace with real logic)
-        let idleTime = 45 // in minutes
-        let taskSummary = "Finish report, attend meeting, go for a walk"
+        let taskSummary = cachedTaskSummary.isEmpty ? "No tasks" : cachedTaskSummary
+        let idleTime = 0 // TODO: derive from last app interaction if desired
 
         evaluateWithGemini(location: location, taskSummary: taskSummary, idleTime: idleTime) { shouldSend, message in
             if shouldSend, let msg = message {

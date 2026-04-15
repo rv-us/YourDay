@@ -16,7 +16,7 @@ class TodoViewModel: ObservableObject {
     // Function to reschedule notifications with current task state
     func rescheduleNotificationsIfNeeded(context: SwiftData.ModelContext) {
         // Only reschedule if notifications are enabled
-        let notificationsEnabled = UserDefaults.standard.bool(forKey: notificationsEnabledKey)
+        let notificationsEnabled = UserDefaults.standard.object(forKey: notificationsEnabledKey) as? Bool ?? true
         guard notificationsEnabled else { return }
         
         // Get current notification settings
