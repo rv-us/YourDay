@@ -1,6 +1,5 @@
 import SwiftUI
 import SwiftData
-import UserNotifications
 import FirebaseAuth
 
 struct Todoview: View {
@@ -35,14 +34,6 @@ struct Todoview: View {
     }
 
     @State private var selectedFilter: TaskListFilter = .today
-
-    init() {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
-            if let error = error {
-                print("Notification permission error: \(error.localizedDescription)")
-            }
-        }
-    }
 
     var body: some View {
         NavigationView {

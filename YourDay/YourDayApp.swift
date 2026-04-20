@@ -77,21 +77,8 @@ struct YourDayApp: App {
         // Initialize GoogleCalendarManager to restore sign-in state
         _ = GoogleCalendarManager.shared
         
-        // Set up notification delegate for journal prompts
-        UNUserNotificationCenter.current().delegate = JournalNotificationDelegate.shared
-
-        // Request notification permission at launch and log the current status
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
-            if let error {
-                print("App: ❌ Notification auth error – \(error.localizedDescription)")
-            } else {
-                print("App: Notification permission granted = \(granted)")
-            }
-        }
-        UNUserNotificationCenter.current().getNotificationSettings { settings in
-            print("App: Notification authorizationStatus = \(settings.authorizationStatus.rawValue)")
-            // 0=notDetermined 1=denied 2=authorized 3=provisional 4=ephemeral
-        }
+        UNUserNotificationCenter.current().delegate = NotificationManager.shared
+        NotificationManager.shared.requestPermissionIfNeeded()
         
         let appearance = UITabBarAppearance()
         appearance.configureWithOpaqueBackground()

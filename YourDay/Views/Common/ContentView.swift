@@ -200,7 +200,7 @@ struct ContentView: View {
                 TaskEndMonitor.shared.forceCheck()
             }
             .onAppear {
-                JournalNotificationDelegate.shared.setJournalViewModel(journalViewModel)
+                NotificationManager.shared.setJournalViewModel(journalViewModel)
                 startIncomingChatListenerIfNeeded()
                 updateLocationManagerTaskSummary()
             }

@@ -191,7 +191,7 @@ struct TodoListItemView: View {
 
         // Reschedule notifications to reflect current task state
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            todoViewModel.rescheduleNotificationsIfNeeded(context: _modelContext)
+            NotificationManager.shared.rescheduleIfNeeded(context: _modelContext)
         }
     }
 

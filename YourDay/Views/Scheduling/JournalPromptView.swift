@@ -640,7 +640,7 @@ struct JournalPromptView: View {
             print("Failed to save task updates from journal check-in: \(error.localizedDescription)")
         }
 
-        TodoViewModel().rescheduleNotificationsIfNeeded(context: modelContext)
+        NotificationManager.shared.rescheduleIfNeeded(context: modelContext)
     }
 
     private func markMatchedTasksCompleted() {

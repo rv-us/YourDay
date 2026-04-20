@@ -3,14 +3,6 @@ import SwiftData
 import UserNotifications
 import CoreLocation
 
-let morningReminderKey = "morningReminderTime"
-let nightReminderKey = "nightReminderTime"
-let notificationsEnabledKey = "notificationsEnabled"
-let extraNotificationsKey = "extraNotificationCount"
-let locationRemindersEnabledKey = "locationRemindersEnabled"
-
-let scheduledReminderIDs: [String] = ["morningReminder", "nightReminder"] + (1...10).map { "extraReminder\($0)" }
-
 struct NotificationSettingsView: View {
     @AppStorage("hasCompletedNotificationsTutorial") private var hasCompletedNotificationsTutorial = false
     @State private var showNotificationsTutorial = false
@@ -24,7 +16,7 @@ struct NotificationSettingsView: View {
     @ObservedObject var todoViewModel: TodoViewModel
     @ObservedObject var loginViewModel: LoginViewModel
     @EnvironmentObject var locationManager: LocationManager
-    @AppStorage(locationRemindersEnabledKey) private var locationRemindersEnabled = true
+    @AppStorage(NotificationManager.locationRemindersEnabledKey) private var locationRemindersEnabled = true
     var onSignOutRequested: () -> Void
 
     @Query(sort: \PlayerStats.playerLevel) private var playerStatsList: [PlayerStats]
@@ -147,10 +139,10 @@ struct NotificationSettingsView: View {
                         Toggle("Enable Scheduled Notifications", isOn: $notificationsEnabled)
                             .foregroundColor(dynamicTextColor)
                             .onChange(of: notificationsEnabled) { _, newValue in
-                                UserDefaults.standard.set(newValue, forKey: notificationsEnabledKey)
+                                UserDefaults.standard.set(newValue, forKey: NotificationManager.notificationsEnabledKey)
                                 if !newValue {
                                     UNUserNotificationCenter.current()
-                                        .removePendingNotificationRequests(withIdentifiers: scheduledReminderIDs)
+                                        .removePendingNotificationRequests(withIdentifiers: NotificationManager.scheduledReminderIDs)
                                     NotificationManager.shared.cancelAllJournalPromptNotifications()
                                 }
                             }
@@ -164,10 +156,10 @@ struct NotificationSettingsView: View {
                                         DispatchQueue.main.async {
                                             if granted {
                                                 locationRemindersEnabled = true
-                                                UserDefaults.standard.set(true, forKey: locationRemindersEnabledKey)
+                                                UserDefaults.standard.set(true, forKey: NotificationManager.locationRemindersEnabledKey)
                                             } else {
                                                 locationRemindersEnabled = false
-                                                UserDefaults.standard.set(false, forKey: locationRemindersEnabledKey)
+                                                UserDefaults.standard.set(false, forKey: NotificationManager.locationRemindersEnabledKey)
                                                 tempLocationToggle = false
                                                 showPermissionDeniedAlert = true
                                             }
@@ -175,7 +167,7 @@ struct NotificationSettingsView: View {
                                     }
                                 } else {
                                     locationRemindersEnabled = false
-                                    UserDefaults.standard.set(false, forKey: locationRemindersEnabledKey)
+                                    UserDefaults.standard.set(false, forKey: NotificationManager.locationRemindersEnabledKey)
                                 }
                             }
                             .listRowBackground(dynamicSecondaryBackgroundColor)
@@ -447,11 +439,11 @@ struct NotificationSettingsView: View {
     private func saveAndScheduleNotifications() {
         isNotificationSaveButtonDisabled = true
 
-        UserDefaults.standard.set(morningTime, forKey: morningReminderKey)
-        UserDefaults.standard.set(nightTime, forKey: nightReminderKey)
-        UserDefaults.standard.set(notificationsEnabled, forKey: notificationsEnabledKey)
-        UserDefaults.standard.set(extraNotificationCount, forKey: extraNotificationsKey)
-        UserDefaults.standard.set(locationRemindersEnabled, forKey: locationRemindersEnabledKey)
+        UserDefaults.standard.set(morningTime, forKey: NotificationManager.morningReminderKey)
+        UserDefaults.standard.set(nightTime, forKey: NotificationManager.nightReminderKey)
+        UserDefaults.standard.set(notificationsEnabled, forKey: NotificationManager.notificationsEnabledKey)
+        UserDefaults.standard.set(extraNotificationCount, forKey: NotificationManager.extraNotificationsKey)
+        UserDefaults.standard.set(locationRemindersEnabled, forKey: NotificationManager.locationRemindersEnabledKey)
 
         if notificationsEnabled {
             let calendar = Calendar.current
@@ -460,7 +452,7 @@ struct NotificationSettingsView: View {
             let nightHour = calendar.component(.hour, from: nightTime)
             let nightMinute = calendar.component(.minute, from: nightTime)
 
-            todoViewModel.scheduleDailyReminders(
+            NotificationManager.shared.scheduleDailyReminders(
                 morningHour: morningHour,
                 morningMinute: morningMinute,
                 nightHour: nightHour,
@@ -475,7 +467,7 @@ struct NotificationSettingsView: View {
             }
         } else {
             UNUserNotificationCenter.current()
-                .removePendingNotificationRequests(withIdentifiers: scheduledReminderIDs)
+                .removePendingNotificationRequests(withIdentifiers: NotificationManager.scheduledReminderIDs)
             NotificationManager.shared.cancelAllJournalPromptNotifications()
         }
 
@@ -485,11 +477,11 @@ struct NotificationSettingsView: View {
     }
 
     private func loadNotificationSettings() {
-        notificationsEnabled = UserDefaults.standard.object(forKey: notificationsEnabledKey) as? Bool ?? true
-        morningTime = UserDefaults.standard.object(forKey: morningReminderKey) as? Date ?? Calendar.current.date(from: DateComponents(hour: 9)) ?? Date()
-        nightTime = UserDefaults.standard.object(forKey: nightReminderKey) as? Date ?? Calendar.current.date(from: DateComponents(hour: 21)) ?? Date()
-        extraNotificationCount = UserDefaults.standard.object(forKey: extraNotificationsKey) as? Int ?? 0
-        locationRemindersEnabled = UserDefaults.standard.object(forKey: locationRemindersEnabledKey) as? Bool ?? true
+        notificationsEnabled = UserDefaults.standard.object(forKey: NotificationManager.notificationsEnabledKey) as? Bool ?? true
+        morningTime = UserDefaults.standard.object(forKey: NotificationManager.morningReminderKey) as? Date ?? Calendar.current.date(from: DateComponents(hour: 9)) ?? Date()
+        nightTime = UserDefaults.standard.object(forKey: NotificationManager.nightReminderKey) as? Date ?? Calendar.current.date(from: DateComponents(hour: 21)) ?? Date()
+        extraNotificationCount = UserDefaults.standard.object(forKey: NotificationManager.extraNotificationsKey) as? Int ?? 0
+        locationRemindersEnabled = UserDefaults.standard.object(forKey: NotificationManager.locationRemindersEnabledKey) as? Bool ?? true
     }
 }
 
