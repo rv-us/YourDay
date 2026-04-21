@@ -325,27 +325,19 @@ class JournalViewModel: ObservableObject {
         }
     }
     
+    /// Dismiss the current journal prompt without writing a journal entry.
+    /// Used for both user-initiated skips and reschedule completions, since neither
+    /// should appear in the journal history as a "Skipped / Not Started" entry.
+    /// Marks the underlying scheduled event as prompt-handled on the server so
+    /// `TaskEndMonitor` won't surface it again.
     func skipJournalPrompt() {
-        // Dismiss sheet first, then move to next pending event.
         showingJournalPrompt = false
 
         if let event = pendingJournalPrompt {
-            // Persist a minimal "skipped" journal entry so the prompt won't come back for this event
-            if let userId = Auth.auth().currentUser?.uid {
-                let skippedEntry = JournalEntry(
-                    userId: userId,
-                    eventId: event.eventId,
-                    taskTitle: event.taskTitle,
-                    scheduledStartTime: event.scheduledStartTime,
-                    scheduledEndTime: event.scheduledEndTime,
-                    whatDid: "Skipped",
-                    completionStatus: .notStarted,
-                    timestamp: Date(),
-                    dayOfWeek: event.dayOfWeek
-                )
-                firebaseManager.saveJournalEntry(skippedEntry) { error in
+            if !event.eventId.isEmpty {
+                firebaseManager.markScheduledEventPromptHandled(eventId: event.eventId) { error in
                     if let error = error {
-                        print("JournalViewModel: Failed to save skipped journal entry: \(error.localizedDescription)")
+                        print("JournalViewModel: Failed to mark journal prompt handled: \(error.localizedDescription)")
                     }
                 }
             }

@@ -29,8 +29,12 @@ class TodoItem {
     var proofPostId: String? = nil
     /// Google Calendar event id for the block created/updated via Manual Scheduling (move instead of duplicate).
     var manualScheduleGoogleEventId: String? = nil
+    /// Start time of the scheduled calendar block; mirrors the Google Calendar event so the shield extension can detect active focus windows without network/cache.
+    var scheduledStartTime: Date? = nil
+    /// End time of the scheduled calendar block.
+    var scheduledEndTime: Date? = nil
 
-    init(localTaskId: String = UUID().uuidString, title: String, detail: String, dueDate: Date, isDone: Bool = false, subtasks: [Subtask] = [], position: Int = 0, origin: TaskOrigin = TaskOrigin.today, sharedTaskId: String? = nil, isSharedPending: Bool = false, proofPostId: String? = nil, manualScheduleGoogleEventId: String? = nil) {
+    init(localTaskId: String = UUID().uuidString, title: String, detail: String, dueDate: Date, isDone: Bool = false, subtasks: [Subtask] = [], position: Int = 0, origin: TaskOrigin = TaskOrigin.today, sharedTaskId: String? = nil, isSharedPending: Bool = false, proofPostId: String? = nil, manualScheduleGoogleEventId: String? = nil, scheduledStartTime: Date? = nil, scheduledEndTime: Date? = nil) {
         self.localTaskId = localTaskId
         self.title = title
         self.detail = detail
@@ -43,5 +47,7 @@ class TodoItem {
         self.isSharedPending = isSharedPending
         self.proofPostId = proofPostId
         self.manualScheduleGoogleEventId = manualScheduleGoogleEventId
+        self.scheduledStartTime = scheduledStartTime
+        self.scheduledEndTime = scheduledEndTime
     }
 }

@@ -161,6 +161,28 @@ struct GoogleCalendarView: View {
         CalendarEventFilter.filterEventsForDay(events, date: selectedDate)
     }
     
+    /// Hour we want to center on: current hour today, else 9am.
+    private var timelineTargetHour: Int {
+        if calendar.isDateInToday(selectedDate) {
+            return max(0, min(23, calendar.component(.hour, from: Date())))
+        }
+        return 9
+    }
+    
+    private func timelineHourRowID(_ hour: Int) -> String { "timeline-hour-\(hour)" }
+    
+    private func scrollTimelineToAnchor(_ proxy: ScrollViewProxy) {
+        let target = timelineHourRowID(timelineTargetHour)
+        func jump() {
+            proxy.scrollTo(target, anchor: .center)
+        }
+        jump()
+        DispatchQueue.main.async(execute: jump)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: jump)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: jump)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: jump)
+    }
+    
     // MARK: - Week Slider Subviews (helps compiler + improves readability)
     
     private var monthHeader: some View {
@@ -300,42 +322,69 @@ struct GoogleCalendarView: View {
                 }
                 Spacer()
             } else {
-                ScrollView {
-                    TimelineView(events: todayEvents, selectedDate: selectedDate, hourHeight: timelineHourHeight, onScheduledTaskTap: { scheduledEventForPopup = IdentifiableCalendarEvent(event: $0) })
-                        .frame(minHeight: UIScreen.main.bounds.height)
-                        .contentShape(Rectangle())
-                        .gesture(
-                            MagnificationGesture()
-                                .onChanged { value in
-                                    let newHeight = pinchStartHeight * value
-                                    timelineHourHeight = min(90, max(30, newHeight))
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        ZStack(alignment: .topLeading) {
+                            TimelineView(events: todayEvents, selectedDate: selectedDate, hourHeight: timelineHourHeight, onScheduledTaskTap: { scheduledEventForPopup = IdentifiableCalendarEvent(event: $0) })
+                                .frame(minHeight: UIScreen.main.bounds.height)
+                                .contentShape(Rectangle())
+                                .gesture(
+                                    MagnificationGesture()
+                                        .onChanged { value in
+                                            let newHeight = pinchStartHeight * value
+                                            timelineHourHeight = min(90, max(30, newHeight))
+                                        }
+                                        .onEnded { _ in
+                                            pinchStartHeight = timelineHourHeight
+                                        }
+                                )
+                            
+                            // Parallel invisible hour column so ScrollViewReader can
+                            // target real laid-out positions (TimelineView is a
+                            // custom view we don't own, so we mirror its hour rhythm).
+                            VStack(spacing: 0) {
+                                ForEach(0..<24, id: \.self) { hour in
+                                    Color.clear
+                                        .frame(height: timelineHourHeight)
+                                        .id(timelineHourRowID(hour))
                                 }
-                                .onEnded { _ in
-                                    pinchStartHeight = timelineHourHeight
-                                }
-                        )
-                }
-                .gesture(
-                    DragGesture(minimumDistance: 50)
-                        .onEnded { value in
-                            let horizontalAmount = value.translation.width
-                            if abs(horizontalAmount) > 50 {
-                                if horizontalAmount > 0 {
-                                    // Swipe right - previous day
-                                    if let previousDay = calendar.date(byAdding: .day, value: -1, to: selectedDate) {
-                                        selectedDate = previousDay
-                                        fetchEvents()
-                                    }
-                                } else {
-                                    // Swipe left - next day
-                                    if let nextDay = calendar.date(byAdding: .day, value: 1, to: selectedDate) {
-                                        selectedDate = nextDay
-                                        fetchEvents()
+                            }
+                            .allowsHitTesting(false)
+                        }
+                    }
+                    .onAppear {
+                        scrollTimelineToAnchor(proxy)
+                    }
+                    .onChange(of: isLoading) { wasLoading, loading in
+                        if wasLoading && !loading && errorMessage == nil {
+                            scrollTimelineToAnchor(proxy)
+                        }
+                    }
+                    .onChange(of: selectedDate) { _, _ in
+                        scrollTimelineToAnchor(proxy)
+                    }
+                    .gesture(
+                        DragGesture(minimumDistance: 50)
+                            .onEnded { value in
+                                let horizontalAmount = value.translation.width
+                                if abs(horizontalAmount) > 50 {
+                                    if horizontalAmount > 0 {
+                                        // Swipe right - previous day
+                                        if let previousDay = calendar.date(byAdding: .day, value: -1, to: selectedDate) {
+                                            selectedDate = previousDay
+                                            fetchEvents()
+                                        }
+                                    } else {
+                                        // Swipe left - next day
+                                        if let nextDay = calendar.date(byAdding: .day, value: 1, to: selectedDate) {
+                                            selectedDate = nextDay
+                                            fetchEvents()
+                                        }
                                     }
                                 }
                             }
-                        }
-                )
+                    )
+                }
             }
         }
         .background(dynamicBackgroundColor.edgesIgnoringSafeArea(.all))

@@ -86,6 +86,12 @@ class TaskEndMonitor: ObservableObject {
                         continue
                     }
                     
+                    // User already dismissed the journal prompt for this event
+                    // (skipped or rescheduled). Don't re-surface it.
+                    if let promptSkipped = eventData["promptSkipped"] as? Bool, promptSkipped {
+                        continue
+                    }
+                    
                     let scheduledStartTime = startTimestamp.dateValue()
                     let scheduledEndTime = endTimestamp.dateValue()
                     

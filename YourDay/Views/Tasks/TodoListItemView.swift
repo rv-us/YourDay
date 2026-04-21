@@ -178,6 +178,14 @@ struct TodoListItemView: View {
             ))
         } else if wasDone && !item.isDone, let proofPostId = item.proofPostId {
             item.proofPostId = nil
+            if let userId = FirebaseAuth.Auth.auth().currentUser?.uid {
+                let codableTask = TodoItemCodable(from: item, userId: userId)
+                firebaseManager.saveTodoItem(codableTask) { error in
+                    if let error = error {
+                        print("TodoListItemView: Failed to sync cleared proofPostId to Firebase: \(error.localizedDescription)")
+                    }
+                }
+            }
             firebaseManager.deleteTaskProofPost(postId: proofPostId) { error in
                 DispatchQueue.main.async {
                     if let error = error {

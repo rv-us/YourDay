@@ -16,7 +16,7 @@ struct ManualSchedulingView: View {
     @EnvironmentObject private var firebaseManager: FirebaseManager
     @Environment(\.modelContext) private var modelContext
 
-    @State private var selectedTaskId: String?
+    @State private var selectedTaskIds: Set<String> = []
     @State private var proposedStartTime = Date()
     @State private var proposedDuration = 60
     @State private var showingCalendarSheet = false
@@ -28,18 +28,56 @@ struct ManualSchedulingView: View {
         todoItems.filter { $0.origin == .today && !$0.isDone }
     }
 
+    private var selectedTasks: [TodoItem] {
+        todayTasks.filter { selectedTaskIds.contains($0.localTaskId) }
+    }
+
     private var selectedTask: TodoItem? {
-        guard let id = selectedTaskId else { return nil }
-        return todayTasks.first { $0.localTaskId == id }
+        selectedTasks.first
     }
 
     private var proposedEndTime: Date {
         Calendar.current.date(byAdding: .minute, value: proposedDuration, to: proposedStartTime) ?? proposedStartTime
     }
 
+    private var selectedEventIds: [String] {
+        Array(
+            Set(
+                selectedTasks
+                    .compactMap(\.manualScheduleGoogleEventId)
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+            )
+        )
+    }
+
+    private var sharedSelectedEventId: String? {
+        selectedEventIds.count == 1 ? selectedEventIds[0] : nil
+    }
+
     private var hasLinkedManualCalendarEvent: Bool {
-        guard let id = selectedTask?.manualScheduleGoogleEventId else { return false }
-        return !id.isEmpty
+        sharedSelectedEventId != nil
+    }
+
+    private var selectedSessionTitle: String {
+        let titles = selectedTasks.map(\.title)
+        if titles.count == 1 {
+            return titles[0]
+        }
+        if titles.count == 2 {
+            return "\(titles[0]) + \(titles[1])"
+        }
+        return "\(titles.first ?? "Tasks") + \(titles.count - 1) more"
+    }
+
+    private func hasLinkedEventOnSelectedDate(_ task: TodoItem) -> Bool {
+        guard let eventId = task.manualScheduleGoogleEventId?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !eventId.isEmpty,
+              let event = schedulingViewModel.calendarEvents.first(where: { $0.id == eventId }),
+              let startDate = event.start.startDate else {
+            return false
+        }
+        return Calendar.current.isDate(startDate, inSameDayAs: selectedDate)
     }
 
     private var primaryActionTitle: String {
@@ -63,7 +101,7 @@ struct ManualSchedulingView: View {
             alignProposedStartToSelectedDay(newDate)
             schedulingViewModel.fetchCalendarEvents(for: newDate)
         }
-        .onChange(of: selectedTaskId) { _, _ in
+        .onChange(of: selectedTaskIds) { _, _ in
             refreshProposedTimesForSelection()
         }
         .onChange(of: schedulingViewModel.calendarEvents) { _, _ in
@@ -78,7 +116,7 @@ struct ManualSchedulingView: View {
                     proposedDuration: $proposedDuration,
                     events: schedulingViewModel.calendarEvents,
                     selectedDate: Calendar.current.startOfDay(for: selectedDate),
-                    sessionTitle: task.title,
+                    sessionTitle: selectedSessionTitle,
                     allowsDurationResize: true
                 )
             }
@@ -93,7 +131,7 @@ struct ManualSchedulingView: View {
     }
 
     private var introCopy: some View {
-        Text("Pick a task from Today, place it on your calendar, then add or update it on Google Calendar.")
+        Text("Pick one or more tasks from Today, place the session on your calendar, then add or update it on Google Calendar.")
             .font(.subheadline)
             .foregroundColor(dynamicSecondaryTextColor)
     }
@@ -138,9 +176,13 @@ struct ManualSchedulingView: View {
     }
 
     private func todayTaskRow(task: TodoItem) -> some View {
-        let isSelected = selectedTaskId == task.localTaskId
+        let isSelected = selectedTaskIds.contains(task.localTaskId)
         return Button {
-            selectedTaskId = task.localTaskId
+            if isSelected {
+                selectedTaskIds.remove(task.localTaskId)
+            } else {
+                selectedTaskIds.insert(task.localTaskId)
+            }
             refreshProposedTimesForSelection()
         } label: {
             HStack {
@@ -151,10 +193,15 @@ struct ManualSchedulingView: View {
                         .font(.subheadline)
                         .foregroundColor(dynamicTextColor)
                         .multilineTextAlignment(.leading)
-                    if let eid = task.manualScheduleGoogleEventId, !eid.isEmpty {
-                        Text("Already on calendar — saving moves this event")
-                            .font(.caption2)
-                            .foregroundColor(dynamicSecondaryTextColor)
+                    if hasLinkedEventOnSelectedDate(task) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "calendar.badge.checkmark")
+                                .font(.caption2)
+                                .foregroundColor(dynamicSecondaryTextColor)
+                            Text("Already on calendar — saving moves this event")
+                                .font(.caption2)
+                                .foregroundColor(dynamicSecondaryTextColor)
+                        }
                     }
                 }
                 Spacer()
@@ -181,7 +228,7 @@ struct ManualSchedulingView: View {
                             Text(CalendarTimeFormatter.formatTimeRange(start: proposedStartTime, end: proposedEndTime))
                                 .font(.subheadline)
                                 .foregroundColor(dynamicTextColor)
-                            Text("Drag to move, drag bottom edge to change duration")
+                            Text("\(selectedTasks.count) task\(selectedTasks.count == 1 ? "" : "s") selected • Drag to move, drag bottom edge to change duration")
                                 .font(.caption2)
                                 .foregroundColor(dynamicSecondaryTextColor)
                         }
@@ -225,15 +272,34 @@ struct ManualSchedulingView: View {
     private func applyDefaultScheduleForSelection() {
         let cal = Calendar.current
         let sod = cal.startOfDay(for: selectedDate)
-        proposedStartTime = cal.date(bySettingHour: 9, minute: 0, second: 0, of: sod) ?? sod
         proposedDuration = 60
+        if cal.isDateInToday(selectedDate) {
+            proposedStartTime = Self.nextFifteenMinuteStart(from: Date(), dayStart: sod, calendar: cal)
+        } else {
+            proposedStartTime = cal.date(bySettingHour: 9, minute: 0, second: 0, of: sod) ?? sod
+        }
+    }
+    
+    /// Rounds up to the next 15-minute boundary; clamps so a 60-minute block still fits the same calendar day.
+    private static func nextFifteenMinuteStart(from reference: Date, dayStart: Date, calendar: Calendar) -> Date {
+        let h = calendar.component(.hour, from: reference)
+        let m = calendar.component(.minute, from: reference)
+        var total = h * 60 + m
+        let rem = total % 15
+        if rem != 0 {
+            total += 15 - rem
+        }
+        let lastValidStart = 23 * 60 + 0
+        total = min(total, lastValidStart)
+        let nh = total / 60
+        let nm = total % 60
+        return calendar.date(bySettingHour: nh, minute: nm, second: 0, of: dayStart) ?? dayStart
     }
 
     /// Returns `true` if times were taken from the linked Google event in the current fetch.
     @discardableResult
     private func applyProposedFromStoredEventIfPossible() -> Bool {
-        guard let task = selectedTask,
-              let eid = task.manualScheduleGoogleEventId,
+        guard let eid = sharedSelectedEventId,
               !eid.isEmpty,
               let match = schedulingViewModel.calendarEvents.first(where: { $0.id == eid }),
               let start = match.start.startDate else {
@@ -272,7 +338,8 @@ struct ManualSchedulingView: View {
     }
 
     private func addToGoogleCalendar() {
-        guard let task = selectedTask else { return }
+        let tasksToSchedule = selectedTasks
+        guard !tasksToSchedule.isEmpty else { return }
         isSaving = true
         alertMessage = nil
 
@@ -285,26 +352,38 @@ struct ManualSchedulingView: View {
             return
         }
 
-        let detailLine = task.detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        let taskTitles = tasksToSchedule.map(\.title)
+        let sessionTitle = taskTitles.count == 1 ? taskTitles[0] : "YourDay Focus Session"
+        let combinedDetails = tasksToSchedule
+            .map(\.detail)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n\n")
         let scheduledTaskMarker = "\n\n[YourDay Scheduled Task]"
         let descriptionBody: String
-        if detailLine.isEmpty {
-            descriptionBody = "Tasks:\n• \(task.title)\(scheduledTaskMarker)"
+        let tasksList = taskTitles.map { "• \($0)" }.joined(separator: "\n")
+        if combinedDetails.isEmpty {
+            descriptionBody = "Tasks:\n\(tasksList)\(scheduledTaskMarker)"
         } else {
-            descriptionBody = "Tasks:\n• \(task.title)\n\n\(detailLine)\(scheduledTaskMarker)"
+            descriptionBody = "Tasks:\n\(tasksList)\n\n\(combinedDetails)\(scheduledTaskMarker)"
         }
 
         let calendarManager = GoogleCalendarManager.shared
 
         func finishSuccess(eventId: String) {
-            task.manualScheduleGoogleEventId = eventId
+            tasksToSchedule.forEach {
+                $0.manualScheduleGoogleEventId = eventId
+                $0.scheduledStartTime = start
+                $0.scheduledEndTime = end
+            }
             try? modelContext.save()
-            syncTodoItemToFirebase(task)
+            tasksToSchedule.forEach(syncTodoItemToFirebase)
+            ScreenTimeManager.shared.scheduleSnapshotRefresh(context: modelContext)
 
             firebaseManager.saveScheduledEvent(
                 eventId: eventId,
-                taskTitle: task.title,
-                tasks: [task.title],
+                taskTitle: sessionTitle,
+                tasks: taskTitles,
                 startTime: start,
                 endTime: end
             ) { saveError in
@@ -318,20 +397,21 @@ struct ManualSchedulingView: View {
 
                     NotificationManager.shared.scheduleJournalPromptNotification(
                         eventId: eventId,
-                        taskTitle: task.title,
+                        taskTitle: sessionTitle,
                         scheduledEndTime: end
                     )
 
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                         self.schedulingViewModel.fetchCalendarEvents(for: self.selectedDate)
                     }
+                    self.selectedTaskIds.removeAll()
                 }
             }
         }
 
         func handleCreate() {
             calendarManager.createCalendarEvent(
-                title: task.title,
+                title: sessionTitle,
                 start: start,
                 end: end,
                 description: descriptionBody
@@ -357,7 +437,7 @@ struct ManualSchedulingView: View {
         func handleUpdate(existingId: String) {
             calendarManager.updateCalendarEvent(
                 eventId: existingId,
-                title: task.title,
+                title: sessionTitle,
                 start: start,
                 end: end,
                 description: descriptionBody
@@ -366,9 +446,9 @@ struct ManualSchedulingView: View {
                     if let error = error {
                         let ns = error as NSError
                         if ns.code == 404 || ns.code == 410 {
-                            task.manualScheduleGoogleEventId = nil
+                            tasksToSchedule.forEach { $0.manualScheduleGoogleEventId = nil }
                             try? self.modelContext.save()
-                            self.syncTodoItemToFirebase(task)
+                            tasksToSchedule.forEach(self.syncTodoItemToFirebase)
                             handleCreate()
                             return
                         }
@@ -396,7 +476,7 @@ struct ManualSchedulingView: View {
                     self.alertMessage = err.localizedDescription
                     self.showAlert = true
                 case .success:
-                    if let existingId = task.manualScheduleGoogleEventId, !existingId.isEmpty {
+                    if let existingId = sharedSelectedEventId {
                         handleUpdate(existingId: existingId)
                     } else {
                         handleCreate()

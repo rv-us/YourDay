@@ -31,12 +31,14 @@ final class TaskProofFeedListenerToken {
     }
 }
 
-/// Per-task proof bonus: task ids that earned 1.5× yesterday; `qualifyingPostIds` are deleted after daily eval when save succeeds.
-/// `proofVoteRollups*` aggregate all check/x votes (including self) per linked task for summary UI.
+/// Per-task proof bonus: task ids that earned 1.5× yesterday. `allYesterdayPostIds` lists every post from the yesterday window —
+/// all are deleted after daily eval when save succeeds. `qualifyingPostIds` is retained for eligibility diagnostics.
+/// `proofVoteRollups*` aggregate non-self check/x votes from qualifying posts only (matches the eligibility gate).
 struct YesterdayTaskProofTallyResult {
     let eligibleLocalTaskIds: Set<String>
     let eligibleSharedTaskIds: Set<String>
     let qualifyingPostIds: [String]
+    let allYesterdayPostIds: [String]
     let proofVoteRollupsByLocalTaskId: [String: ProofFeedVoteRollup]
     let proofVoteRollupsBySharedTaskId: [String: ProofFeedVoteRollup]
 }
@@ -1065,13 +1067,26 @@ class FirebaseManager: ObservableObject {
                 return
             }
 
+            // Cleans up the uploaded blob when a subsequent step fails, so the Storage object isn't orphaned.
+            let cleanupOrphan: (Error) -> Void = { originalError in
+                storageRef.delete { cleanupError in
+                    if let cleanupError = cleanupError {
+                        let ns = cleanupError as NSError
+                        if !(ns.domain == StorageErrorDomain && ns.code == StorageErrorCode.objectNotFound.rawValue) {
+                            print("createTaskProofPost: failed to clean up orphaned upload at \(storagePath): \(cleanupError.localizedDescription)")
+                        }
+                    }
+                    completion(originalError, nil)
+                }
+            }
+
             storageRef.downloadURL { url, urlError in
                 if let urlError = urlError {
-                    completion(urlError, nil)
+                    cleanupOrphan(urlError)
                     return
                 }
                 guard let downloadURL = url?.absoluteString else {
-                    completion(NSError(domain: "", code: 500, userInfo: [NSLocalizedDescriptionKey: "Could not generate photo URL"]), nil)
+                    cleanupOrphan(NSError(domain: "", code: 500, userInfo: [NSLocalizedDescriptionKey: "Could not generate photo URL"]))
                     return
                 }
 
@@ -1090,7 +1105,11 @@ class FirebaseManager: ObservableObject {
                 ]
 
                 postRef.setData(payload) { error in
-                    completion(error, error == nil ? postId : nil)
+                    if let error = error {
+                        cleanupOrphan(error)
+                    } else {
+                        completion(nil, postId)
+                    }
                 }
             }
         }
@@ -1128,33 +1147,73 @@ class FirebaseManager: ObservableObject {
                     return
                 }
 
-                let batch = self.db.batch()
-                voteSnapshot?.documents.forEach { batch.deleteDocument($0.reference) }
-                batch.deleteDocument(postRef)
+                let voteRefs = voteSnapshot?.documents.map(\.reference) ?? []
 
-                batch.commit { batchError in
-                    if let batchError = batchError {
-                        completion(batchError)
+                // Firestore caps batches at 500 ops; chunk vote deletes so a post with many votes can still be removed.
+                self.deleteVotesInChunks(voteRefs: voteRefs) { chunkError in
+                    if let chunkError = chunkError {
+                        completion(chunkError)
                         return
                     }
 
-                    guard let storagePath = storagePath, !storagePath.isEmpty else {
-                        completion(nil)
-                        return
-                    }
+                    postRef.delete { postDeleteError in
+                        if let postDeleteError = postDeleteError {
+                            completion(postDeleteError)
+                            return
+                        }
 
-                    Storage.storage().reference(withPath: storagePath).delete { storageError in
-                        if let nsError = storageError as NSError?,
-                           nsError.domain == StorageErrorDomain,
-                           nsError.code == StorageErrorCode.objectNotFound.rawValue {
+                        guard let storagePath = storagePath, !storagePath.isEmpty else {
                             completion(nil)
                             return
                         }
-                        completion(storageError)
+
+                        // Firestore is the user-visible source of truth; if Storage cleanup fails, the post is already gone,
+                        // so treat the deletion as successful and log the orphan for monitoring rather than surfacing an error.
+                        Storage.storage().reference(withPath: storagePath).delete { storageError in
+                            if let storageError = storageError {
+                                let ns = storageError as NSError
+                                if !(ns.domain == StorageErrorDomain && ns.code == StorageErrorCode.objectNotFound.rawValue) {
+                                    print("deleteTaskProofPost: Storage delete failed for \(storagePath) (post already removed from Firestore): \(storageError.localizedDescription)")
+                                }
+                            }
+                            completion(nil)
+                        }
                     }
                 }
             }
         }
+    }
+
+    private func deleteVotesInChunks(voteRefs: [DocumentReference], completion: @escaping (Error?) -> Void) {
+        guard !voteRefs.isEmpty else {
+            completion(nil)
+            return
+        }
+
+        let chunkSize = 500
+        let chunks: [[DocumentReference]] = stride(from: 0, to: voteRefs.count, by: chunkSize).map {
+            Array(voteRefs[$0..<min($0 + chunkSize, voteRefs.count)])
+        }
+
+        func commitNext(_ index: Int) {
+            if index >= chunks.count {
+                completion(nil)
+                return
+            }
+            let batch = self.db.batch()
+            for ref in chunks[index] {
+                batch.deleteDocument(ref)
+            }
+            batch.commit { error in
+                if let error = error {
+                    completion(error)
+                    return
+                }
+                commitNext(index + 1)
+            }
+        }
+
+        commitNext(0)
     }
 
     /// Fetches yesterday-window proof posts; per post, if non-self votes satisfy checks > xs, links that task for 1.5× XP and lists the post for deletion.
@@ -1164,6 +1223,7 @@ class FirebaseManager: ObservableObject {
             eligibleLocalTaskIds: Set(),
             eligibleSharedTaskIds: Set(),
             qualifyingPostIds: [],
+            allYesterdayPostIds: [],
             proofVoteRollupsByLocalTaskId: [:],
             proofVoteRollupsBySharedTaskId: [:]
         )
@@ -1193,7 +1253,7 @@ class FirebaseManager: ObservableObject {
             .whereField("authorId", isEqualTo: uid)
             .whereField("createdAt", isGreaterThanOrEqualTo: startTs)
             .whereField("createdAt", isLessThan: endTs)
-            .limit(to: 50)
+            .limit(to: 500)
             .getDocuments { [weak self] snapshot, error in
                 guard self != nil else {
                     print("[DailyEval] proof tally: aborted (FirebaseManager deallocated)")
@@ -1213,8 +1273,8 @@ class FirebaseManager: ObservableObject {
                     return
                 }
 
-                let postIds = docs.map(\.documentID)
-                print("[DailyEval] proof tally: found \(docs.count) post(s) ids=\(postIds.joined(separator: ", ")) — fetching votes per post")
+                let allYesterdayPostIds = docs.map(\.documentID)
+                print("[DailyEval] proof tally: found \(docs.count) post(s) ids=\(allYesterdayPostIds.joined(separator: ", ")) — fetching votes per post")
 
                 var eligibleLocalTaskIds = Set<String>()
                 var eligibleSharedTaskIds = Set<String>()
@@ -1241,26 +1301,20 @@ class FirebaseManager: ObservableObject {
                         }
 
                         let votes = voteSnapshot?.documents.compactMap { try? $0.data(as: TaskProofVote.self) } ?? []
-                        var allChecks = 0
-                        var allXs = 0
                         var nonSelfChecks = 0
                         var nonSelfXs = 0
                         var sawNonSelf = false
-                        for vote in votes {
+                        for vote in votes where vote.voterId != uid {
+                            sawNonSelf = true
                             switch vote.voteType {
-                            case .check: allChecks += 1
-                            case .xmark: allXs += 1
-                            }
-                            if vote.voterId != uid {
-                                sawNonSelf = true
-                                switch vote.voteType {
-                                case .check: nonSelfChecks += 1
-                                case .xmark: nonSelfXs += 1
-                                }
+                            case .check: nonSelfChecks += 1
+                            case .xmark: nonSelfXs += 1
                             }
                         }
                         let postEligible = sawNonSelf && nonSelfChecks > nonSelfXs
-                        print("[DailyEval] proof tally: post \(postId) rawVotes=\(votes.count) allChecks=\(allChecks) allXs=\(allXs) nonSelfChecks=\(nonSelfChecks) nonSelfXs=\(nonSelfXs) perPostEligible=\(postEligible)")
+                        print("[DailyEval] proof tally: post \(postId) rawVotes=\(votes.count) nonSelfChecks=\(nonSelfChecks) nonSelfXs=\(nonSelfXs) perPostEligible=\(postEligible)")
+
+                        guard postEligible else { return }
 
                         let linkLocal = post.localTaskId.flatMap { $0.isEmpty ? nil : $0 }
                         let linkShared = post.sharedTaskId.flatMap { $0.isEmpty ? nil : $0 }
@@ -1268,20 +1322,16 @@ class FirebaseManager: ObservableObject {
                         tallyLock.lock()
                         if let lid = linkLocal {
                             let cur = rollupsLocal[lid] ?? (0, 0)
-                            rollupsLocal[lid] = (cur.checks + allChecks, cur.xs + allXs)
-                            if postEligible {
-                                qualifyingPostIds.append(postId)
-                                eligibleLocalTaskIds.insert(lid)
-                            }
+                            rollupsLocal[lid] = (cur.checks + nonSelfChecks, cur.xs + nonSelfXs)
+                            qualifyingPostIds.append(postId)
+                            eligibleLocalTaskIds.insert(lid)
                         } else if let sid = linkShared {
                             let cur = rollupsShared[sid] ?? (0, 0)
-                            rollupsShared[sid] = (cur.checks + allChecks, cur.xs + allXs)
-                            if postEligible {
-                                qualifyingPostIds.append(postId)
-                                eligibleSharedTaskIds.insert(sid)
-                            }
-                        } else if postEligible {
-                            print("[DailyEval] proof tally: post \(postId) vote-eligible but no localTaskId/sharedTaskId (e.g. scheduled journal) — no XP bonus and no auto-delete")
+                            rollupsShared[sid] = (cur.checks + nonSelfChecks, cur.xs + nonSelfXs)
+                            qualifyingPostIds.append(postId)
+                            eligibleSharedTaskIds.insert(sid)
+                        } else {
+                            print("[DailyEval] proof tally: post \(postId) vote-eligible but no localTaskId/sharedTaskId (e.g. scheduled journal) — no XP bonus")
                         }
                         tallyLock.unlock()
                     }
@@ -1290,11 +1340,12 @@ class FirebaseManager: ObservableObject {
                 group.notify(queue: .main) {
                     let mapLocal: [String: ProofFeedVoteRollup] = rollupsLocal.mapValues { ProofFeedVoteRollup(allCheckVotes: $0.checks, allXVotes: $0.xs) }
                     let mapShared: [String: ProofFeedVoteRollup] = rollupsShared.mapValues { ProofFeedVoteRollup(allCheckVotes: $0.checks, allXVotes: $0.xs) }
-                    print("[DailyEval] proof tally: done eligibleLocal=\(eligibleLocalTaskIds.sorted()) eligibleShared=\(eligibleSharedTaskIds.sorted()) qualifyingPosts=\(qualifyingPostIds.count) rollupLocalKeys=\(mapLocal.keys.count) rollupSharedKeys=\(mapShared.keys.count)")
+                    print("[DailyEval] proof tally: done eligibleLocal=\(eligibleLocalTaskIds.sorted()) eligibleShared=\(eligibleSharedTaskIds.sorted()) qualifyingPosts=\(qualifyingPostIds.count) yesterdayPostsToDelete=\(allYesterdayPostIds.count) rollupLocalKeys=\(mapLocal.keys.count) rollupSharedKeys=\(mapShared.keys.count)")
                     completion(YesterdayTaskProofTallyResult(
                         eligibleLocalTaskIds: eligibleLocalTaskIds,
                         eligibleSharedTaskIds: eligibleSharedTaskIds,
                         qualifyingPostIds: qualifyingPostIds,
+                        allYesterdayPostIds: allYesterdayPostIds,
                         proofVoteRollupsByLocalTaskId: mapLocal,
                         proofVoteRollupsBySharedTaskId: mapShared
                     ))
@@ -2059,6 +2110,28 @@ class FirebaseManager: ObservableObject {
                 let eventIds = snapshot?.documents.map { $0.documentID } ?? []
                 completion(eventIds, nil)
             }
+    }
+    
+    /// Records that the user dismissed the journal prompt for this event (via Skip
+    /// or Reschedule), so `TaskEndMonitor` won't re-surface a prompt for it. This
+    /// deliberately does NOT create a journal entry.
+    func markScheduledEventPromptHandled(eventId: String, completion: @escaping (Error?) -> Void) {
+        guard let userId = userId else {
+            completion(NSError(domain: "FirebaseManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+        guard !eventId.isEmpty else {
+            completion(nil)
+            return
+        }
+        
+        let docRef = db.collection("users").document(userId).collection("scheduledEvents").document(eventId)
+        docRef.setData([
+            "promptSkipped": true,
+            "promptHandledAt": FieldValue.serverTimestamp()
+        ], merge: true) { error in
+            completion(error)
+        }
     }
     
     func fetchScheduledEvents(completion: @escaping ([[String: Any]]?, Error?) -> Void) {

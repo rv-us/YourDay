@@ -79,6 +79,14 @@ struct YourDayApp: App {
         
         UNUserNotificationCenter.current().delegate = NotificationManager.shared
         NotificationManager.shared.requestPermissionIfNeeded()
+
+        Task { @MainActor in
+            ScreenTimeManager.shared.loadPersistedState()
+            ScreenTimeManager.shared.applyShieldIfNeeded()
+            if ScreenTimeManager.shared.isEnabled {
+                ScreenTimeManager.shared.startDailyMonitoring()
+            }
+        }
         
         let appearance = UITabBarAppearance()
         appearance.configureWithOpaqueBackground()

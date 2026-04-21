@@ -46,9 +46,8 @@ struct NotificationSettingsView: View {
     // Note: These are imported from Shopview.swift where they're defined
 
     var body: some View {
-        NavigationView {
-            VStack(spacing: 0) {
-                if showNotificationSaveConfirmation {
+        VStack(spacing: 0) {
+            if showNotificationSaveConfirmation {
                     Text("Reminders scheduled successfully!")
                         .foregroundColor(dynamicSecondaryColor)
                         .frame(maxWidth: .infinity)
@@ -351,7 +350,7 @@ struct NotificationSettingsView: View {
             .overlay(
                 Group {
                     if showNotificationsTutorial {
-                        
+
                         NotificationsTutorialOverlay(
                              currentStep: $currentNotificationTutorialStep,
                              isActive: $showNotificationsTutorial,
@@ -360,9 +359,7 @@ struct NotificationSettingsView: View {
                     }
                 }
             )
-        }
-        .background(dynamicBackgroundColor.edgesIgnoringSafeArea(.all))
-        .navigationViewStyle(.stack)
+            .background(dynamicBackgroundColor.edgesIgnoringSafeArea(.all))
     }
 
     private func validateAndSaveDisplayName() {

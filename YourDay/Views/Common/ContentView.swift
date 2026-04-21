@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 import GoogleSignIn
 import FirebaseFirestore
+import FirebaseAuth
 
 
 struct ContentView: View {
@@ -42,6 +43,10 @@ struct ContentView: View {
     @Query private var allTodoItems: [TodoItem]
     @StateObject private var todoViewModel = TodoViewModel()
     @ObservedObject private var journalViewModel = JournalViewModel.shared
+    @ObservedObject private var penaltyProcessor = FocusPenaltyProcessor.shared
+    @ObservedObject private var screenTimeManager = ScreenTimeManager.shared
+    @State private var showFocusPenaltyToast = false
+    @State private var focusPenaltyToastMessage = ""
 
     private enum Tab: String, CaseIterable {
         case tasks, garden, dashboard, scheduling, settings
@@ -198,14 +203,52 @@ struct ContentView: View {
                     await processNewDayLogicIfNeeded()
                 }
                 TaskEndMonitor.shared.forceCheck()
+                Task { @MainActor in
+                    await FocusPenaltyProcessor.shared.drainPending(
+                        context: modelContext,
+                        loginViewModel: loginViewModel
+                    )
+                    await ScreenTimeManager.shared.writeSnapshotFromCurrentTasks(context: modelContext)
+                }
             }
             .onAppear {
                 NotificationManager.shared.setJournalViewModel(journalViewModel)
                 startIncomingChatListenerIfNeeded()
                 updateLocationManagerTaskSummary()
+                Task { @MainActor in
+                    await FocusPenaltyProcessor.shared.drainPending(
+                        context: modelContext,
+                        loginViewModel: loginViewModel
+                    )
+                    await ScreenTimeManager.shared.writeSnapshotFromCurrentTasks(context: modelContext)
+                }
             }
-            .onChange(of: allTodoItems.map { "\($0.title)-\($0.isDone)" }.sorted().joined(separator: "|")) { _, _ in
+            .onChange(of: allTodoItems.map { "\($0.title)-\($0.isDone)-\($0.manualScheduleGoogleEventId ?? "")" }.sorted().joined(separator: "|")) { _, _ in
                 updateLocationManagerTaskSummary()
+                ScreenTimeManager.shared.scheduleSnapshotRefresh(context: modelContext)
+            }
+            .onChange(of: penaltyProcessor.lastDrainResult) { _, result in
+                guard let result else { return }
+                let noun = result.penaltyCount == 1 ? "break" : "breaks"
+                focusPenaltyToastMessage = "Lost \(result.totalDeducted) point\(result.totalDeducted == 1 ? "" : "s") for \(result.penaltyCount) focus \(noun)."
+                showFocusPenaltyToast = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+                    showFocusPenaltyToast = false
+                    penaltyProcessor.acknowledgeLastDrain()
+                }
+            }
+            .overlay(alignment: .top) {
+                if showFocusPenaltyToast {
+                    Text(focusPenaltyToastMessage)
+                        .font(.callout)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(dynamicDestructiveColor.opacity(0.9))
+                        .foregroundColor(.white)
+                        .clipShape(Capsule())
+                        .padding(.top, 8)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
             }
     }
 
@@ -273,7 +316,7 @@ struct ContentView: View {
 
     @ViewBuilder
     private var moreTab: some View {
-        NotificationSettingsView(
+        SettingsHubView(
             todoViewModel: todoViewModel,
             loginViewModel: loginViewModel,
             onSignOutRequested: { requestSignOut() }
@@ -386,7 +429,7 @@ struct ContentView: View {
                 }
             }
             proofTallyForCleanup = tally
-            print("[DailyEval] proof tally complete — qualifyingPosts=\(tally.qualifyingPostIds.count) eligibleLocalTasks=\(tally.eligibleLocalTaskIds.count) eligibleSharedTasks=\(tally.eligibleSharedTaskIds.count) → calling evaluateDailyPoints")
+            print("[DailyEval] proof tally complete — qualifyingPosts=\(tally.qualifyingPostIds.count) yesterdayPosts=\(tally.allYesterdayPostIds.count) eligibleLocalTasks=\(tally.eligibleLocalTaskIds.count) eligibleSharedTasks=\(tally.eligibleSharedTaskIds.count) → calling evaluateDailyPoints")
             _ = PointManager.evaluateDailyPoints(
                 context: modelContext,
                 tasks: allTodoItems,
@@ -395,26 +438,48 @@ struct ContentView: View {
                 proofVoteRollupsByLocalTaskId: tally.proofVoteRollupsByLocalTaskId,
                 proofVoteRollupsBySharedTaskId: tally.proofVoteRollupsBySharedTaskId
             )
+
+            // Clear stale proofPostId references locally and remotely before deleteOldDoneTasks tombstones the items.
+            if !tally.allYesterdayPostIds.isEmpty {
+                let idsToClear = Set(tally.allYesterdayPostIds)
+                let currentUserId = FirebaseAuth.Auth.auth().currentUser?.uid
+                var clearedProofIds = 0
+                for item in allTodoItems {
+                    guard let pid = item.proofPostId, idsToClear.contains(pid) else { continue }
+                    item.proofPostId = nil
+                    clearedProofIds += 1
+                    if let uid = currentUserId {
+                        let codable = TodoItemCodable(from: item, userId: uid)
+                        firebaseManager.saveTodoItem(codable) { error in
+                            if let error = error {
+                                print("[DailyEval] saveTodoItem after proof clear failed for \(item.localTaskId): \(error.localizedDescription)")
+                            }
+                        }
+                    }
+                }
+                print("[DailyEval] cleared proofPostId on \(clearedProofIds) local TodoItem(s)")
+            }
+
             await deleteOldDoneTasks()
 
             // Always trigger the flow when a new day is detected
             newDayEvaluationTriggeredLastDayView = true
             showLastDayView = true
-            
+
             lastSummaryDateString = todayString
             shouldSyncStats = true
         } else {
             newDayEvaluationTriggeredLastDayView = false
         }
-        
+
         do {
             try modelContext.save()
             if shouldSyncStats {
                 loginViewModel.syncLocalPlayerStatsToFirestore(playerStatsModel: stats)
             }
-            if let tally = proofTallyForCleanup, !tally.qualifyingPostIds.isEmpty {
-                print("[DailyEval] deleting \(tally.qualifyingPostIds.count) qualifying proof post(s) from Firestore/Storage")
-                for postId in tally.qualifyingPostIds {
+            if let tally = proofTallyForCleanup, !tally.allYesterdayPostIds.isEmpty {
+                print("[DailyEval] deleting \(tally.allYesterdayPostIds.count) yesterday proof post(s) from Firestore/Storage (\(tally.qualifyingPostIds.count) earned the 1.5× bonus)")
+                for postId in tally.allYesterdayPostIds {
                     print("[DailyEval] deleting proof post id=\(postId) …")
                     await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
                         firebaseManager.deleteTaskProofPost(postId: postId) { error in
@@ -427,17 +492,8 @@ struct ContentView: View {
                         }
                     }
                 }
-                var clearedProofIds = 0
-                for item in allTodoItems {
-                    if let pid = item.proofPostId, tally.qualifyingPostIds.contains(pid) {
-                        item.proofPostId = nil
-                        clearedProofIds += 1
-                    }
-                }
-                print("[DailyEval] cleared proofPostId on \(clearedProofIds) local TodoItem(s)")
-                try modelContext.save()
             } else if proofTallyForCleanup != nil {
-                print("[DailyEval] no qualifying proof posts to delete (per-post vote gate not met or no posts)")
+                print("[DailyEval] no yesterday proof posts to delete")
             }
         } catch {
             // Error saving PlayerStats

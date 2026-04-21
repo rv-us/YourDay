@@ -65,7 +65,14 @@ struct TaskProofPostCardView: View {
                     EmptyView()
                 }
             }
+            .frame(maxWidth: .infinity)
             .frame(height: 240)
+            // `.clipped()` clips both visual *and* hit-testing bounds; without it a
+            // `.scaledToFill` image can overflow its 240pt frame (especially for square/portrait
+            // photos) and silently cover the check/X/Delete row below it, swallowing taps.
+            .clipped()
+            .contentShape(Rectangle())
+            .allowsHitTesting(false)
             .clipShape(RoundedRectangle(cornerRadius: 12))
 
             HStack(spacing: 12) {
@@ -89,7 +96,11 @@ struct TaskProofPostCardView: View {
                     Button(role: .destructive, action: onDelete) {
                         Label("Delete", systemImage: "trash")
                             .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 8)
+                            .contentShape(Rectangle())
                     }
+                    .buttonStyle(.borderless)
                 }
             }
 
@@ -120,6 +131,8 @@ struct TaskProofPostCardView: View {
             .padding(.vertical, 8)
             .background(isSelected ? dynamicPrimaryColor : dynamicBackgroundColor)
             .cornerRadius(9)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.borderless)
     }
 }

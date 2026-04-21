@@ -458,7 +458,8 @@ struct JournalCompletionFlowView: View {
         isScheduling = true
         rescheduleError = nil
 
-        let endTime = proposedEndTime
+        let start = proposedStartTime
+        let end = proposedEndTime
         let tasks = taskTitles
         let title = buildSessionTitle(for: tasks)
         let originalRange = "\(timeFormatter.string(from: pendingEvent.scheduledStartTime)) - \(timeFormatter.string(from: pendingEvent.scheduledEndTime))"
@@ -467,41 +468,108 @@ struct JournalCompletionFlowView: View {
         let scheduledTaskMarker = "\n\n[YourDay Scheduled Task]"
         let fullDescription = "Tasks:\n• \(tasksDescription)\n\n\(rescheduleNote)\(scheduledTaskMarker)"
 
-        calendarManager.createCalendarEvent(
-            title: title,
-            start: proposedStartTime,
-            end: endTime,
-            description: fullDescription
-        ) { eventId, error in
-            DispatchQueue.main.async {
-                self.isScheduling = false
-                
-                if let error = error {
-                    self.rescheduleError = error.localizedDescription
-                    return
-                }
+        let originalEventId = pendingEvent.eventId
 
-                if let eventId = eventId {
-                    self.firebaseManager.saveScheduledEvent(
+        func finishSuccess(eventId: String) {
+            firebaseManager.saveScheduledEvent(
+                eventId: eventId,
+                taskTitle: title,
+                tasks: tasks,
+                startTime: start,
+                endTime: end
+            ) { saveError in
+                DispatchQueue.main.async {
+                    self.isScheduling = false
+
+                    if let saveError = saveError {
+                        print("Error saving rescheduled event mapping: \(saveError.localizedDescription)")
+                    }
+
+                    // If the fallback path created a brand-new event (different id),
+                    // cancel any notification still pointing at the old id so we don't
+                    // double-prompt the user.
+                    if eventId != originalEventId && !originalEventId.isEmpty {
+                        NotificationManager.shared.cancelJournalPromptNotification(eventId: originalEventId)
+                    }
+
+                    NotificationManager.shared.scheduleJournalPromptNotification(
                         eventId: eventId,
                         taskTitle: title,
-                        tasks: tasks,
-                        startTime: proposedStartTime,
-                        endTime: endTime
-                    ) { saveError in
-                        if let saveError = saveError {
-                            print("Error saving rescheduled event mapping: \(saveError.localizedDescription)")
-                        } else {
-                            NotificationManager.shared.scheduleJournalPromptNotification(
-                                eventId: eventId,
-                                taskTitle: title,
-                                scheduledEndTime: endTime
-                            )
+                        scheduledEndTime: end
+                    )
+
+                    self.journalViewModel.skipJournalPrompt()
+                }
+            }
+        }
+
+        func handleCreate() {
+            calendarManager.createCalendarEvent(
+                title: title,
+                start: start,
+                end: end,
+                description: fullDescription
+            ) { eventId, error in
+                DispatchQueue.main.async {
+                    if let error = error {
+                        self.isScheduling = false
+                        self.rescheduleError = error.localizedDescription
+                        return
+                    }
+                    guard let eventId = eventId, !eventId.isEmpty else {
+                        self.isScheduling = false
+                        self.rescheduleError = "Could not confirm the calendar event."
+                        return
+                    }
+                    finishSuccess(eventId: eventId)
+                }
+            }
+        }
+
+        func handleUpdate(existingId: String) {
+            calendarManager.updateCalendarEvent(
+                eventId: existingId,
+                title: title,
+                start: start,
+                end: end,
+                description: fullDescription
+            ) { returnedId, error in
+                DispatchQueue.main.async {
+                    if let error = error {
+                        let ns = error as NSError
+                        // Event is gone on Google's side (deleted/expired). Fall back
+                        // to creating a fresh one so the reschedule still succeeds.
+                        if ns.code == 404 || ns.code == 410 {
+                            handleCreate()
+                            return
                         }
+                        self.isScheduling = false
+                        self.rescheduleError = error.localizedDescription
+                        return
+                    }
+                    guard let eventId = returnedId, !eventId.isEmpty else {
+                        self.isScheduling = false
+                        self.rescheduleError = "Could not confirm the calendar event."
+                        return
+                    }
+                    finishSuccess(eventId: eventId)
+                }
+            }
+        }
+
+        calendarManager.ensureCalendarWriteAccess { accessResult in
+            DispatchQueue.main.async {
+                switch accessResult {
+                case .failure(let err):
+                    self.isScheduling = false
+                    self.rescheduleError = err.localizedDescription
+                case .success:
+                    if !originalEventId.isEmpty {
+                        handleUpdate(existingId: originalEventId)
+                    } else {
+                        handleCreate()
                     }
                 }
-
-                self.journalViewModel.skipJournalPrompt()
             }
         }
     }

@@ -9,7 +9,7 @@ import SwiftUI
 
 struct JournalView: View {
     @ObservedObject var journalViewModel: JournalViewModel
-    @State private var selectedDate = Date()
+    @State private var selectedDate: Date? = nil
     @State private var filterStatus: CompletionStatus? = nil
     @State private var searchText = ""
     @State private var showingDatePicker = false
@@ -32,7 +32,26 @@ struct JournalView: View {
             entries = entries.filter { $0.completionStatus == status }
         }
         
+        // Filter by date (matches the scheduled day the session was for).
+        if let day = selectedDate {
+            let calendar = Calendar.current
+            entries = entries.filter { entry in
+                calendar.isDate(entry.scheduledStartTime, inSameDayAs: day)
+            }
+        }
+        
         return entries.sorted { $0.timestamp > $1.timestamp }
+    }
+    
+    private var dateFilterLabel: String {
+        guard let day = selectedDate else { return "All dates" }
+        let formatter = DateFormatter()
+        let calendar = Calendar.current
+        if calendar.isDateInToday(day) { return "Today" }
+        if calendar.isDateInYesterday(day) { return "Yesterday" }
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        return formatter.string(from: day)
     }
     
     var body: some View {
@@ -51,7 +70,9 @@ struct JournalView: View {
                     .cornerRadius(10)
                     .padding(.horizontal)
                     
-                    // Filter Picker (pill style like Todoview)
+                    // Filter Picker (pill style like Todoview). "Not Started" is
+                    // kept for legacy visibility even though new skip/reschedule
+                    // flows no longer create notStarted entries.
                     HStack(spacing: 0) {
                         statusPillButton(title: "All", isSelected: filterStatus == nil) { filterStatus = nil }
                         statusPillButton(title: "Completed", isSelected: filterStatus == .completed) { filterStatus = .completed }
@@ -60,6 +81,40 @@ struct JournalView: View {
                     }
                     .padding(4)
                     .background(Capsule().fill(Color.black.opacity(0.06)))
+                    .padding(.horizontal)
+                    
+                    // Date filter row
+                    HStack(spacing: 8) {
+                        Button(action: { showingDatePicker = true }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "calendar")
+                                Text(dateFilterLabel)
+                                    .fontWeight(.semibold)
+                                Image(systemName: "chevron.down")
+                                    .font(.caption2)
+                            }
+                            .font(.caption)
+                            .foregroundColor(dynamicPrimaryColor)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Capsule().fill(dynamicPrimaryColor.opacity(0.12)))
+                        }
+                        .buttonStyle(.plain)
+                        
+                        if selectedDate != nil {
+                            Button(action: { selectedDate = nil }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "xmark.circle.fill")
+                                    Text("Clear")
+                                }
+                                .font(.caption)
+                                .foregroundColor(dynamicSecondaryTextColor)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        
+                        Spacer()
+                    }
                     .padding(.horizontal)
                 }
                 .padding(.vertical, 12)
@@ -121,9 +176,24 @@ struct JournalView: View {
                 }
             }
             .onAppear {
-                if journalViewModel.journalEntries.isEmpty {
-                    journalViewModel.fetchJournalEntries()
-                }
+                // Always refetch on entry so the list reflects anything saved or
+                // deleted elsewhere in this session; otherwise the locally-inserted
+                // entry would be the only one visible.
+                journalViewModel.fetchJournalEntries()
+            }
+            .sheet(isPresented: $showingDatePicker) {
+                DateFilterPickerSheet(
+                    initialDate: selectedDate ?? Date(),
+                    onDone: { picked in
+                        selectedDate = picked
+                        showingDatePicker = false
+                    },
+                    onClear: {
+                        selectedDate = nil
+                        showingDatePicker = false
+                    }
+                )
+                .presentationDetents([.medium])
             }
         }
     }
@@ -238,6 +308,57 @@ struct JournalEntryRow: View {
         .padding()
         .background(dynamicSecondaryBackgroundColor)
         .cornerRadius(12)
+    }
+}
+
+// MARK: - Date Filter Picker Sheet
+
+private struct DateFilterPickerSheet: View {
+    let initialDate: Date
+    let onDone: (Date) -> Void
+    let onClear: () -> Void
+    
+    @Environment(\.dismiss) private var dismiss
+    @State private var picked: Date
+    
+    init(initialDate: Date, onDone: @escaping (Date) -> Void, onClear: @escaping () -> Void) {
+        self.initialDate = initialDate
+        self.onDone = onDone
+        self.onClear = onClear
+        _picked = State(initialValue: initialDate)
+    }
+    
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 16) {
+                DatePicker(
+                    "Filter by date",
+                    selection: $picked,
+                    in: ...Date(),
+                    displayedComponents: .date
+                )
+                .datePickerStyle(.graphical)
+                .tint(dynamicPrimaryColor)
+                .padding(.horizontal)
+                
+                Spacer(minLength: 0)
+            }
+            .padding(.top, 8)
+            .background(dynamicBackgroundColor)
+            .navigationTitle("Filter by Date")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Clear") { onClear() }
+                        .foregroundColor(dynamicSecondaryTextColor)
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") { onDone(picked) }
+                        .foregroundColor(dynamicPrimaryColor)
+                        .fontWeight(.semibold)
+                }
+            }
+        }
     }
 }
 
