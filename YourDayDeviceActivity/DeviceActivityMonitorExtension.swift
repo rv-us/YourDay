@@ -29,13 +29,7 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
         // user just earned by pressing "Continue anyway". The grace window
         // only ends reshielding on `intervalDidEnd` (wall-clock timer from tap).
         guard activity != DeviceActivityMonitorNames.breakFocusGrace else {
-            if let end = AppGroupDefaults.graceWindowEndDate() {
-                let rem = max(0, end.timeIntervalSinceNow)
-                let sec = Int(rem.rounded(.down))
-                logger.notice("DAMonitor intervalDidStart: grace active, ~\(sec, privacy: .public)s until reshield (skipping reapply here)")
-            } else {
-                logger.notice("DAMonitor intervalDidStart: SKIPPING reapply for grace (no graceWindowEndsAt in app group)")
-            }
+            logger.notice("DAMonitor intervalDidStart: break-focus interval started (skipping reapply; reshield on intervalDidEnd)")
             return
         }
 
@@ -62,15 +56,13 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
                 return
             }
 
-            // Main app may have already re-shielded at the shorter user clock.
             if AppGroupDefaults.graceWindowEndDate() == nil {
-                logger.notice("DAMonitor intervalDidEnd: grace key already cleared (reshielded in main app); stopping activity only")
+                logger.notice("DAMonitor intervalDidEnd: unblock tracking already cleared; stopping activity only")
                 activityCenter.stopMonitoring([DeviceActivityMonitorNames.breakFocusGrace])
                 return
             }
 
-            // System `DeviceActivity` window ended (≥ iOS min length) — reapply.
-            logger.notice("DAMonitor intervalDidEnd: system grace window ended, reapplying shield")
+            logger.notice("DAMonitor intervalDidEnd: unblock interval ended, reapplying shield")
             reapplyShieldFromPersistedSelection(reason: "graceIntervalDidEnd")
             AppGroupDefaults.clearGraceWindowEnd()
             AppGroupDefaults.flush()
@@ -97,14 +89,7 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
 
     override func intervalWillEndWarning(for activity: DeviceActivityName) {
         super.intervalWillEndWarning(for: activity)
-        if activity == DeviceActivityMonitorNames.breakFocusGrace,
-           let end = AppGroupDefaults.graceWindowEndDate() {
-            let rem = max(0, end.timeIntervalSinceNow)
-            let sec = Int(rem.rounded(.down))
-            logger.notice("DAMonitor intervalWillEndWarning grace: ~\(sec, privacy: .public)s until interval end / reshield now=\(Self.isoNow(), privacy: .public)")
-        } else {
-            logger.notice("DAMonitor intervalWillEndWarning activity=\(activity.rawValue, privacy: .public) now=\(Self.isoNow(), privacy: .public)")
-        }
+        logger.notice("DAMonitor intervalWillEndWarning activity=\(activity.rawValue, privacy: .public) now=\(Self.isoNow(), privacy: .public)")
     }
 
     override func eventWillReachThresholdWarning(

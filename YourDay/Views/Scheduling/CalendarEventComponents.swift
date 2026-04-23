@@ -829,23 +829,29 @@ struct ScheduledTaskItemRow: View {
         }
         
         if !wasDone && item.isDone {
-            let sourceType: TaskProofSourceType
-            if item.sharedTaskId != nil {
-                sourceType = .shared
-            } else if scheduledCalendarEventId != nil {
-                sourceType = .scheduled
-            } else {
-                sourceType = .unscheduled
-            }
-            onRequestProofCapture?(
-                TaskProofCaptureContext(
-                    taskTitle: item.title,
-                    sourceType: sourceType,
-                    scheduledEventId: scheduledCalendarEventId,
-                    localTaskId: item.localTaskId,
-                    sharedTaskId: item.sharedTaskId,
-                    completedAt: item.completedAt ?? Date()
+            if !ScheduledSessionCompletionCoordinator.isCompletingScheduledBlockEarly(item) {
+                let sourceType: TaskProofSourceType
+                if item.sharedTaskId != nil {
+                    sourceType = .shared
+                } else if scheduledCalendarEventId != nil {
+                    sourceType = .scheduled
+                } else {
+                    sourceType = .unscheduled
+                }
+                onRequestProofCapture?(
+                    TaskProofCaptureContext(
+                        taskTitle: item.title,
+                        sourceType: sourceType,
+                        scheduledEventId: scheduledCalendarEventId,
+                        localTaskId: item.localTaskId,
+                        sharedTaskId: item.sharedTaskId,
+                        completedAt: item.completedAt ?? Date()
+                    )
                 )
+            }
+            ScheduledSessionCompletionCoordinator.handleEarlyCompletion(
+                for: item,
+                modelContext: modelContext
             )
         } else if wasDone && !item.isDone, let proofPostId = item.proofPostId {
             item.proofPostId = nil

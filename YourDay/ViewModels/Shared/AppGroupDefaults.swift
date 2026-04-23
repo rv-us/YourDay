@@ -14,10 +14,10 @@ enum AppGroupDefaults {
         /// `intervalDidEnd` to suppress the "grace window expired → reapply
         /// shield" path when the end was caused by our own manual restart.
         static let graceStopSuppressUntil = "breakFocusGraceStopSuppressUntil"
-        /// Wall-clock time when the current break-focus grace window ends (Unix
-        /// time). Set by the shield-action extension; cleared when the device
-        /// activity monitor reapplies the shield. Used for countdown logging in
-        /// the main app.
+        /// Wall-clock end of the current shield unblock (Unix time). Set by the
+        /// shield-action extension to match the `DeviceActivity` reshield schedule;
+        /// cleared when the monitor reapplies or the main app forces full shield.
+        /// The main app reads this only to avoid reapplying selection during the unblock.
         static let graceWindowEndsAt = "breakFocusGraceWindowEndsAt"
     }
 
@@ -72,7 +72,7 @@ enum AppGroupDefaults {
         defaults.removeObject(forKey: Key.pendingPenalties)
     }
 
-    // MARK: - Break-focus grace (countdown to reshield)
+    // MARK: - Shield unblock window (until scheduled reshield)
 
     static func setGraceWindowEnd(_ date: Date) {
         defaults.set(date.timeIntervalSince1970, forKey: Key.graceWindowEndsAt)

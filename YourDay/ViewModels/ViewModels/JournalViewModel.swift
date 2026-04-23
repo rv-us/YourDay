@@ -57,6 +57,38 @@ class JournalViewModel: ObservableObject {
     func clearError() {
         errorMessage = nil
     }
+
+    func isEventInActiveJournalUI(eventId: String) -> Bool {
+        guard !eventId.isEmpty else { return false }
+        if pendingJournalPrompt?.eventId == eventId {
+            return true
+        }
+        return pendingJournalQueue.contains(where: { $0.eventId == eventId })
+    }
+
+    func enqueueImmediateScheduledJournalPrompt(
+        eventId: String,
+        taskTitle: String,
+        tasks: [String],
+        scheduledStartTime: Date,
+        scheduledEndTime: Date
+    ) {
+        guard !eventId.isEmpty else { return }
+        guard !isEventInActiveJournalUI(eventId: eventId) else { return }
+
+        let pending = TaskEndMonitor.PendingJournalEvent(
+            eventId: eventId,
+            taskTitle: taskTitle,
+            tasks: tasks.isEmpty ? [taskTitle] : tasks,
+            scheduledStartTime: scheduledStartTime,
+            scheduledEndTime: scheduledEndTime,
+            dayOfWeek: dayOfWeekString(from: scheduledStartTime)
+        )
+        enqueueEventIfNeeded(pending, prioritize: true)
+        if !showingJournalPrompt && !showingTaskProofCapture {
+            showNextPendingPrompt()
+        }
+    }
     
     private func showNextPendingPrompt() {
         guard !showingTaskProofCapture else { return }

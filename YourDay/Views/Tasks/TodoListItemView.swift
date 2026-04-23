@@ -168,14 +168,21 @@ struct TodoListItemView: View {
         }
 
         if !wasDone && item.isDone {
-            onRequestProofCapture?(TaskProofCaptureContext(
-                taskTitle: item.title,
-                sourceType: item.sharedTaskId == nil ? .unscheduled : .shared,
-                scheduledEventId: nil,
-                localTaskId: item.localTaskId,
-                sharedTaskId: item.sharedTaskId,
-                completedAt: item.completedAt ?? Date()
-            ))
+            if !ScheduledSessionCompletionCoordinator.isCompletingScheduledBlockEarly(item) {
+                let scheduledEventId = item.manualScheduleGoogleEventId?.trimmingCharacters(in: .whitespacesAndNewlines)
+                onRequestProofCapture?(TaskProofCaptureContext(
+                    taskTitle: item.title,
+                    sourceType: item.sharedTaskId != nil ? .shared : ((scheduledEventId?.isEmpty == false) ? .scheduled : .unscheduled),
+                    scheduledEventId: scheduledEventId,
+                    localTaskId: item.localTaskId,
+                    sharedTaskId: item.sharedTaskId,
+                    completedAt: item.completedAt ?? Date()
+                ))
+            }
+            ScheduledSessionCompletionCoordinator.handleEarlyCompletion(
+                for: item,
+                modelContext: _modelContext
+            )
         } else if wasDone && !item.isDone, let proofPostId = item.proofPostId {
             item.proofPostId = nil
             if let userId = FirebaseAuth.Auth.auth().currentUser?.uid {

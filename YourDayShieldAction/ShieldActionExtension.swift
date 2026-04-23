@@ -19,16 +19,10 @@ final class ShieldActionExtension: ShieldActionDelegate {
     private let store = ManagedSettingsStore(named: .init("YourDayShield"))
     private let activityCenter = DeviceActivityCenter()
 
-    /// How long the user is allowed off-focus before we restore the shield
-    /// (app-side, using `AppGroupDefaults.graceWindowEndDate()`).
-    private static let graceIntervalSeconds: TimeInterval = 120
-
-    /// iOS refuses short `DeviceActivitySchedule` intervals — you'll see
-    /// "The activity's schedule is too short" for 2 minutes. The system
-    /// schedule must be at least this long; we still reapply at
-    /// `graceIntervalSeconds` from the main app when the user opens YourDay
-    /// (or in foreground) before this fires.
-    private static let minimumDeviceActivityScheduleDuration: TimeInterval = 15 * 60
+    /// Unblock duration after the user taps through the shield. iOS requires
+    /// `DeviceActivitySchedule` intervals to be long enough (~15 minutes);
+    /// reshielding happens only when this interval ends (`DeviceActivityMonitor`).
+    private static let reshieldIntervalSeconds: TimeInterval = 15 * 60
 
     override func handle(
         action: ShieldAction,
@@ -97,7 +91,7 @@ final class ShieldActionExtension: ShieldActionDelegate {
             // Category shields cover a group of apps; we can't remove a single
             // app token here, so the best we can do is clear the category
             // shield entirely for now. The monitor extension re-applies it
-            // when the grace window interval ends.
+            // when the unblock `DeviceActivity` interval ends.
             store.shield.applicationCategories = nil
             logger.notice("ShieldAction: cleared shield.applicationCategories")
             logStoreState(tag: "after clear categories")
@@ -113,12 +107,11 @@ final class ShieldActionExtension: ShieldActionDelegate {
         }
     }
 
-    // MARK: - Re-shield grace window
+    // MARK: - Scheduled reshield (DeviceActivity)
 
-    /// Starts a wall-clock `DeviceActivity` interval (no usage events). When
-    /// it ends, `DeviceActivityMonitorExtension.intervalDidEnd` re-applies the
-    /// full shield from the persisted `FamilyActivitySelection` so the next
-    /// launch of a blocked app shows the shield again.
+    /// Starts a one-shot `DeviceActivity` interval. When it ends,
+    /// `DeviceActivityMonitorExtension.intervalDidEnd` re-applies the full
+    /// shield from the persisted `FamilyActivitySelection`.
     private func startReshieldGraceWindow() {
         // Log all currently-running activities so we can tell if there's an
         // orphan or duplicate schedule that might be triggering an unexpected
@@ -143,10 +136,7 @@ final class ShieldActionExtension: ShieldActionDelegate {
 
         let calendar = Calendar.current
         let now = Date()
-        let userFacingEnd = now.addingTimeInterval(Self.graceIntervalSeconds)
-        let systemScheduleEnd = now.addingTimeInterval(
-            max(Self.graceIntervalSeconds, Self.minimumDeviceActivityScheduleDuration)
-        )
+        let windowEnd = now.addingTimeInterval(Self.reshieldIntervalSeconds)
         // Full Y-M-D h:m:s for `DeviceActivitySchedule` (reliable for same / next day).
         let startComponents = calendar.dateComponents(
             [.year, .month, .day, .hour, .minute, .second],
@@ -154,17 +144,18 @@ final class ShieldActionExtension: ShieldActionDelegate {
         )
         let endComponents = calendar.dateComponents(
             [.year, .month, .day, .hour, .minute, .second],
-            from: systemScheduleEnd
+            from: windowEnd
         )
-        let scheduleLengthSec = systemScheduleEnd.timeIntervalSince(now)
-        logger.notice("ShieldAction: user-facing grace end in \(Self.graceIntervalSeconds, privacy: .public)s; system DA schedule length \(scheduleLengthSec, privacy: .public)s (iOS min ~15m)")
+        let scheduleLengthSec = windowEnd.timeIntervalSince(now)
+        logger.notice("ShieldAction: reshield via DeviceActivity in \(scheduleLengthSec, privacy: .public)s")
 
-        // Always record wall-clock for main-app reapply, even if DeviceActivity fails.
-        AppGroupDefaults.setGraceWindowEnd(userFacingEnd)
+        // Same instant as the schedule end: main app uses this only to avoid
+        // reapplying the full selection while the unblock is active (no timer).
+        AppGroupDefaults.setGraceWindowEnd(windowEnd)
         AppGroupDefaults.flush()
         let iso = ISO8601DateFormatter()
         iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        logger.notice("ShieldAction: grace reapply (user clock) at \(iso.string(from: userFacingEnd), privacy: .public) — main app enforces; system interval ends at \(iso.string(from: systemScheduleEnd), privacy: .public)")
+        logger.notice("ShieldAction: reshield at \(iso.string(from: windowEnd), privacy: .public)")
 
         let schedule = DeviceActivitySchedule(
             intervalStart: startComponents,
@@ -180,7 +171,7 @@ final class ShieldActionExtension: ShieldActionDelegate {
             let afterActivities = activityCenter.activities
             logger.notice("ShieldAction: started re-shield grace DeviceActivity; activitiesAfterStart=\(afterActivities.map { $0.rawValue }, privacy: .public)")
         } catch {
-            logger.error("ShieldAction: DeviceActivity start failed — \(error.localizedDescription, privacy: .public). Main app will still reapply at user-facing time above.")
+            logger.error("ShieldAction: DeviceActivity start failed — \(error.localizedDescription, privacy: .public)")
         }
     }
 

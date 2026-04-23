@@ -183,9 +183,6 @@ struct AppRestartView: View {
         SplashScreenView()
             .id(viewId)
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
-                Task { @MainActor in
-                    ScreenTimeManager.shared.startGraceCountdownLoggingIfNeeded()
-                }
                 let todayString = formattedDateString(from: Date())
                 
                 if !lastAppActiveDate.isEmpty && lastAppActiveDate != todayString {
@@ -195,9 +192,6 @@ struct AppRestartView: View {
                 lastAppActiveDate = todayString
             }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
-                Task { @MainActor in
-                    ScreenTimeManager.shared.stopGraceCountdownLogging()
-                }
                 // Make sure the shield-enabled flag (and other app-group
                 // defaults) are flushed to disk before the user can force-
                 // quit the app from the app switcher. Without this, pending

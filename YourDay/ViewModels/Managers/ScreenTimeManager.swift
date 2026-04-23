@@ -12,7 +12,7 @@ final class ScreenTimeManager: ObservableObject {
     static let shared = ScreenTimeManager()
 
     static let activityName = DeviceActivityName("YourDayDailyBlock")
-    /// Must match `DeviceActivityMonitorNames.breakFocusGrace` in extensions.
+    /// Must match `DeviceActivityMonitorNames.breakFocusGrace` in extensions; stop when forcing full shield from the app.
     private static let breakFocusGraceActivity = DeviceActivityName("YourDayBreakFocusGrace")
     private let logger = Logger(subsystem: "com.yourday.app", category: "ScreenTimeManager")
     private let store = ManagedSettingsStore(named: .init("YourDayShield"))
@@ -30,19 +30,6 @@ final class ScreenTimeManager: ObservableObject {
     @Published var selection: FamilyActivitySelection
 
     private var snapshotDebounceTask: Task<Void, Never>?
-    private var graceCountdownLogTimer: Timer?
-    private let graceCountdownLogger = Logger(subsystem: "com.yourday.app", category: "BreakFocusGrace")
-
-    /// `Logger` + `print` so you always see lines in the Xcode console (filter `GRACE` or `BreakFocusGrace`).
-    private func graceSanityLog(_ message: String) {
-        graceCountdownLogger.notice("\(message, privacy: .public)")
-        print("[YourDay][GRACE] \(message)")
-    }
-
-    private func invalidateGraceCountdownTimerSilently() {
-        graceCountdownLogTimer?.invalidate()
-        graceCountdownLogTimer = nil
-    }
 
     private init() {
         self.authorizationStatus = AuthorizationCenter.shared.authorizationStatus
@@ -64,8 +51,6 @@ final class ScreenTimeManager: ObservableObject {
            let decoded = try? JSONDecoder().decode(FamilyActivitySelection.self, from: data) {
             self.selection = decoded
         }
-        reapplyIfUserGraceWindowElapsedByWallClock()
-        startGraceCountdownLoggingIfNeeded()
     }
 
     // MARK: - Authorization
@@ -96,8 +81,6 @@ final class ScreenTimeManager: ObservableObject {
         self.authorizationStatus = authCenter.authorizationStatus
         logger.notice("ScreenTimeManager auth status=\(String(describing: self.authorizationStatus), privacy: .public)")
 
-        reapplyIfUserGraceWindowElapsedByWallClock()
-
         if isEnabled {
             if authorizationStatus == .approved {
                 logger.notice("ScreenTimeManager refresh: isEnabled && approved → applyShieldIfNeeded + startDailyMonitoring")
@@ -116,77 +99,6 @@ final class ScreenTimeManager: ObservableObject {
         } else {
             logger.notice("ScreenTimeManager refresh: isEnabled=false, noop")
         }
-        startGraceCountdownLoggingIfNeeded()
-    }
-
-    // MARK: - Break-focus grace (countdown + wall-clock re-shield in main app)
-
-    /// `ShieldAction` stores `AppGroupDefaults.graceWindowEndDate()` at user tap. When that
-    /// time is past (and this process runs — foreground / launch), restore the full shield.
-    /// This is the only way to reapply at a short (e.g. 2m) “product” window; `DeviceActivity`
-    /// enforces a longer minimum schedule for `intervalDidEnd` callbacks.
-    func reapplyIfUserGraceWindowElapsedByWallClock() {
-        guard isEnabled,
-              authorizationStatus == .approved,
-              !selection.applicationTokens.isEmpty || !selection.categoryTokens.isEmpty || !selection.webDomainTokens.isEmpty,
-              let end = AppGroupDefaults.graceWindowEndDate(),
-              end <= Date() else { return }
-
-        logger.notice("ScreenTimeManager reapplyIfUserGraceWindowElapsed: restoring shield (user grace clock expired) now=\(Self.isoNow(), privacy: .public)")
-        applyShieldIfNeeded(ignoringBreakFocusGrace: true)
-        AppGroupDefaults.clearGraceWindowEnd()
-        let suppressUntil = Date().timeIntervalSince1970 + 10
-        AppGroupDefaults.defaults.set(suppressUntil, forKey: AppGroupDefaults.Key.graceStopSuppressUntil)
-        AppGroupDefaults.flush()
-        activityCenter.stopMonitoring([Self.breakFocusGraceActivity])
-    }
-
-    /// 1s `Logger` + `print` while a grace window is active (`AppGroupDefaults.graceWindowEndDate()`).
-    /// Only ticks while **YourDay is in the foreground**; on background we pause the ticker (wall clock still runs).
-    func startGraceCountdownLoggingIfNeeded() {
-        invalidateGraceCountdownTimerSilently()
-        reapplyIfUserGraceWindowElapsedByWallClock()
-        guard let end = AppGroupDefaults.graceWindowEndDate(), end > Date() else { return }
-
-        let iso = ISO8601DateFormatter()
-        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let totalSec = max(0, Int(end.timeIntervalSinceNow.rounded(.down)))
-        graceSanityLog("▶︎ START — 1s ticks | user-clock reshield at \(iso.string(from: end)) | ~\(totalSec)s left | Xcode: filter [YourDay][GRACE] or subsystem BreakFocusGrace")
-
-        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
-            self?.logGraceCountdownTick()
-        }
-        RunLoop.main.add(timer, forMode: .common)
-        graceCountdownLogTimer = timer
-        logGraceCountdownTick()
-    }
-
-    /// Call when the app backgrounds; timer pauses. Resumes when `startGraceCountdownLoggingIfNeeded` runs again on become-active.
-    func stopGraceCountdownLogging() {
-        if graceCountdownLogTimer != nil {
-            graceSanityLog("⏸ PAUSED — YourDay left foreground; ticks stop until next active (reshield time unchanged)")
-        }
-        invalidateGraceCountdownTimerSilently()
-    }
-
-    private func logGraceCountdownTick() {
-        guard let end = AppGroupDefaults.graceWindowEndDate() else {
-            graceSanityLog("⏹ STOP — grace key was cleared; timer off")
-            invalidateGraceCountdownTimerSilently()
-            return
-        }
-        let rem = end.timeIntervalSinceNow
-        if rem <= 0 {
-            graceSanityLog("⏰ EXPIRED (0s) — reapplying full shield from main app (user clock)")
-            reapplyIfUserGraceWindowElapsedByWallClock()
-            invalidateGraceCountdownTimerSilently()
-            return
-        }
-        let totalSec = Int(rem.rounded(.down))
-        let m = totalSec / 60
-        let s = totalSec % 60
-        let mmss = String(format: "%d:%02d", m, s)
-        graceSanityLog("⏱ tick \(mmss) (\(totalSec) seconds left) until user-clock reshield")
     }
 
     // MARK: - Toggle
@@ -213,7 +125,6 @@ final class ScreenTimeManager: ObservableObject {
             // Force-flush immediately so a subsequent force-quit can't drop
             // the write and leave the toggle appearing "off" on next launch.
             AppGroupDefaults.flush()
-            AppGroupDefaults.clearGraceWindowEnd()
             applyShieldIfNeeded(ignoringBreakFocusGrace: true)
             startDailyMonitoring()
         } else {
@@ -238,13 +149,13 @@ final class ScreenTimeManager: ObservableObject {
 
     // MARK: - Shield application
 
-    /// - Parameter ignoringBreakFocusGrace: Pass `true` when the user just toggled the shield, changed selection, or
-    ///   after the user’s grace end time. While break-focus grace is active (short wall-clock from shield tap), we
-    ///   skip reapplying the full selection so foregrounding the main app does not **undo** the extension’s token removal.
+    /// - Parameter ignoringBreakFocusGrace: Pass `true` when forcing full shield from the app (toggle, selection change).
+    ///   While an unblock is active (after shield tap), we skip reapplying so foregrounding YourDay does not undo
+    ///   token removal until `DeviceActivityMonitor` reshields at interval end.
     func applyShieldIfNeeded(ignoringBreakFocusGrace: Bool = false) {
         if !ignoringBreakFocusGrace,
            let gEnd = AppGroupDefaults.graceWindowEndDate(), gEnd > Date() {
-            logger.notice("ScreenTimeManager applyShieldIfNeeded: skipped (break-focus grace active until app-group wall clock)")
+            logger.notice("ScreenTimeManager applyShieldIfNeeded: skipped (unblock active until scheduled reshield)")
             return
         }
         logger.notice("ScreenTimeManager applyShieldIfNeeded now=\(Self.isoNow(), privacy: .public) isEnabled=\(self.isEnabled, privacy: .public) auth=\(String(describing: self.authorizationStatus), privacy: .public) selection apps=\(self.selection.applicationTokens.count) cats=\(self.selection.categoryTokens.count) webs=\(self.selection.webDomainTokens.count)")
@@ -259,8 +170,10 @@ final class ScreenTimeManager: ObservableObject {
             store.shield.applicationCategories = nil
             store.shield.webDomains = nil
             store.shield.webDomainCategories = nil
+            if ignoringBreakFocusGrace { endBreakFocusUnblockTracking() }
             return
         }
+        if ignoringBreakFocusGrace { endBreakFocusUnblockTracking() }
         logger.notice("ScreenTimeManager applyShieldIfNeeded: applying full selection to store")
         store.shield.applications = selection.applicationTokens.isEmpty ? nil : selection.applicationTokens
         if selection.categoryTokens.isEmpty {
@@ -282,6 +195,12 @@ final class ScreenTimeManager: ObservableObject {
         store.shield.webDomainCategories = nil
     }
 
+    private func endBreakFocusUnblockTracking() {
+        AppGroupDefaults.clearGraceWindowEnd()
+        AppGroupDefaults.flush()
+        activityCenter.stopMonitoring([Self.breakFocusGraceActivity])
+    }
+
     // MARK: - Device Activity monitoring
 
     func startDailyMonitoring() {
@@ -298,7 +217,7 @@ final class ScreenTimeManager: ObservableObject {
     }
 
     func stopMonitoring() {
-        activityCenter.stopMonitoring([Self.activityName])
+        activityCenter.stopMonitoring([Self.activityName, Self.breakFocusGraceActivity])
     }
 
     // MARK: - Snapshot

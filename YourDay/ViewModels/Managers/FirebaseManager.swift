@@ -2125,6 +2125,49 @@ class FirebaseManager: ObservableObject {
                 completion(eventIds, nil)
             }
     }
+
+    /// Updates selected fields on a scheduled event document without rewriting unrelated fields.
+    func updateScheduledEvent(
+        eventId: String,
+        taskTitle: String? = nil,
+        tasks: [String]? = nil,
+        startTime: Date? = nil,
+        endTime: Date? = nil,
+        promptSkipped: Bool? = nil,
+        completion: @escaping (Error?) -> Void
+    ) {
+        guard let userId = userId else {
+            completion(NSError(domain: "FirebaseManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+        guard !eventId.isEmpty else {
+            completion(nil)
+            return
+        }
+
+        var update: [String: Any] = [:]
+        if let taskTitle {
+            update["taskTitle"] = taskTitle
+        }
+        if let tasks {
+            update["tasks"] = tasks
+        }
+        if let startTime {
+            update["startTime"] = Timestamp(date: startTime)
+        }
+        if let endTime {
+            update["endTime"] = Timestamp(date: endTime)
+        }
+        if let promptSkipped {
+            update["promptSkipped"] = promptSkipped
+        }
+        update["updatedAt"] = FieldValue.serverTimestamp()
+
+        let docRef = db.collection("users").document(userId).collection("scheduledEvents").document(eventId)
+        docRef.setData(update, merge: true) { error in
+            completion(error)
+        }
+    }
     
     /// Records that the user dismissed the journal prompt for this event (via Skip
     /// or Reschedule), so `TaskEndMonitor` won't re-surface a prompt for it. This

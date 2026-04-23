@@ -112,6 +112,9 @@ class TaskEndMonitor: ObservableObject {
                     if self.pendingJournalEvents.contains(where: { $0.eventId == eventId }) {
                         continue
                     }
+                    if JournalViewModel.shared.isEventInActiveJournalUI(eventId: eventId) {
+                        continue
+                    }
 
                     let formatter = DateFormatter()
                     formatter.dateFormat = "EEEE"
