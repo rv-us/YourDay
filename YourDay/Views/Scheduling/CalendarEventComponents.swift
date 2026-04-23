@@ -148,8 +148,10 @@ struct DraggableEventBlock: View {
     @Binding var dragOffset: CGSize
     @Binding var isDragging: Bool
     var onDragEnd: ((CGSize) -> Void)?
-    /// When non-nil and draggable, replaces the default "Proposed Session" label.
+    /// When non-nil and draggable, replaces the default "Time block" label.
     var draggableSessionTitle: String?
+    /// When scheduling several tasks in one block, show each title below the main label (not one long clumped string).
+    var draggableTaskSubtitleLines: [String]?
     /// When non-nil, shows a bottom resize handle that edits duration in minutes (snapped to 15, clamped).
     var durationMinutesBinding: Binding<Int>?
     
@@ -171,6 +173,7 @@ struct DraggableEventBlock: View {
         isDragging: Binding<Bool> = .constant(false),
         onDragEnd: ((CGSize) -> Void)? = nil,
         draggableSessionTitle: String? = nil,
+        draggableTaskSubtitleLines: [String]? = nil,
         durationMinutesBinding: Binding<Int>? = nil
     ) {
         self.event = event
@@ -183,6 +186,7 @@ struct DraggableEventBlock: View {
         self._isDragging = isDragging
         self.onDragEnd = onDragEnd
         self.draggableSessionTitle = draggableSessionTitle
+        self.draggableTaskSubtitleLines = draggableTaskSubtitleLines
         self.durationMinutesBinding = durationMinutesBinding
     }
     
@@ -236,7 +240,17 @@ struct DraggableEventBlock: View {
         if let draggableSessionTitle, !draggableSessionTitle.isEmpty {
             return draggableSessionTitle
         }
-        return "Proposed Session"
+        return "Time block"
+    }
+
+    private var taskSubtitleToShow: [String] {
+        let raw = draggableTaskSubtitleLines ?? []
+        return Array(raw.prefix(3))
+    }
+
+    private var taskSubtitleMoreCount: Int {
+        let raw = draggableTaskSubtitleLines?.count ?? 0
+        return max(0, raw - 3)
     }
     
     @ViewBuilder
@@ -272,6 +286,22 @@ struct DraggableEventBlock: View {
                         .foregroundColor(.white)
                         .lineLimit(isCompactBlock ? 1 : 2)
                         .minimumScaleFactor(0.65)
+                    if !taskSubtitleToShow.isEmpty {
+                        VStack(alignment: .leading, spacing: max(1, 2 * scale)) {
+                            ForEach(Array(taskSubtitleToShow.enumerated()), id: \.offset) { _, line in
+                                Text(line)
+                                    .font(.system(size: max(7, 9 * scale), weight: .regular))
+                                    .foregroundColor(.white.opacity(0.9))
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.55)
+                            }
+                            if taskSubtitleMoreCount > 0 {
+                                Text("+\(taskSubtitleMoreCount) more")
+                                    .font(.system(size: max(7, 8 * scale), weight: .medium))
+                                    .foregroundColor(.white.opacity(0.8))
+                            }
+                        }
+                    }
                     Text(isCompactBlock ? compactTimeRangeString : displayTimeRangeString)
                         .font(.system(size: timeSize, weight: .medium))
                         .foregroundColor(.white.opacity(0.9))
@@ -490,6 +520,8 @@ struct CompactCalendarPreview: View {
 struct ScheduledTaskPopupSheet: View {
     let event: GoogleCalendarEvent
     let onDismiss: () -> Void
+    /// Called after a successful “remove from Google Calendar” (so the parent can refetch / dismiss).
+    var onEventDeleted: (() -> Void)? = nil
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject var firebaseManager: FirebaseManager
     
@@ -499,12 +531,19 @@ struct ScheduledTaskPopupSheet: View {
     @State private var isLoading = true
     @State private var fallbackCheckedOff: Set<Int> = []
     @State private var pendingTaskProofCapture: TaskProofCaptureContext?
+    @State private var isDeletingFromCalendar = false
+    @State private var showDeleteFromCalendarConfirm = false
+    @State private var deleteFailureMessage: String?
     
     private let calendar = Calendar.current
     private var timeRangeString: String {
         guard let start = event.start.startDate,
               let end = event.end?.startDate ?? calendar.date(byAdding: .hour, value: 1, to: start) else { return "" }
         return CalendarTimeFormatter.formatTimeRange(start: start, end: end)
+    }
+
+    private var isYourDayScheduledBlock: Bool {
+        event.description?.contains("[YourDay Scheduled Task]") == true
     }
     
     var body: some View {
@@ -584,6 +623,20 @@ struct ScheduledTaskPopupSheet: View {
             .background(dynamicBackgroundColor)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                if isYourDayScheduledBlock {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button(role: .destructive) {
+                            showDeleteFromCalendarConfirm = true
+                        } label: {
+                            if isDeletingFromCalendar {
+                                ProgressView()
+                            } else {
+                                Image(systemName: "trash")
+                            }
+                        }
+                        .disabled(isDeletingFromCalendar)
+                    }
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") {
                         onDismiss()
@@ -594,6 +647,20 @@ struct ScheduledTaskPopupSheet: View {
         }
         .onAppear {
             loadScheduledEvent()
+        }
+        .alert("Remove from Google Calendar?", isPresented: $showDeleteFromCalendarConfirm) {
+            Button("Cancel", role: .cancel) { }
+            Button("Remove", role: .destructive) { deleteEventFromGoogleCalendar() }
+        } message: {
+            Text("The event is removed from Google Calendar and your tasks are unlinked, same as in manual scheduling.")
+        }
+        .alert("Couldn’t remove", isPresented: Binding(
+            get: { deleteFailureMessage != nil },
+            set: { if !$0 { deleteFailureMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) { deleteFailureMessage = nil }
+        } message: {
+            Text(deleteFailureMessage ?? "")
         }
         .sheet(item: $pendingTaskProofCapture, onDismiss: { pendingTaskProofCapture = nil }) { proofContext in
             TaskProofCaptureView(
@@ -618,6 +685,26 @@ struct ScheduledTaskPopupSheet: View {
         try? modelContext.save()
     }
     
+    private func deleteEventFromGoogleCalendar() {
+        isDeletingFromCalendar = true
+        let eventId = event.id
+        ManualCalendarEventDeletionService.deleteGoogleCalendarEventsAndUnlinkLocalTasks(
+            eventIds: [eventId],
+            modelContext: modelContext,
+            firebaseManager: firebaseManager
+        ) { err in
+            DispatchQueue.main.async {
+                isDeletingFromCalendar = false
+                if let err = err {
+                    deleteFailureMessage = err.localizedDescription
+                    return
+                }
+                onEventDeleted?()
+                onDismiss()
+            }
+        }
+    }
+
     private func loadScheduledEvent() {
         firebaseManager.fetchScheduledEvent(eventId: event.id) { data, _ in
             DispatchQueue.main.async {

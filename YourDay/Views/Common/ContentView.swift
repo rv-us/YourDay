@@ -209,6 +209,11 @@ struct ContentView: View {
                         loginViewModel: loginViewModel
                     )
                     await ScreenTimeManager.shared.writeSnapshotFromCurrentTasks(context: modelContext)
+                    // Also refresh the cached Screen Time authorization state
+                    // and re-apply the shield in case the user changed their
+                    // Screen Time permissions in iOS Settings while we were
+                    // backgrounded, or iOS returned a stale status earlier.
+                    await ScreenTimeManager.shared.refreshAuthorizationAndReapplyShieldIfNeeded()
                 }
             }
             .onAppear {

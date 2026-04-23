@@ -389,9 +389,17 @@ struct GoogleCalendarView: View {
         }
         .background(dynamicBackgroundColor.edgesIgnoringSafeArea(.all))
         .sheet(item: $scheduledEventForPopup) { identifiable in
-            ScheduledTaskPopupSheet(event: identifiable.event, onDismiss: { scheduledEventForPopup = nil })
-                .presentationDetents([.medium, .large], selection: $scheduledTaskPopupDetent)
-                .presentationDragIndicator(.visible)
+            ScheduledTaskPopupSheet(
+                event: identifiable.event,
+                onDismiss: { scheduledEventForPopup = nil },
+                onEventDeleted: {
+                    fetchEvents()
+                    fetchMonthEvents()
+                }
+            )
+            .environmentObject(firebaseManager)
+            .presentationDetents([.medium, .large], selection: $scheduledTaskPopupDetent)
+            .presentationDragIndicator(.visible)
         }
         .onChange(of: scheduledEventForPopup) { _, newValue in
             if newValue != nil { scheduledTaskPopupDetent = .medium }

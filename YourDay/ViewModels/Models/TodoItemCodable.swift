@@ -27,6 +27,7 @@ struct TodoItemCodable: Codable, Identifiable {
     var manualScheduleGoogleEventId: String?
     var scheduledStartTime: Date?
     var scheduledEndTime: Date?
+    var userPinned: Bool
 
     // Firebase metadata
     var userId: String
@@ -53,9 +54,10 @@ struct TodoItemCodable: Codable, Identifiable {
         self.manualScheduleGoogleEventId = model.manualScheduleGoogleEventId
         self.scheduledStartTime = model.scheduledStartTime
         self.scheduledEndTime = model.scheduledEndTime
+        self.userPinned = model.userPinned
 
         self.userId = userId
-        self.createdAt = Date()
+        self.createdAt = model.createdAt
         self.updatedAt = Date()
         self.schemaVersion = 1
     }
@@ -77,6 +79,7 @@ struct TodoItemCodable: Codable, Identifiable {
         manualScheduleGoogleEventId: String? = nil,
         scheduledStartTime: Date? = nil,
         scheduledEndTime: Date? = nil,
+        userPinned: Bool = false,
         userId: String,
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
@@ -97,6 +100,7 @@ struct TodoItemCodable: Codable, Identifiable {
         self.manualScheduleGoogleEventId = manualScheduleGoogleEventId
         self.scheduledStartTime = scheduledStartTime
         self.scheduledEndTime = scheduledEndTime
+        self.userPinned = userPinned
         self.userId = userId
         self.createdAt = createdAt
         self.updatedAt = updatedAt
@@ -126,6 +130,7 @@ struct TodoItemCodable: Codable, Identifiable {
         manualScheduleGoogleEventId = try container.decodeIfPresent(String.self, forKey: .manualScheduleGoogleEventId)
         scheduledStartTime = try container.decodeIfPresent(Date.self, forKey: .scheduledStartTime)
         scheduledEndTime = try container.decodeIfPresent(Date.self, forKey: .scheduledEndTime)
+        userPinned = try container.decodeIfPresent(Bool.self, forKey: .userPinned) ?? false
 
         userId = try container.decode(String.self, forKey: .userId)
         createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
@@ -159,6 +164,7 @@ struct TodoItemCodable: Codable, Identifiable {
         try container.encodeIfPresent(manualScheduleGoogleEventId, forKey: .manualScheduleGoogleEventId)
         try container.encodeIfPresent(scheduledStartTime, forKey: .scheduledStartTime)
         try container.encodeIfPresent(scheduledEndTime, forKey: .scheduledEndTime)
+        try container.encode(userPinned, forKey: .userPinned)
         try container.encode(userId, forKey: .userId)
         try container.encode(createdAt, forKey: .createdAt)
         try container.encode(updatedAt, forKey: .updatedAt)
@@ -168,7 +174,7 @@ struct TodoItemCodable: Codable, Identifiable {
     private enum CodingKeys: String, CodingKey {
         case localTaskId, title, detail, dueDate, isDone, subtasks, completedAt
         case origin, position, sharedTaskId, isSharedPending, proofPostId, manualScheduleGoogleEventId
-        case scheduledStartTime, scheduledEndTime
+        case scheduledStartTime, scheduledEndTime, userPinned
         case userId, createdAt, updatedAt, schemaVersion
     }
 
@@ -190,7 +196,9 @@ struct TodoItemCodable: Codable, Identifiable {
         proofPostId: String?,
         manualScheduleGoogleEventId: String?,
         scheduledStartTime: Date?,
-        scheduledEndTime: Date?
+        scheduledEndTime: Date?,
+        createdAt: Date,
+        userPinned: Bool
     ) {
         return (
             localTaskId: self.localTaskId,
@@ -207,7 +215,9 @@ struct TodoItemCodable: Codable, Identifiable {
             proofPostId: self.proofPostId,
             manualScheduleGoogleEventId: self.manualScheduleGoogleEventId,
             scheduledStartTime: self.scheduledStartTime,
-            scheduledEndTime: self.scheduledEndTime
+            scheduledEndTime: self.scheduledEndTime,
+            createdAt: self.createdAt,
+            userPinned: self.userPinned
         )
     }
 }

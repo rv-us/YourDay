@@ -74,9 +74,15 @@ class TaskEndMonitor: ObservableObject {
                     return
                 }
                 
+                let calendar = Calendar.current
                 let now = Date()
-                let checkWindow: TimeInterval = 24 * 60 * 60 // 24 hours (expanded from 5 minutes to catch missed events)
-                
+                let todayStart = calendar.startOfDay(for: now)
+                guard let tomorrowStart = calendar.date(byAdding: .day, value: 1, to: todayStart) else {
+                    continuation.resume()
+                    return
+                }
+
+                var candidates: [PendingJournalEvent] = []
                 for eventData in events {
                     guard let eventId = eventData["eventId"] as? String,
                           let taskTitle = eventData["taskTitle"] as? String,
@@ -85,48 +91,72 @@ class TaskEndMonitor: ObservableObject {
                           let endTimestamp = eventData["endTime"] as? Timestamp else {
                         continue
                     }
-                    
+
                     // User already dismissed the journal prompt for this event
                     // (skipped or rescheduled). Don't re-surface it.
                     if let promptSkipped = eventData["promptSkipped"] as? Bool, promptSkipped {
                         continue
                     }
-                    
+
                     let scheduledStartTime = startTimestamp.dateValue()
                     let scheduledEndTime = endTimestamp.dateValue()
-                    
-                    // Check if event ended within the expanded window (last 24 hours)
-                    let timeSinceEnd = now.timeIntervalSince(scheduledEndTime)
-                    if timeSinceEnd >= 0 && timeSinceEnd <= checkWindow {
-                        // Check if this event is already in pending list
-                        if !self.pendingJournalEvents.contains(where: { $0.eventId == eventId }) {
-                            // Check if we already have a journal entry for this event
-                            self.checkIfJournalEntryExists(eventId: eventId) { exists in
-                                if !exists {
-                                    let formatter = DateFormatter()
-                                    formatter.dateFormat = "EEEE"
-                                    let dayOfWeek = formatter.string(from: scheduledStartTime).lowercased()
-                                    
-                                    let pendingEvent = PendingJournalEvent(
-                                        eventId: eventId,
-                                        taskTitle: taskTitle,
-                                        tasks: tasks,
-                                        scheduledStartTime: scheduledStartTime,
-                                        scheduledEndTime: scheduledEndTime,
-                                        dayOfWeek: dayOfWeek
-                                    )
-                                    DispatchQueue.main.async {
-                                        if !self.pendingJournalEvents.contains(where: { $0.eventId == eventId }) {
-                                            self.pendingJournalEvents.append(pendingEvent)
-                                        }
-                                    }
-                                }
+
+                    // Only re-surface tasks scheduled for today whose end time
+                    // has passed — ignore yesterday's and future events.
+                    guard scheduledEndTime <= now,
+                          scheduledStartTime >= todayStart,
+                          scheduledStartTime < tomorrowStart else {
+                        continue
+                    }
+
+                    if self.pendingJournalEvents.contains(where: { $0.eventId == eventId }) {
+                        continue
+                    }
+
+                    let formatter = DateFormatter()
+                    formatter.dateFormat = "EEEE"
+                    let dayOfWeek = formatter.string(from: scheduledStartTime).lowercased()
+
+                    candidates.append(PendingJournalEvent(
+                        eventId: eventId,
+                        taskTitle: taskTitle,
+                        tasks: tasks,
+                        scheduledStartTime: scheduledStartTime,
+                        scheduledEndTime: scheduledEndTime,
+                        dayOfWeek: dayOfWeek
+                    ))
+                }
+
+                guard !candidates.isEmpty else {
+                    continuation.resume()
+                    return
+                }
+
+                // Resolve journal-entry-exists checks, then append in
+                // chronological order (earliest scheduled start first).
+                let group = DispatchGroup()
+                var newEvents: [PendingJournalEvent] = []
+                for candidate in candidates {
+                    group.enter()
+                    self.checkIfJournalEntryExists(eventId: candidate.eventId) { exists in
+                        DispatchQueue.main.async {
+                            if !exists {
+                                newEvents.append(candidate)
                             }
+                            group.leave()
                         }
                     }
                 }
-                
-                continuation.resume()
+
+                group.notify(queue: .main) {
+                    let sorted = newEvents.sorted { $0.scheduledStartTime < $1.scheduledStartTime }
+                    for event in sorted {
+                        if !self.pendingJournalEvents.contains(where: { $0.eventId == event.eventId }) {
+                            self.pendingJournalEvents.append(event)
+                        }
+                    }
+                    continuation.resume()
+                }
             }
         }
     }

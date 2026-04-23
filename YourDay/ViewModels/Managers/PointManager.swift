@@ -114,8 +114,9 @@ class PointManager {
         let previousCompletedTasks = stats.lastDailyCompletedTasks
         let previousStreak = stats.taskCompletionStreak
 
-        let completedMainTasksForYesterday = breakdown.filter { $0.mainTaskCompletedOnTargetDay }.count
-        let totalTasksWhenEvaluated = tasks.count
+        // Day completion (friend stats + LastDay pie): only "Today" list, not master/backlog
+        let completedMainTasksForYesterday = breakdown.filter { $0.origin == .today && $0.mainTaskCompletedOnTargetDay }.count
+        let totalTasksWhenEvaluated = tasks.filter { $0.origin == .today }.count
         let updatedStreak = calculateTaskCompletionStreak(
             completedMainTasksForYesterday: completedMainTasksForYesterday,
             previousLastEvaluated: previousLastEvaluated,

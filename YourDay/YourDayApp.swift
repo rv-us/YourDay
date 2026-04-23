@@ -82,10 +82,12 @@ struct YourDayApp: App {
 
         Task { @MainActor in
             ScreenTimeManager.shared.loadPersistedState()
-            ScreenTimeManager.shared.applyShieldIfNeeded()
-            if ScreenTimeManager.shared.isEnabled {
-                ScreenTimeManager.shared.startDailyMonitoring()
-            }
+            // On a cold launch `AuthorizationCenter.authorizationStatus` can
+            // return a stale `.notDetermined` value, which makes the focus
+            // blocker appear to need re-authorization even though the user
+            // previously granted it. Silently refresh the cached status and
+            // re-apply the shield if the persisted flag is on.
+            await ScreenTimeManager.shared.refreshAuthorizationAndReapplyShieldIfNeeded()
         }
         
         let appearance = UITabBarAppearance()
@@ -181,6 +183,9 @@ struct AppRestartView: View {
         SplashScreenView()
             .id(viewId)
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+                Task { @MainActor in
+                    ScreenTimeManager.shared.startGraceCountdownLoggingIfNeeded()
+                }
                 let todayString = formattedDateString(from: Date())
                 
                 if !lastAppActiveDate.isEmpty && lastAppActiveDate != todayString {
@@ -188,6 +193,20 @@ struct AppRestartView: View {
                 }
                 
                 lastAppActiveDate = todayString
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
+                Task { @MainActor in
+                    ScreenTimeManager.shared.stopGraceCountdownLogging()
+                }
+                // Make sure the shield-enabled flag (and other app-group
+                // defaults) are flushed to disk before the user can force-
+                // quit the app from the app switcher. Without this, pending
+                // writes can be dropped and the focus-blocker toggle will
+                // appear off on the next launch.
+                AppGroupDefaults.flush()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
+                AppGroupDefaults.flush()
             }
     }
     

@@ -2073,6 +2073,20 @@ class FirebaseManager: ObservableObject {
         }
     }
     
+    func deleteScheduledEvent(eventId: String, completion: @escaping (Error?) -> Void) {
+        guard let userId = userId else {
+            completion(NSError(domain: "FirebaseManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+        guard !eventId.isEmpty else {
+            completion(nil)
+            return
+        }
+        db.collection("users").document(userId).collection("scheduledEvents").document(eventId).delete { error in
+            completion(error)
+        }
+    }
+    
     func fetchScheduledEvent(eventId: String, completion: @escaping ([String: Any]?, Error?) -> Void) {
         guard let userId = userId else {
             completion(nil, NSError(domain: "FirebaseManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))

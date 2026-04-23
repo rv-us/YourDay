@@ -502,7 +502,23 @@ struct Todoview: View {
     private var filteredItems: [TodoItem] {
         switch selectedFilter {
         case .today:
-            return items.filter { $0.origin == .today }
+            return items
+                .filter { $0.origin == .today }
+                .sorted { lhs, rhs in
+                    // User-dragged tasks always rank above the auto-sorted groups.
+                    if lhs.userPinned != rhs.userPinned {
+                        return lhs.userPinned
+                    }
+                    if lhs.userPinned {
+                        return lhs.position < rhs.position
+                    }
+                    switch (lhs.scheduledStartTime, rhs.scheduledStartTime) {
+                    case let (l?, r?): return l < r
+                    case (_?, nil): return true
+                    case (nil, _?): return false
+                    case (nil, nil): return lhs.position < rhs.position
+                    }
+                }
         case .master:
             return items.filter { $0.origin == .master }
         }
@@ -510,10 +526,14 @@ struct Todoview: View {
 
     func moveItem(from source: IndexSet, to destination: Int) {
         var activeItems = filteredItems.filter { !$0.isDone }
+        let movedItems = source.map { activeItems[$0] }
         activeItems.move(fromOffsets: source, toOffset: destination)
 
         for (index, item) in activeItems.enumerated() {
             item.position = index
+        }
+        for item in movedItems {
+            item.userPinned = true
         }
 
         try? context.save()

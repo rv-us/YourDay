@@ -817,7 +817,9 @@ class LoginViewModel: ObservableObject {
                                 proofPostId: props.proofPostId,
                                 manualScheduleGoogleEventId: props.manualScheduleGoogleEventId,
                                 scheduledStartTime: props.scheduledStartTime,
-                                scheduledEndTime: props.scheduledEndTime
+                                scheduledEndTime: props.scheduledEndTime,
+                                createdAt: props.createdAt,
+                                userPinned: props.userPinned
                             )
                             newTask.completedAt = props.completedAt
                             modelContext.insert(newTask)
@@ -844,6 +846,11 @@ class LoginViewModel: ObservableObject {
                             localTask.manualScheduleGoogleEventId = props.manualScheduleGoogleEventId
                             localTask.scheduledStartTime = props.scheduledStartTime
                             localTask.scheduledEndTime = props.scheduledEndTime
+                            localTask.userPinned = props.userPinned
+                            // Preserve the earliest known creation date across devices so pre-migration cloud defaults can't overwrite a real local createdAt.
+                            if props.createdAt < localTask.createdAt {
+                                localTask.createdAt = props.createdAt
+                            }
                         }
                     }
 

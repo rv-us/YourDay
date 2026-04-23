@@ -23,6 +23,8 @@ struct ManualSchedulingView: View {
     @State private var isSaving = false
     @State private var alertMessage: String?
     @State private var showAlert = false
+    @State private var showRemoveFromCalendarConfirm = false
+    @State private var isRemovingFromCalendar = false
 
     private var todayTasks: [TodoItem] {
         todoItems.filter { $0.origin == .today && !$0.isDone }
@@ -59,15 +61,29 @@ struct ManualSchedulingView: View {
         sharedSelectedEventId != nil
     }
 
-    private var selectedSessionTitle: String {
-        let titles = selectedTasks.map(\.title)
-        if titles.count == 1 {
-            return titles[0]
+    /// Any selected task still linked to a Google Calendar event (for removal / merge cleanup).
+    private var selectedTasksHaveCalendarLinks: Bool {
+        selectedTasks.contains { t in
+            let id = t.manualScheduleGoogleEventId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return !id.isEmpty
         }
-        if titles.count == 2 {
-            return "\(titles[0]) + \(titles[1])"
+    }
+
+    /// Short label on the calendar drag block (one task name, or a count for several).
+    private var proposedCalendarBlockTitle: String {
+        if selectedTasks.count == 1, let t = selectedTasks.first {
+            return t.title
         }
-        return "\(titles.first ?? "Tasks") + \(titles.count - 1) more"
+        if selectedTasks.isEmpty {
+            return "Time block"
+        }
+        return "\(selectedTasks.count) tasks"
+    }
+
+    /// Shown as separate lines on the proposed block so titles don’t clump into one long string.
+    private var proposedCalendarTaskLines: [String]? {
+        guard selectedTasks.count > 1 else { return nil }
+        return selectedTasks.map(\.title)
     }
 
     private func hasLinkedEventOnSelectedDate(_ task: TodoItem) -> Bool {
@@ -116,7 +132,8 @@ struct ManualSchedulingView: View {
                     proposedDuration: $proposedDuration,
                     events: schedulingViewModel.calendarEvents,
                     selectedDate: Calendar.current.startOfDay(for: selectedDate),
-                    sessionTitle: selectedSessionTitle,
+                    sessionTitle: proposedCalendarBlockTitle,
+                    sessionTaskLines: proposedCalendarTaskLines,
                     allowsDurationResize: true
                 )
             }
@@ -128,10 +145,18 @@ struct ManualSchedulingView: View {
         }, message: {
             Text(alertMessage ?? "")
         })
+        .alert("Remove from Google Calendar?", isPresented: $showRemoveFromCalendarConfirm) {
+            Button("Cancel", role: .cancel) { }
+            Button("Remove", role: .destructive) {
+                removeFromGoogleCalendar()
+            }
+        } message: {
+            Text("The calendar event for the selected task\(selectedTasks.count == 1 ? "" : "s") will be deleted. You can add a new time later.")
+        }
     }
 
     private var introCopy: some View {
-        Text("Pick one or more tasks from Today, place the session on your calendar, then add or update it on Google Calendar.")
+        Text("Choose tasks from Today, set a time on your calendar, then add or update that block in Google Calendar.")
             .font(.subheadline)
             .foregroundColor(dynamicSecondaryTextColor)
     }
@@ -219,6 +244,10 @@ struct ManualSchedulingView: View {
                     .font(.headline)
                     .foregroundColor(dynamicTextColor)
 
+                if selectedTasks.count > 1 {
+                    calendarGroupingPreview
+                }
+
                 Button {
                     showingCalendarSheet = true
                 } label: {
@@ -228,7 +257,7 @@ struct ManualSchedulingView: View {
                             Text(CalendarTimeFormatter.formatTimeRange(start: proposedStartTime, end: proposedEndTime))
                                 .font(.subheadline)
                                 .foregroundColor(dynamicTextColor)
-                            Text("\(selectedTasks.count) task\(selectedTasks.count == 1 ? "" : "s") selected • Drag to move, drag bottom edge to change duration")
+                            Text("Tap to place on the timeline • Drag to move, bottom edge to change duration")
                                 .font(.caption2)
                                 .foregroundColor(dynamicSecondaryTextColor)
                         }
@@ -262,10 +291,68 @@ struct ManualSchedulingView: View {
                 }
                 .buttonStyle(ScaleButtonStyle())
                 .disabled(isSaving)
+
+                if selectedTasksHaveCalendarLinks {
+                    Button {
+                        showRemoveFromCalendarConfirm = true
+                    } label: {
+                        HStack {
+                            if isRemovingFromCalendar {
+                                ProgressView()
+                                    .tint(dynamicPrimaryColor)
+                            } else {
+                                Image(systemName: "calendar.badge.minus")
+                            }
+                            Text("Remove from Google Calendar")
+                        }
+                        .font(.subheadline.weight(.medium))
+                        .foregroundColor(.red.opacity(0.95))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isSaving || isRemovingFromCalendar)
+                }
             }
             .padding()
             .background(dynamicSecondaryBackgroundColor.opacity(0.6))
             .cornerRadius(12)
+        }
+    }
+
+    /// When several tasks share one calendar block, show them as a numbered list instead of a single dense line.
+    private var calendarGroupingPreview: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Together on your calendar")
+                .font(.caption.weight(.semibold))
+                .foregroundColor(dynamicSecondaryTextColor)
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(selectedTasks.enumerated()), id: \.element.localTaskId) { index, task in
+                    HStack(alignment: .top, spacing: 10) {
+                        Text("\(index + 1)")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundColor(dynamicPrimaryColor)
+                            .frame(minWidth: 20, alignment: .center)
+                        Text(task.title)
+                            .font(.subheadline)
+                            .foregroundColor(dynamicTextColor)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.vertical, 5)
+                    if index < selectedTasks.count - 1 {
+                        Divider()
+                            .background(dynamicTextColor.opacity(0.12))
+                    }
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(dynamicSecondaryBackgroundColor.opacity(0.55))
+            )
         }
     }
 
@@ -337,6 +424,37 @@ struct ManualSchedulingView: View {
         }
     }
 
+    private func clearTaskScheduleState(_ task: TodoItem) {
+        task.manualScheduleGoogleEventId = nil
+        task.scheduledStartTime = nil
+        task.scheduledEndTime = nil
+    }
+
+    private func removeFromGoogleCalendar() {
+        let eventIds = Set(
+            selectedTasks.compactMap { $0.manualScheduleGoogleEventId?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+        )
+        let idList = Array(eventIds)
+        guard !idList.isEmpty else { return }
+        isRemovingFromCalendar = true
+        ManualCalendarEventDeletionService.deleteGoogleCalendarEventsAndUnlinkLocalTasks(
+            eventIds: idList,
+            modelContext: modelContext,
+            firebaseManager: firebaseManager
+        ) { err in
+            DispatchQueue.main.async {
+                self.isRemovingFromCalendar = false
+                if let err = err {
+                    self.alertMessage = err.localizedDescription
+                    self.showAlert = true
+                    return
+                }
+                self.schedulingViewModel.fetchCalendarEvents(for: self.selectedDate)
+            }
+        }
+    }
+
     private func addToGoogleCalendar() {
         let tasksToSchedule = selectedTasks
         guard !tasksToSchedule.isEmpty else { return }
@@ -353,7 +471,12 @@ struct ManualSchedulingView: View {
         }
 
         let taskTitles = tasksToSchedule.map(\.title)
-        let sessionTitle = taskTitles.count == 1 ? taskTitles[0] : "YourDay Focus Session"
+        let googleCalendarEventTitle: String
+        if taskTitles.count == 1 {
+            googleCalendarEventTitle = taskTitles[0]
+        } else {
+            googleCalendarEventTitle = "\(taskTitles[0]) and \(taskTitles.count - 1) more"
+        }
         let combinedDetails = tasksToSchedule
             .map(\.detail)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -382,7 +505,7 @@ struct ManualSchedulingView: View {
 
             firebaseManager.saveScheduledEvent(
                 eventId: eventId,
-                taskTitle: sessionTitle,
+                taskTitle: googleCalendarEventTitle,
                 tasks: taskTitles,
                 startTime: start,
                 endTime: end
@@ -397,7 +520,7 @@ struct ManualSchedulingView: View {
 
                     NotificationManager.shared.scheduleJournalPromptNotification(
                         eventId: eventId,
-                        taskTitle: sessionTitle,
+                        taskTitle: googleCalendarEventTitle,
                         scheduledEndTime: end
                     )
 
@@ -411,7 +534,7 @@ struct ManualSchedulingView: View {
 
         func handleCreate() {
             calendarManager.createCalendarEvent(
-                title: sessionTitle,
+                title: googleCalendarEventTitle,
                 start: start,
                 end: end,
                 description: descriptionBody
@@ -437,7 +560,7 @@ struct ManualSchedulingView: View {
         func handleUpdate(existingId: String) {
             calendarManager.updateCalendarEvent(
                 eventId: existingId,
-                title: sessionTitle,
+                title: googleCalendarEventTitle,
                 start: start,
                 end: end,
                 description: descriptionBody
@@ -479,7 +602,39 @@ struct ManualSchedulingView: View {
                     if let existingId = sharedSelectedEventId {
                         handleUpdate(existingId: existingId)
                     } else {
-                        handleCreate()
+                        // One combined block, but tasks may still reference separate old events; remove those
+                        // from Google so duplicate blocks don’t remain after the merge.
+                        let oldEventIds = Set(
+                            tasksToSchedule.compactMap { $0.manualScheduleGoogleEventId?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                                .filter { !$0.isEmpty }
+                        )
+                        if oldEventIds.isEmpty {
+                            handleCreate()
+                        } else {
+                            let idsToRetire = Array(oldEventIds)
+                            calendarManager.deleteCalendarEventsSequentially(idsToRetire) { err in
+                                DispatchQueue.main.async {
+                                    if let err = err {
+                                        self.isSaving = false
+                                        self.alertMessage = err.localizedDescription
+                                        self.showAlert = true
+                                        return
+                                    }
+                                    for id in idsToRetire {
+                                        NotificationManager.shared.cancelJournalPromptNotification(eventId: id)
+                                        self.firebaseManager.deleteScheduledEvent(eventId: id) { _ in }
+                                    }
+                                    for t in tasksToSchedule {
+                                        self.clearTaskScheduleState(t)
+                                    }
+                                    try? self.modelContext.save()
+                                    for t in tasksToSchedule {
+                                        self.syncTodoItemToFirebase(t)
+                                    }
+                                    handleCreate()
+                                }
+                            }
+                        }
                     }
                 }
             }

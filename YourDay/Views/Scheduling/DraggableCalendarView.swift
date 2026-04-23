@@ -12,8 +12,10 @@ struct DraggableCalendarView: View {
     @Binding var proposedDuration: Int
     let events: [GoogleCalendarEvent]
     let selectedDate: Date
-    /// Shown on the draggable block instead of "Proposed Session" when set.
+    /// Shown on the draggable block (e.g. one task name, or "3 tasks" when several).
     var sessionTitle: String? = nil
+    /// For multiple tasks, one line per task on the block (keeps the drag preview readable).
+    var sessionTaskLines: [String]? = nil
     /// When true, the block has a bottom handle to change `proposedDuration` in 15-minute steps.
     var allowsDurationResize: Bool = false
     @Environment(\.dismiss) private var dismiss
@@ -154,6 +156,7 @@ struct DraggableCalendarView: View {
                                 dragOffset = .zero
                             },
                             draggableSessionTitle: sessionTitle,
+                            draggableTaskSubtitleLines: sessionTaskLines,
                             durationMinutesBinding: allowsDurationResize ? $proposedDuration : nil
                         )
                     }

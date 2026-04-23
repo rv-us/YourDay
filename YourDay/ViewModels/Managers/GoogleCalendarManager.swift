@@ -385,6 +385,63 @@ class GoogleCalendarManager {
         }.resume()
     }
     
+    /// Permanently removes an event from the user’s primary calendar. `404` is treated as success (already gone).
+    func deleteCalendarEvent(eventId: String, completion: @escaping (Error?) -> Void) {
+        guard let user = GIDSignIn.sharedInstance.currentUser else {
+            completion(NSError(domain: "GoogleCalendarManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not signed in"]))
+            return
+        }
+        let accessToken = user.accessToken.tokenString
+        guard !accessToken.isEmpty else {
+            completion(NSError(domain: "GoogleCalendarManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "Access token is empty"]))
+            return
+        }
+        let pathId = eventId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? eventId
+        guard let url = URL(string: "https://www.googleapis.com/calendar/v3/calendars/primary/events/\(pathId)") else {
+            completion(NSError(domain: "GoogleCalendarManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"]))
+            return
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        URLSession.shared.dataTask(with: request) { _, response, error in
+            if let error = error {
+                completion(error)
+                return
+            }
+            if let httpResponse = response as? HTTPURLResponse {
+                if httpResponse.statusCode == 204 || httpResponse.statusCode == 200 {
+                    completion(nil)
+                } else if httpResponse.statusCode == 404 {
+                    completion(nil)
+                } else {
+                    completion(NSError(domain: "GoogleCalendarManager", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "HTTP Error \(httpResponse.statusCode)"]))
+                }
+            } else {
+                completion(NSError(domain: "GoogleCalendarManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response"]))
+            }
+        }.resume()
+    }
+    
+    /// Deletes events one after another. Used when merging several separately scheduled tasks into one block.
+    func deleteCalendarEventsSequentially(_ eventIds: [String], completion: @escaping (Error?) -> Void) {
+        let unique = Array(Set(eventIds.filter { !$0.isEmpty }))
+        func deleteAt(_ index: Int) {
+            if index >= unique.count {
+                completion(nil)
+                return
+            }
+            deleteCalendarEvent(eventId: unique[index]) { err in
+                if let err = err {
+                    completion(err)
+                    return
+                }
+                deleteAt(index + 1)
+            }
+        }
+        deleteAt(0)
+    }
+    
     func createRecurringEvent(title: String, startTime: Date, daysOfWeek: [String], endDate: Date? = nil, description: String? = nil, location: String? = nil, completion: @escaping (String?, Error?) -> Void) {
         // Calculate end time (default to 1 hour after start)
         let endTime = Calendar.current.date(byAdding: .hour, value: 1, to: startTime) ?? startTime.addingTimeInterval(3600)

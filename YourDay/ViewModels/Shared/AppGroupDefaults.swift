@@ -8,10 +8,38 @@ enum AppGroupDefaults {
         static let pendingPenalties = "pendingFocusPenalties.v1"
         static let shieldEnabled = "screenTimeShieldEnabled"
         static let familySelection = "screenTimeFamilySelection"
+        /// Unix timestamp (seconds since 1970) recorded by the shield-action
+        /// extension immediately before it calls `stopMonitoring` on a stale
+        /// break-focus grace activity. The monitor extension checks this on
+        /// `intervalDidEnd` to suppress the "grace window expired → reapply
+        /// shield" path when the end was caused by our own manual restart.
+        static let graceStopSuppressUntil = "breakFocusGraceStopSuppressUntil"
+        /// Wall-clock time when the current break-focus grace window ends (Unix
+        /// time). Set by the shield-action extension; cleared when the device
+        /// activity monitor reapplies the shield. Used for countdown logging in
+        /// the main app.
+        static let graceWindowEndsAt = "breakFocusGraceWindowEndsAt"
     }
 
-    static var defaults: UserDefaults {
-        UserDefaults(suiteName: suiteName) ?? .standard
+    // Cache the app-group UserDefaults as a single shared instance. Creating
+    // a new UserDefaults object on every access is unnecessary and makes
+    // durability guarantees harder to reason about.
+    private static let sharedDefaults: UserDefaults = {
+        if let suite = UserDefaults(suiteName: suiteName) {
+            return suite
+        }
+        assertionFailure("AppGroupDefaults: failed to open suite '\(suiteName)'. Check app-group entitlements. Falling back to standard defaults.")
+        return .standard
+    }()
+
+    static var defaults: UserDefaults { sharedDefaults }
+
+    // Force-flush pending writes to disk. UserDefaults normally writes
+    // asynchronously, so values written shortly before a force-quit can be
+    // lost. Call this after toggling any shield-critical flags and when the
+    // app backgrounds so cross-process extensions see a consistent state.
+    static func flush() {
+        sharedDefaults.synchronize()
     }
 
     static func loadSnapshot() -> ShieldSnapshot? {
@@ -42,5 +70,21 @@ enum AppGroupDefaults {
 
     static func clearPendingPenalties() {
         defaults.removeObject(forKey: Key.pendingPenalties)
+    }
+
+    // MARK: - Break-focus grace (countdown to reshield)
+
+    static func setGraceWindowEnd(_ date: Date) {
+        defaults.set(date.timeIntervalSince1970, forKey: Key.graceWindowEndsAt)
+    }
+
+    static func clearGraceWindowEnd() {
+        defaults.removeObject(forKey: Key.graceWindowEndsAt)
+    }
+
+    static func graceWindowEndDate() -> Date? {
+        let ts = defaults.double(forKey: Key.graceWindowEndsAt)
+        guard ts > 0 else { return nil }
+        return Date(timeIntervalSince1970: ts)
     }
 }

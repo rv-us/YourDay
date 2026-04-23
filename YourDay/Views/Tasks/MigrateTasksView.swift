@@ -11,10 +11,25 @@ struct MigrateTasksView: View {
     @State private var selectedTasksToMigrate: Set<PersistentIdentifier> = []
 
     private var tasksToReview: [TodoItem] {
-        allTodoItems.filter { todoItem in
-            let isMainTaskIncomplete = !todoItem.isDone
-            let hasIncompleteSubtasks = todoItem.subtasks.contains(where: { !$0.isDone })
-            return isMainTaskIncomplete || hasIncompleteSubtasks
+        allTodoItems
+            .filter { todoItem in
+                let isMainTaskIncomplete = !todoItem.isDone
+                let hasIncompleteSubtasks = todoItem.subtasks.contains(where: { !$0.isDone })
+                return isMainTaskIncomplete || hasIncompleteSubtasks
+            }
+            .sorted { $0.createdAt < $1.createdAt }
+    }
+
+    private func daysOld(_ task: TodoItem) -> Int {
+        let seconds = Date().timeIntervalSince(task.createdAt)
+        return max(0, Int(seconds / 86_400))
+    }
+
+    private func ageLabel(_ task: TodoItem) -> String {
+        switch daysOld(task) {
+        case 0: return "Created today"
+        case 1: return "Created yesterday"
+        case let n: return "Created \(n) days ago"
         }
     }
 
@@ -55,7 +70,7 @@ struct MigrateTasksView: View {
                                     Text("Original due: \(task.dueDate, style: .date)")
                                         .font(.caption2)
                                         .foregroundColor(dynamicAccentColor)
-                                    
+
                                     Text(task.origin == .today ? "Today" : "Master List")
                                         .font(.caption2)
                                         .fontWeight(.medium)
@@ -63,12 +78,17 @@ struct MigrateTasksView: View {
                                         .padding(.horizontal, 6)
                                         .padding(.vertical, 2)
                                         .background(
-                                            task.origin == .today ? 
-                                                dynamicPrimaryColor.opacity(0.15) : 
+                                            task.origin == .today ?
+                                                dynamicPrimaryColor.opacity(0.15) :
                                                 dynamicAccentColor.opacity(0.15)
                                         )
                                         .cornerRadius(4)
                                 }
+
+                                Text(ageLabel(task))
+                                    .font(.caption2)
+                                    .fontWeight(daysOld(task) >= 7 ? .semibold : .regular)
+                                    .foregroundColor(daysOld(task) >= 7 ? .orange : dynamicSecondaryTextColor)
                                 
                                 let pendingSubtasks = task.subtasks.filter { !$0.isDone }.count
                                 if pendingSubtasks > 0 {
