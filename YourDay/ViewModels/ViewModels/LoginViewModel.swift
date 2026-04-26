@@ -2,6 +2,7 @@ import SwiftUI
 import FirebaseCore
 import Firebase
 import FirebaseAuth
+import FirebaseVertexAI
 import GoogleSignIn
 import SwiftData
 import Network // For NWPathMonitor
@@ -110,6 +111,85 @@ class LoginViewModel: ObservableObject {
             }
         }
     }
+
+    // MARK: - Display name moderation (Gemini, fail-closed)
+
+    private static let displayNameModerationConfidenceThreshold: Double = 0.55
+    private static let displayNameModerationRejectedMessage = "This display name isn’t allowed. Please choose another."
+    private static let displayNameModerationUnavailableMessage = "We couldn’t verify your display name. Please try again."
+
+    private struct DisplayNameModerationFailure: Error {
+        let userMessage: String
+    }
+
+    /// Returns `.success` if the name is allowed; `.failure` with a user-facing message if rejected or moderation fails (fail-closed).
+    private func moderateDisplayName(_ rawName: String) async -> Result<Void, DisplayNameModerationFailure> {
+        let trimmed = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return .failure(DisplayNameModerationFailure(userMessage: "Display name cannot be empty."))
+        }
+
+        let vertex = VertexAI.vertexAI()
+        let model = vertex.generativeModel(modelName: "gemini-2.5-flash")
+
+        let escapedForPrompt = trimmed
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+
+        let prompt = """
+        You are a content safety classifier for a productivity app display name.
+        Evaluate ONLY whether this display name is inappropriate: profanity, slurs, hate speech, sexual content, harassment, or deliberate evasion of filters.
+        Do not reject normal names, cultural names, or innocuous words.
+
+        Display name: "\(escapedForPrompt)"
+
+        Respond with ONLY a single JSON object and no other text, in this exact shape:
+        {"isProfane":false,"confidence":0.0}
+
+        Rules:
+        - "isProfane" is true only if the name clearly violates the policy above.
+        - "confidence" is 0.0 (certainly allowed) to 1.0 (certainly violates policy).
+        """
+
+        do {
+            let userMessage = ModelContent(role: "user", parts: [TextPart(prompt)])
+            let response = try await model.generateContent([userMessage])
+            guard let text = response.text else {
+                return .failure(DisplayNameModerationFailure(userMessage: Self.displayNameModerationUnavailableMessage))
+            }
+            guard let jsonString = Self.extractJSONObject(from: text),
+                  let data = jsonString.data(using: .utf8),
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                return .failure(DisplayNameModerationFailure(userMessage: Self.displayNameModerationUnavailableMessage))
+            }
+
+            let isProfane = obj["isProfane"] as? Bool ?? false
+            let confidence: Double
+            if let d = obj["confidence"] as? Double {
+                confidence = d
+            } else if let n = obj["confidence"] as? NSNumber {
+                confidence = n.doubleValue
+            } else {
+                return .failure(DisplayNameModerationFailure(userMessage: Self.displayNameModerationUnavailableMessage))
+            }
+
+            if isProfane && confidence >= Self.displayNameModerationConfidenceThreshold {
+                return .failure(DisplayNameModerationFailure(userMessage: Self.displayNameModerationRejectedMessage))
+            }
+            return .success(())
+        } catch {
+            print("LoginViewModel: Display name moderation failed - \(error.localizedDescription)")
+            return .failure(DisplayNameModerationFailure(userMessage: Self.displayNameModerationUnavailableMessage))
+        }
+    }
+
+    private static func extractJSONObject(from text: String) -> String? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let start = trimmed.firstIndex(of: "{"), let end = trimmed.lastIndex(of: "}"), start < end {
+            return String(trimmed[start ... end])
+        }
+        return nil
+    }
     
     // MARK: - Guest Session Management
     func startGuestSession() {
@@ -118,16 +198,20 @@ class LoginViewModel: ObservableObject {
             errorMessage = "Please enter a display name to continue as a guest."
             return
         }
-        if DisplayNameValidator.containsProfanity(trimmedName) {
-            errorMessage = "Display name contains inappropriate language."
-            return
-        }
 
-        print("LoginViewModel: Starting guest session with display name: \(trimmedName).")
-        self.userDisplayName = trimmedName
-        self.isGuest = true
-        self.isAuthenticated = false
-        self.errorMessage = nil
+        Task {
+            let result = await moderateDisplayName(trimmedName)
+            switch result {
+            case .failure(let failure):
+                self.errorMessage = failure.userMessage
+            case .success:
+                print("LoginViewModel: Starting guest session with display name: \(trimmedName).")
+                self.userDisplayName = trimmedName
+                self.isGuest = true
+                self.isAuthenticated = false
+                self.errorMessage = nil
+            }
+        }
     }
 
     // MARK: - Email/Password Authentication
@@ -142,13 +226,19 @@ class LoginViewModel: ObservableObject {
             return
         }
         let trimmedDisplayName = displayNameForRegistration.trimmingCharacters(in: .whitespacesAndNewlines)
-        if DisplayNameValidator.containsProfanity(trimmedDisplayName) {
-            errorMessage = "Display name contains inappropriate language."
-            isLoading = false
-            return
-        }
-        
-        firebaseManager.checkDisplayNameExists(displayName: displayNameForRegistration) { [weak self] exists, error in
+
+        Task {
+            let moderation = await moderateDisplayName(trimmedDisplayName)
+            switch moderation {
+            case .failure(let failure):
+                self.errorMessage = failure.userMessage
+                self.isLoading = false
+                return
+            case .success:
+                break
+            }
+
+            self.firebaseManager.checkDisplayNameExists(displayName: self.displayNameForRegistration) { [weak self] exists, error in
             guard let self = self else { return }
             
             if let error = error {
@@ -192,6 +282,7 @@ class LoginViewModel: ObservableObject {
                     }
                 }
             }
+        }
         }
     }
 
@@ -365,16 +456,40 @@ class LoginViewModel: ObservableObject {
             completion(false, "Display name cannot be empty.")
             return
         }
-        if DisplayNameValidator.containsProfanity(trimmedNewName) {
-            completion(false, "Display name contains inappropriate language.")
-            return
+
+        Task {
+            let moderation = await moderateDisplayName(trimmedNewName)
+            switch moderation {
+            case .failure(let failure):
+                await MainActor.run {
+                    completion(false, failure.userMessage)
+                }
+                return
+            case .success:
+                break
+            }
+
+            await MainActor.run {
+                self.applyDisplayNameUpdateAfterModeration(
+                    trimmedNewName: trimmedNewName,
+                    currentPlayerStats: currentPlayerStats,
+                    completion: completion
+                )
+            }
         }
+    }
+
+    private func applyDisplayNameUpdateAfterModeration(
+        trimmedNewName: String,
+        currentPlayerStats: PlayerStats?,
+        completion: @escaping (Bool, String?) -> Void
+    ) {
         if isGuest {
             self.userDisplayName = trimmedNewName
             completion(true, "Guest name updated locally.")
             return
         }
-        
+
         guard let user = Auth.auth().currentUser else {
             completion(false, "User not authenticated.")
             return
@@ -384,7 +499,7 @@ class LoginViewModel: ObservableObject {
             completion(false, "No internet connection. Cannot update name.")
             return
         }
-        
+
         if trimmedNewName == user.displayName {
             completion(true, "Display name is already set to this value.")
             return

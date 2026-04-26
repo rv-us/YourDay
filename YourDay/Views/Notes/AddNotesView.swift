@@ -88,7 +88,7 @@ struct AddNotesView: View {
         let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty { return notes }
         return notes.filter { note in
-            note.content.localizedCaseInsensitiveContains(trimmed)
+            note.plainText.localizedCaseInsensitiveContains(trimmed)
         }
     }
 
@@ -142,7 +142,7 @@ struct AddNotesView: View {
     private func noteRow(note: NoteItem) -> some View {
         if isSelecting {
             VStack(alignment: .leading, spacing: 5) {
-                Text(note.content.isEmpty ? "New Note" : note.content)
+                Text(note.previewText.isEmpty ? "New Note" : note.previewText)
                     .lineLimit(1)
                     .font(.body)
                     .foregroundColor(dynamicTextColor)
@@ -156,7 +156,7 @@ struct AddNotesView: View {
         } else {
             NavigationLink(destination: NoteEditorView(note: note)) {
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(note.content.isEmpty ? "New Note" : note.content)
+                    Text(note.previewText.isEmpty ? "New Note" : note.previewText)
                         .lineLimit(1)
                         .font(.headline)
                         .foregroundColor(dynamicTextColor)
@@ -283,7 +283,7 @@ struct AddNotesView: View {
     }
 
     func generateTasksFromSelectedNotes() {
-        let combinedText = selectedNotes.map { $0.content }.joined(separator: "\n\n")
+        let combinedText = selectedNotes.map { $0.plainText }.joined(separator: "\n\n")
         isGenerating = true
         
         Task {

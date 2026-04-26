@@ -379,13 +379,6 @@ struct NotificationSettingsView: View {
             return
         }
 
-        if DisplayNameValidator.containsProfanity(trimmedName) {
-            nameChangeMessageText = "Display name contains inappropriate language."
-            nameChangeWasSuccessful = false
-            showTempStatusMessage()
-            return
-        }
-
         guard trimmedName != (loginViewModel.userDisplayName ?? "") else {
             nameChangeMessageText = "This is already your display name."
             nameChangeWasSuccessful = true

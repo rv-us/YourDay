@@ -30,8 +30,12 @@ struct DashboardView: View {
         allTodoItems.filter { !$0.isDone }.count
     }
 
+    private var visibleNotes: [NoteItem] {
+        allNotes.filter { $0.modelContext != nil }
+    }
+
     private var recentNotes: [NoteItem] {
-        Array(allNotes.prefix(5))
+        Array(visibleNotes.prefix(5))
     }
 
     @State private var showLastDayView = false
@@ -173,7 +177,7 @@ struct DashboardView: View {
     private var summaryCardsRow: some View {
         HStack(spacing: 12) {
             NavigationLink(destination: AddNotesView().environmentObject(loginViewModel)) {
-                summaryCard(icon: "pencil", value: "\(allNotes.count)", label: "Notes", useOrange: false)
+                summaryCard(icon: "pencil", value: "\(visibleNotes.count)", label: "Notes", useOrange: false)
             }
             .buttonStyle(.plain)
 
@@ -467,7 +471,7 @@ struct DashboardView: View {
                         NavigationLink(destination: NoteEditorView(note: note)) {
                             HStack {
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text(note.content.isEmpty ? "New Note" : note.content)
+                                    Text(note.previewText.isEmpty ? "New Note" : note.previewText)
                                         .font(.subheadline)
                                         .foregroundColor(dynamicTextColor)
                                         .lineLimit(1)
