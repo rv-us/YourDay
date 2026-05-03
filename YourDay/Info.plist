@@ -17,7 +17,15 @@
 			<string>Editor</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>com.googleusercontent.apps.420845845262-ha1mj2mngqq8159t8o05h56al5gd30uj</string>
+				<string>com.googleusercontent.apps.420845845262-oj0nen3h4p62cs69o1nq6gm1psnuhgbb</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>yourday-trello</string>
 			</array>
 		</dict>
 	</array>
