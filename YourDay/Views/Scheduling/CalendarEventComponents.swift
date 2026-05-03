@@ -811,6 +811,10 @@ struct ScheduledTaskItemRow: View {
         let wasDone = item.isDone
         item.isDone.toggle()
         item.completedAt = item.isDone ? Date() : nil
+
+        if item.trelloCardId != nil {
+            Task { await TrelloTaskSyncService.pushCompletion(for: item) }
+        }
         
         if let sharedId = item.sharedTaskId {
             firebaseManager.updateSharedTaskProgress(sharedTaskId: sharedId, isCompleted: item.isDone) { _ in }

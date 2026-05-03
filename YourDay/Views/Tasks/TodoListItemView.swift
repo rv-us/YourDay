@@ -73,6 +73,20 @@ struct TodoListItemView: View {
                             .strikethrough(item.isDone, color: dynamicSecondaryTextColor.opacity(0.7))
                             .foregroundColor(item.isDone ? dynamicSecondaryTextColor : dynamicSecondaryTextColor)
                     }
+
+                    if item.trelloCardId != nil {
+                        HStack(spacing: 4) {
+                            Image(systemName: "rectangle.on.rectangle.angled")
+                                .font(.caption2)
+                            Text("Trello")
+                                .font(.caption2.weight(.semibold))
+                        }
+                        .foregroundColor(dynamicSecondaryTextColor)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(dynamicSecondaryBackgroundColor)
+                        .cornerRadius(6)
+                    }
                 }
                 .onTapGesture {
                     showingEditView = true
@@ -146,6 +160,10 @@ struct TodoListItemView: View {
         }
 
         print("Main item '\(item.title)' toggled to \(item.isDone), completedAt: \(String(describing: item.completedAt))")
+
+        if item.trelloCardId != nil {
+            Task { await TrelloTaskSyncService.pushCompletion(for: item) }
+        }
 
         if let sharedId = item.sharedTaskId {
             firebaseManager.updateSharedTaskProgress(sharedTaskId: sharedId, isCompleted: item.isDone) { error in

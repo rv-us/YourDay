@@ -27,6 +27,10 @@ struct TodoItemCodable: Codable, Identifiable {
     var manualScheduleGoogleEventId: String?
     var scheduledStartTime: Date?
     var scheduledEndTime: Date?
+    var trelloCardId: String?
+    var trelloBoardId: String?
+    var trelloListId: String?
+    var trelloDateLastActivity: Date?
     var userPinned: Bool
 
     // Firebase metadata
@@ -54,6 +58,10 @@ struct TodoItemCodable: Codable, Identifiable {
         self.manualScheduleGoogleEventId = model.manualScheduleGoogleEventId
         self.scheduledStartTime = model.scheduledStartTime
         self.scheduledEndTime = model.scheduledEndTime
+        self.trelloCardId = model.trelloCardId
+        self.trelloBoardId = model.trelloBoardId
+        self.trelloListId = model.trelloListId
+        self.trelloDateLastActivity = model.trelloDateLastActivity
         self.userPinned = model.userPinned
 
         self.userId = userId
@@ -79,6 +87,10 @@ struct TodoItemCodable: Codable, Identifiable {
         manualScheduleGoogleEventId: String? = nil,
         scheduledStartTime: Date? = nil,
         scheduledEndTime: Date? = nil,
+        trelloCardId: String? = nil,
+        trelloBoardId: String? = nil,
+        trelloListId: String? = nil,
+        trelloDateLastActivity: Date? = nil,
         userPinned: Bool = false,
         userId: String,
         createdAt: Date = Date(),
@@ -100,6 +112,10 @@ struct TodoItemCodable: Codable, Identifiable {
         self.manualScheduleGoogleEventId = manualScheduleGoogleEventId
         self.scheduledStartTime = scheduledStartTime
         self.scheduledEndTime = scheduledEndTime
+        self.trelloCardId = trelloCardId
+        self.trelloBoardId = trelloBoardId
+        self.trelloListId = trelloListId
+        self.trelloDateLastActivity = trelloDateLastActivity
         self.userPinned = userPinned
         self.userId = userId
         self.createdAt = createdAt
@@ -130,6 +146,10 @@ struct TodoItemCodable: Codable, Identifiable {
         manualScheduleGoogleEventId = try container.decodeIfPresent(String.self, forKey: .manualScheduleGoogleEventId)
         scheduledStartTime = try container.decodeIfPresent(Date.self, forKey: .scheduledStartTime)
         scheduledEndTime = try container.decodeIfPresent(Date.self, forKey: .scheduledEndTime)
+        trelloCardId = try container.decodeIfPresent(String.self, forKey: .trelloCardId)
+        trelloBoardId = try container.decodeIfPresent(String.self, forKey: .trelloBoardId)
+        trelloListId = try container.decodeIfPresent(String.self, forKey: .trelloListId)
+        trelloDateLastActivity = try container.decodeIfPresent(Date.self, forKey: .trelloDateLastActivity)
         userPinned = try container.decodeIfPresent(Bool.self, forKey: .userPinned) ?? false
 
         userId = try container.decode(String.self, forKey: .userId)
@@ -164,6 +184,10 @@ struct TodoItemCodable: Codable, Identifiable {
         try container.encodeIfPresent(manualScheduleGoogleEventId, forKey: .manualScheduleGoogleEventId)
         try container.encodeIfPresent(scheduledStartTime, forKey: .scheduledStartTime)
         try container.encodeIfPresent(scheduledEndTime, forKey: .scheduledEndTime)
+        try container.encodeIfPresent(trelloCardId, forKey: .trelloCardId)
+        try container.encodeIfPresent(trelloBoardId, forKey: .trelloBoardId)
+        try container.encodeIfPresent(trelloListId, forKey: .trelloListId)
+        try container.encodeIfPresent(trelloDateLastActivity, forKey: .trelloDateLastActivity)
         try container.encode(userPinned, forKey: .userPinned)
         try container.encode(userId, forKey: .userId)
         try container.encode(createdAt, forKey: .createdAt)
@@ -174,7 +198,7 @@ struct TodoItemCodable: Codable, Identifiable {
     private enum CodingKeys: String, CodingKey {
         case localTaskId, title, detail, dueDate, isDone, subtasks, completedAt
         case origin, position, sharedTaskId, isSharedPending, proofPostId, manualScheduleGoogleEventId
-        case scheduledStartTime, scheduledEndTime, userPinned
+        case scheduledStartTime, scheduledEndTime, trelloCardId, trelloBoardId, trelloListId, trelloDateLastActivity, userPinned
         case userId, createdAt, updatedAt, schemaVersion
     }
 
@@ -197,6 +221,10 @@ struct TodoItemCodable: Codable, Identifiable {
         manualScheduleGoogleEventId: String?,
         scheduledStartTime: Date?,
         scheduledEndTime: Date?,
+        trelloCardId: String?,
+        trelloBoardId: String?,
+        trelloListId: String?,
+        trelloDateLastActivity: Date?,
         createdAt: Date,
         userPinned: Bool
     ) {
@@ -216,6 +244,10 @@ struct TodoItemCodable: Codable, Identifiable {
             manualScheduleGoogleEventId: self.manualScheduleGoogleEventId,
             scheduledStartTime: self.scheduledStartTime,
             scheduledEndTime: self.scheduledEndTime,
+            trelloCardId: self.trelloCardId,
+            trelloBoardId: self.trelloBoardId,
+            trelloListId: self.trelloListId,
+            trelloDateLastActivity: self.trelloDateLastActivity,
             createdAt: self.createdAt,
             userPinned: self.userPinned
         )

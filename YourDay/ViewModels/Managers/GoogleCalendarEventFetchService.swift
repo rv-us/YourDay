@@ -108,6 +108,13 @@ enum GoogleCalendarEventFetchService {
                 let code = (response as? HTTPURLResponse)?.statusCode ?? -1
                 let snippet = String(data: data, encoding: .utf8).map { String($0.prefix(160)) } ?? ""
                 print("[CalendarConnections] FetchService: calendarList page non-200 http=\(code) snippet=\(snippet)")
+                if code == 401 || code == 403 {
+                    throw NSError(
+                        domain: "GoogleCalendarEventFetchService",
+                        code: code,
+                        userInfo: [NSLocalizedDescriptionKey: "Google Calendar access failed (\(code))."]
+                    )
+                }
                 break
             }
             let decoded = try JSONDecoder().decode(GoogleCalendarListAPIResponse.self, from: data)
@@ -143,6 +150,14 @@ enum GoogleCalendarEventFetchService {
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200,
               let decoded = try? JSONDecoder().decode(GoogleCalendarResponse.self, from: data) else {
+            let code = (response as? HTTPURLResponse)?.statusCode ?? -1
+            if code == 401 || code == 403 {
+                throw NSError(
+                    domain: "GoogleCalendarEventFetchService",
+                    code: code,
+                    userInfo: [NSLocalizedDescriptionKey: "Google Calendar events request failed (\(code))."]
+                )
+            }
             return []
         }
         let items = decoded.items ?? []
@@ -211,42 +226,72 @@ enum GoogleCalendarEventFetchService {
         if let user = GIDSignIn.sharedInstance.currentUser {
             let calendarScope = "https://www.googleapis.com/auth/calendar"
             if user.grantedScopes?.contains(calendarScope) == true {
-                let refreshed: GIDGoogleUser = try await withCheckedThrowingContinuation { cont in
-                    user.refreshTokensIfNeeded { u, err in
-                        if let u { cont.resume(returning: u) }
-                        else { cont.resume(throwing: err ?? URLError(.userAuthenticationRequired)) }
+                do {
+                    let refreshed: GIDGoogleUser = try await withCheckedThrowingContinuation { cont in
+                        user.refreshTokensIfNeeded { u, err in
+                            if let u { cont.resume(returning: u) }
+                            else { cont.resume(throwing: err ?? URLError(.userAuthenticationRequired)) }
+                        }
                     }
-                }
-                let token = refreshed.accessToken.tokenString
-                if let accountKey = refreshed.userID, !accountKey.isEmpty {
-                    let batch = try await fetchEventsForAccount(
-                        accessToken: token,
-                        accountKey: accountKey,
-                        start: start,
-                        end: end
-                    )
-                    all.append(contentsOf: batch)
+                    let token = refreshed.accessToken.tokenString
+                    if let accountKey = refreshed.userID, !accountKey.isEmpty {
+                        let batch = try await fetchEventsForAccount(
+                            accessToken: token,
+                            accountKey: accountKey,
+                            start: start,
+                            end: end
+                        )
+                        all.append(contentsOf: batch)
+                    }
+                } catch {
+                    if ConnectionAuthFailureDetector.isGoogleAuthFailure(error) {
+                        ConnectionReauthorizationNotifier.requestGoogleCalendar(
+                            displayName: user.profile?.email,
+                            reason: error.localizedDescription
+                        )
+                    }
+                    throw error
                 }
             }
         }
 
-        let linkedKeys = await MainActor.run {
-            CalendarConnectionsSettingsStore.shared.linkedReadOnlyAccounts.map(\.accountKey)
+        let linkedAccounts = await MainActor.run {
+            CalendarConnectionsSettingsStore.shared.linkedReadOnlyAccounts
         }
 
-        for accountKey in linkedKeys {
-            guard let refresh = CalendarConnectionKeychain.loadRefreshToken(accountKey: accountKey) else { continue }
-            let access = try await GoogleLinkedOAuthTokenRefresher.accessToken(
-                refreshToken: refresh,
-                clientId: clientID
-            )
-            let batch = try await fetchEventsForAccount(
-                accessToken: access,
-                accountKey: accountKey,
-                start: start,
-                end: end
-            )
-            all.append(contentsOf: batch)
+        for account in linkedAccounts {
+            let accountKey = account.accountKey
+            guard let refresh = CalendarConnectionKeychain.loadRefreshToken(accountKey: accountKey) else {
+                ConnectionReauthorizationNotifier.requestGoogleCalendar(
+                    accountKey: accountKey,
+                    displayName: account.connectionsDisplayTitle,
+                    reason: "Missing saved Google refresh token."
+                )
+                continue
+            }
+            do {
+                let access = try await GoogleLinkedOAuthTokenRefresher.accessToken(
+                    refreshToken: refresh,
+                    clientId: clientID
+                )
+                let batch = try await fetchEventsForAccount(
+                    accessToken: access,
+                    accountKey: accountKey,
+                    start: start,
+                    end: end
+                )
+                all.append(contentsOf: batch)
+            } catch {
+                if ConnectionAuthFailureDetector.isGoogleAuthFailure(error) {
+                    ConnectionReauthorizationNotifier.requestGoogleCalendar(
+                        accountKey: accountKey,
+                        displayName: account.connectionsDisplayTitle,
+                        reason: error.localizedDescription
+                    )
+                    continue
+                }
+                throw error
+            }
         }
 
         all.sort { a, b in

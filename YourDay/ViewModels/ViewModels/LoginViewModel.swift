@@ -933,6 +933,10 @@ class LoginViewModel: ObservableObject {
                                 manualScheduleGoogleEventId: props.manualScheduleGoogleEventId,
                                 scheduledStartTime: props.scheduledStartTime,
                                 scheduledEndTime: props.scheduledEndTime,
+                                trelloCardId: props.trelloCardId,
+                                trelloBoardId: props.trelloBoardId,
+                                trelloListId: props.trelloListId,
+                                trelloDateLastActivity: props.trelloDateLastActivity,
                                 createdAt: props.createdAt,
                                 userPinned: props.userPinned
                             )
@@ -961,6 +965,10 @@ class LoginViewModel: ObservableObject {
                             localTask.manualScheduleGoogleEventId = props.manualScheduleGoogleEventId
                             localTask.scheduledStartTime = props.scheduledStartTime
                             localTask.scheduledEndTime = props.scheduledEndTime
+                            localTask.trelloCardId = props.trelloCardId
+                            localTask.trelloBoardId = props.trelloBoardId
+                            localTask.trelloListId = props.trelloListId
+                            localTask.trelloDateLastActivity = props.trelloDateLastActivity
                             localTask.userPinned = props.userPinned
                             // Preserve the earliest known creation date across devices so pre-migration cloud defaults can't overwrite a real local createdAt.
                             if props.createdAt < localTask.createdAt {

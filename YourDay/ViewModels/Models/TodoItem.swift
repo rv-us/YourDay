@@ -33,12 +33,17 @@ class TodoItem {
     var scheduledStartTime: Date? = nil
     /// End time of the scheduled calendar block.
     var scheduledEndTime: Date? = nil
+    /// Trello card mirrored into YourDay. Non-nil means task edits should sync back to Trello.
+    var trelloCardId: String? = nil
+    var trelloBoardId: String? = nil
+    var trelloListId: String? = nil
+    var trelloDateLastActivity: Date? = nil
     /// When the task was originally created. Used to surface stale tasks during day planning.
     var createdAt: Date = Date()
     /// True once the user has manually dragged this task to a specific spot in the list. Pinned tasks sort by `position` and rank above the auto-sorted (scheduled / unscheduled) groups.
     var userPinned: Bool = false
 
-    init(localTaskId: String = UUID().uuidString, title: String, detail: String, dueDate: Date, isDone: Bool = false, subtasks: [Subtask] = [], position: Int = 0, origin: TaskOrigin = TaskOrigin.today, sharedTaskId: String? = nil, isSharedPending: Bool = false, proofPostId: String? = nil, manualScheduleGoogleEventId: String? = nil, scheduledStartTime: Date? = nil, scheduledEndTime: Date? = nil, createdAt: Date = Date(), userPinned: Bool = false) {
+    init(localTaskId: String = UUID().uuidString, title: String, detail: String, dueDate: Date, isDone: Bool = false, subtasks: [Subtask] = [], position: Int = 0, origin: TaskOrigin = TaskOrigin.today, sharedTaskId: String? = nil, isSharedPending: Bool = false, proofPostId: String? = nil, manualScheduleGoogleEventId: String? = nil, scheduledStartTime: Date? = nil, scheduledEndTime: Date? = nil, trelloCardId: String? = nil, trelloBoardId: String? = nil, trelloListId: String? = nil, trelloDateLastActivity: Date? = nil, createdAt: Date = Date(), userPinned: Bool = false) {
         self.localTaskId = localTaskId
         self.title = title
         self.detail = detail
@@ -53,6 +58,10 @@ class TodoItem {
         self.manualScheduleGoogleEventId = manualScheduleGoogleEventId
         self.scheduledStartTime = scheduledStartTime
         self.scheduledEndTime = scheduledEndTime
+        self.trelloCardId = trelloCardId
+        self.trelloBoardId = trelloBoardId
+        self.trelloListId = trelloListId
+        self.trelloDateLastActivity = trelloDateLastActivity
         self.createdAt = createdAt
         self.userPinned = userPinned
     }

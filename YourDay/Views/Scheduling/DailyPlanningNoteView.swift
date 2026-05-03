@@ -124,6 +124,9 @@ struct DailyPlanningNoteView: View {
                     startSuggestionCycle()
                 }
             }
+            .task {
+                await TrelloTaskSyncService.runDailyTrelloImport(modelContext: context)
+            }
             .onDisappear {
                 stopSuggestionCycle()
             }

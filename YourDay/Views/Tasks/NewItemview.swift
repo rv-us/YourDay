@@ -34,7 +34,9 @@ struct NewItemview: View {
                         HStack(spacing: 0) {
                             Button {
                                 withAnimation(.easeInOut(duration: 0.15)) {
-                                    viewModel.origin = .today
+                                    if viewModel.originalItem?.trelloCardId == nil {
+                                        viewModel.origin = .today
+                                    }
                                 }
                             } label: {
                                 Text("Today")
@@ -46,10 +48,13 @@ struct NewItemview: View {
                                     .clipShape(Capsule())
                             }
                             .buttonStyle(.plain)
+                            .disabled(viewModel.originalItem?.trelloCardId != nil)
 
                             Button {
                                 withAnimation(.easeInOut(duration: 0.15)) {
-                                    viewModel.origin = .master
+                                    if viewModel.originalItem?.trelloCardId == nil {
+                                        viewModel.origin = .master
+                                    }
                                 }
                             } label: {
                                 Text("Master List")
@@ -61,10 +66,17 @@ struct NewItemview: View {
                                     .clipShape(Capsule())
                             }
                             .buttonStyle(.plain)
+                            .disabled(viewModel.originalItem?.trelloCardId != nil)
                         }
                         .padding(4)
                         .background(Capsule().fill(Color.black.opacity(0.06)))
                         .padding(.bottom, 4)
+
+                        if viewModel.originalItem?.trelloCardId != nil {
+                            Text("Trello decides whether this task belongs in Today or Master List based on its due date.")
+                                .font(.caption)
+                                .foregroundColor(dynamicSecondaryTextColor)
+                        }
 
                         Text("Title")
                             .font(.subheadline)
@@ -293,8 +305,14 @@ struct NewItemview: View {
             existing.detail = viewModel.description
             existing.dueDate = viewModel.donebye
             existing.subtasks = viewModel.subtasks
-            existing.origin = viewModel.origin
+            if existing.trelloCardId == nil {
+                existing.origin = viewModel.origin
+            }
             print("Updated task '\(existing.title)'")
+
+            if existing.trelloCardId != nil {
+                Task { await TrelloTaskSyncService.pushEdit(for: existing) }
+            }
             
             // Sync update to Firebase
             if let userId = FirebaseAuth.Auth.auth().currentUser?.uid {

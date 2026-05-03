@@ -1,5 +1,5 @@
 //
-//  ConnectionsSettingsView.swift
+//  CalendarConnectionsSettingsView.swift
 //  YourDay
 //
 //  Google Calendar: primary sign-in, per-account calendar visibility, linked read-only accounts.
@@ -10,7 +10,7 @@ import GoogleSignIn
 import FirebaseCore
 import UIKit
 
-struct ConnectionsSettingsView: View {
+struct CalendarConnectionsSettingsView: View {
     @ObservedObject private var store = CalendarConnectionsSettingsStore.shared
 
     @State private var primaryCalendarRows: [GoogleCalendarListAPIItem] = []
@@ -237,7 +237,7 @@ struct ConnectionsSettingsView: View {
         .scrollContentBackground(.hidden)
         .background(dynamicBackgroundColor.ignoresSafeArea())
         .listStyle(.insetGrouped)
-        .navigationTitle("Connections")
+        .navigationTitle("Google Calendar")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(dynamicSecondaryBackgroundColor, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
@@ -329,6 +329,11 @@ struct ConnectionsSettingsView: View {
         for account in linkedPrefs {
             guard let refresh = CalendarConnectionKeychain.loadRefreshToken(accountKey: account.accountKey) else {
                 print("[CalendarConnections] UI: linked loop SKIP no keychain token key=\(account.accountKey)")
+                ConnectionReauthorizationNotifier.requestGoogleCalendar(
+                    accountKey: account.accountKey,
+                    displayName: account.connectionsDisplayTitle,
+                    reason: "Missing saved Google refresh token."
+                )
                 if listLoadError == nil {
                     listLoadError = "Missing saved token for \(account.connectionsDisplayTitle). Tap Remove, then add the account again."
                 }
@@ -354,6 +359,13 @@ struct ConnectionsSettingsView: View {
                 print("[CalendarConnections] UI: linked list OK key=\(account.accountKey) calendars=\(filtered.count)")
             } catch {
                 print("[CalendarConnections] UI: linked list FAIL key=\(account.accountKey) \(error.localizedDescription)")
+                if ConnectionAuthFailureDetector.isGoogleAuthFailure(error) {
+                    ConnectionReauthorizationNotifier.requestGoogleCalendar(
+                        accountKey: account.accountKey,
+                        displayName: account.connectionsDisplayTitle,
+                        reason: error.localizedDescription
+                    )
+                }
                 if listLoadError == nil {
                     listLoadError = "Could not load calendars for \(account.connectionsDisplayTitle): \(error.localizedDescription)"
                 }
@@ -380,6 +392,12 @@ struct ConnectionsSettingsView: View {
                 }
             } catch {
                 print("[CalendarConnections] UI: primary fetch FAIL \(error.localizedDescription)")
+                if ConnectionAuthFailureDetector.isGoogleAuthFailure(error) {
+                    ConnectionReauthorizationNotifier.requestGoogleCalendar(
+                        displayName: user.profile?.email,
+                        reason: error.localizedDescription
+                    )
+                }
                 if listLoadError == nil {
                     listLoadError = error.localizedDescription
                 }

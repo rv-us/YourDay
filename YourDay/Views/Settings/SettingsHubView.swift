@@ -36,12 +36,12 @@ struct SettingsHubView: View {
                     .listRowBackground(dynamicSecondaryBackgroundColor)
 
                     NavigationLink {
-                        ConnectionsSettingsView()
+                        ConnectionsHubView()
                     } label: {
                         settingsRow(
                             icon: "link.circle.fill",
                             title: "Connections",
-                            subtitle: "Google Calendar, linked accounts"
+                            subtitle: "Calendar, Trello"
                         )
                     }
                     .listRowBackground(dynamicSecondaryBackgroundColor)

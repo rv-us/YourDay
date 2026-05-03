@@ -10,6 +10,110 @@ import UIKit
 import GoogleSignIn
 import FirebaseCore
 
+struct ConnectionReauthorizationRequest: Identifiable, Equatable {
+    enum Service: String {
+        case googleCalendar
+        case trello
+    }
+
+    let service: Service
+    let accountKey: String?
+    let displayName: String?
+    let reason: String?
+    let createdAt: Date
+
+    var id: String {
+        "\(service.rawValue):\(accountKey ?? "primary"):\(createdAt.timeIntervalSince1970)"
+    }
+
+    var isLinkedGoogleCalendarAccount: Bool {
+        service == .googleCalendar && accountKey != nil
+    }
+}
+
+extension Notification.Name {
+    static let connectionReauthorizationRequired = Notification.Name("ConnectionReauthorizationRequired")
+}
+
+enum ConnectionReauthorizationNotifier {
+    private static let requestUserInfoKey = "request"
+    @MainActor private static var lastPostedAtByDedupeKey: [String: Date] = [:]
+
+    static func request(from notification: Notification) -> ConnectionReauthorizationRequest? {
+        notification.userInfo?[requestUserInfoKey] as? ConnectionReauthorizationRequest
+    }
+
+    static func requestGoogleCalendar(accountKey: String? = nil, displayName: String? = nil, reason: String? = nil) {
+        let request = ConnectionReauthorizationRequest(
+            service: .googleCalendar,
+            accountKey: accountKey,
+            displayName: displayName,
+            reason: reason,
+            createdAt: Date()
+        )
+        postOnMain(request)
+    }
+
+    static func requestTrello(reason: String? = nil) {
+        let request = ConnectionReauthorizationRequest(
+            service: .trello,
+            accountKey: nil,
+            displayName: nil,
+            reason: reason,
+            createdAt: Date()
+        )
+        postOnMain(request)
+    }
+
+    private static func postOnMain(_ request: ConnectionReauthorizationRequest) {
+        Task { @MainActor in
+            let dedupeKey = "\(request.service.rawValue):\(request.accountKey ?? "primary")"
+            let now = Date()
+            if let last = lastPostedAtByDedupeKey[dedupeKey],
+               now.timeIntervalSince(last) < 30 {
+                return
+            }
+            lastPostedAtByDedupeKey[dedupeKey] = now
+            NotificationCenter.default.post(
+                name: .connectionReauthorizationRequired,
+                object: nil,
+                userInfo: [requestUserInfoKey: request]
+            )
+        }
+    }
+}
+
+enum ConnectionAuthFailureDetector {
+    static func isGoogleAuthFailure(_ error: Error) -> Bool {
+        let ns = error as NSError
+        if ns.domain == NSURLErrorDomain,
+           ns.code == URLError.userAuthenticationRequired.rawValue {
+            return true
+        }
+        if ns.code == 401 || ns.code == 403 {
+            return true
+        }
+        let description = ns.localizedDescription.lowercased()
+        return description.contains("invalid_grant")
+            || description.contains("invalid token")
+            || description.contains("unauthorized")
+            || description.contains("user authentication")
+            || description.contains("401")
+            || description.contains("403")
+    }
+
+    static func isTrelloAuthFailure(_ error: Error) -> Bool {
+        if let trelloError = error as? TrelloAPIError,
+           case TrelloAPIError.http(let code, let body) = trelloError {
+            if code == 401 || code == 403 { return true }
+            let bodyText = (body ?? "").lowercased()
+            return bodyText.contains("invalid token") || bodyText.contains("unauthorized")
+        }
+        let ns = error as NSError
+        return ns.code == 401 || ns.code == 403
+    }
+}
+
 class GoogleCalendarManager {
     static let shared = GoogleCalendarManager()
     
@@ -79,9 +183,15 @@ class GoogleCalendarManager {
         
         let calendarScope = "https://www.googleapis.com/auth/calendar"
         
-        // Check if permission already granted
         if checkCalendarWritePermission() {
-            completion(true, nil)
+            user.refreshTokensIfNeeded { _, refreshError in
+                if let refreshError {
+                    ConnectionReauthorizationNotifier.requestGoogleCalendar(reason: refreshError.localizedDescription)
+                    completion(false, refreshError)
+                } else {
+                    completion(true, nil)
+                }
+            }
             return
         }
         
@@ -101,6 +211,9 @@ class GoogleCalendarManager {
                 // Refresh tokens to ensure we have the new scope
                 user.refreshTokensIfNeeded { refreshedUser, refreshError in
                     if refreshError != nil {
+                        if let refreshError {
+                            ConnectionReauthorizationNotifier.requestGoogleCalendar(reason: refreshError.localizedDescription)
+                        }
                         completion(false, refreshError)
                     } else {
                         completion(true, nil)
@@ -132,9 +245,19 @@ class GoogleCalendarManager {
         if GIDSignIn.sharedInstance.configuration == nil {
             GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: clientID)
         }
-        
-        if checkCalendarWritePermission() {
-            completion(.success(()))
+
+        if let user = GIDSignIn.sharedInstance.currentUser,
+           checkCalendarWritePermission() {
+            user.refreshTokensIfNeeded { _, refreshError in
+                DispatchQueue.main.async {
+                    if let refreshError {
+                        ConnectionReauthorizationNotifier.requestGoogleCalendar(reason: refreshError.localizedDescription)
+                        completion(.failure(refreshError))
+                    } else {
+                        completion(.success(()))
+                    }
+                }
+            }
             return
         }
         
@@ -148,10 +271,11 @@ class GoogleCalendarManager {
         func finishAfterScopeGrant(for user: GIDGoogleUser) {
             user.refreshTokensIfNeeded { _, refreshError in
                 DispatchQueue.main.async {
-                    if self.checkCalendarWritePermission() {
-                        completion(.success(()))
-                    } else if let refreshError {
+                    if let refreshError {
+                        ConnectionReauthorizationNotifier.requestGoogleCalendar(reason: refreshError.localizedDescription)
                         completion(.failure(refreshError))
+                    } else if self.checkCalendarWritePermission() {
+                        completion(.success(()))
                     } else {
                         completion(.failure(NSError(domain: "GoogleCalendarManager", code: -3, userInfo: [NSLocalizedDescriptionKey: "Calendar access was not granted."])))
                     }
@@ -172,6 +296,10 @@ class GoogleCalendarManager {
         }
         
         if let user = GIDSignIn.sharedInstance.currentUser {
+            if checkCalendarWritePermission() {
+                finishAfterScopeGrant(for: user)
+                return
+            }
             requestScopes(for: user)
             return
         }
@@ -180,7 +308,7 @@ class GoogleCalendarManager {
             DispatchQueue.main.async {
                 if let user = GIDSignIn.sharedInstance.currentUser {
                     if self.checkCalendarWritePermission() {
-                        completion(.success(()))
+                        finishAfterScopeGrant(for: user)
                     } else {
                         requestScopes(for: user)
                     }
@@ -198,6 +326,40 @@ class GoogleCalendarManager {
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+
+    /// Starts a fresh Google sign-in with Calendar scope. Use this after token refresh fails.
+    func reauthorizeCalendarWriteAccess(completion: @escaping (Result<Void, Error>) -> Void) {
+        DispatchQueue.main.async {
+            guard let clientID = FirebaseApp.app()?.options.clientID else {
+                completion(.failure(NSError(domain: "GoogleCalendarManager", code: -2, userInfo: [NSLocalizedDescriptionKey: "Google Sign-In is not configured."])))
+                return
+            }
+            if GIDSignIn.sharedInstance.configuration == nil {
+                GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: clientID)
+            }
+            guard let presenting = self.getRootViewController() else {
+                completion(.failure(NSError(domain: "GoogleCalendarManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "Could not show sign-in. Try again after closing other sheets."])))
+                return
+            }
+
+            let calendarScope = "https://www.googleapis.com/auth/calendar"
+            GIDSignIn.sharedInstance.signOut()
+            GIDSignIn.sharedInstance.signIn(withPresenting: presenting, hint: nil, additionalScopes: [calendarScope]) { _, error in
+                DispatchQueue.main.async {
+                    if let error {
+                        completion(.failure(error))
+                        return
+                    }
+                    guard self.checkCalendarWritePermission() else {
+                        completion(.failure(NSError(domain: "GoogleCalendarManager", code: -3, userInfo: [NSLocalizedDescriptionKey: "Calendar access was not granted."])))
+                        return
+                    }
+                    GoogleCalendarEventFetchService.syncPrimaryAccountRecordIfNeeded()
+                    completion(.success(()))
                 }
             }
         }
@@ -286,6 +448,9 @@ class GoogleCalendarManager {
                     }
                 } else {
                     let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
+                    if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+                        ConnectionReauthorizationNotifier.requestGoogleCalendar(reason: errorMessage)
+                    }
                     completion(nil, NSError(domain: "GoogleCalendarManager", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "HTTP Error \(httpResponse.statusCode): \(errorMessage)"]))
                 }
             } else {
@@ -377,6 +542,9 @@ class GoogleCalendarManager {
                     }
                 } else {
                     let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
+                    if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+                        ConnectionReauthorizationNotifier.requestGoogleCalendar(reason: errorMessage)
+                    }
                     completion(nil, NSError(domain: "GoogleCalendarManager", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "HTTP Error \(httpResponse.statusCode): \(errorMessage)"]))
                 }
             } else {
@@ -415,6 +583,9 @@ class GoogleCalendarManager {
                 } else if httpResponse.statusCode == 404 {
                     completion(nil)
                 } else {
+                    if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+                        ConnectionReauthorizationNotifier.requestGoogleCalendar(reason: "HTTP Error \(httpResponse.statusCode)")
+                    }
                     completion(NSError(domain: "GoogleCalendarManager", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "HTTP Error \(httpResponse.statusCode)"]))
                 }
             } else {

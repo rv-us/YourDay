@@ -3,6 +3,8 @@ import SwiftData
 import GoogleSignIn
 import FirebaseFirestore
 import FirebaseAuth
+import AuthenticationServices
+import UIKit
 
 
 struct ContentView: View {
@@ -23,6 +25,9 @@ struct ContentView: View {
 
     @State private var showSignOutErrorAlert = false
     @State private var signOutErrorMessage = ""
+    @State private var reauthorizationRequest: ConnectionReauthorizationRequest?
+    @State private var showReauthorizationFailureAlert = false
+    @State private var reauthorizationFailureMessage = ""
     @State private var showLastDayView = false
     /// Calendar day (yyyy-MM-dd) when the user dismissed LastDay; gates re-showing until the next day.
     @AppStorage("lastSummaryDate") private var lastSummaryDateString: String = ""
@@ -112,6 +117,9 @@ struct ContentView: View {
             }
         }
         .onOpenURL { url in
+            if TrelloOAuthCoordinator.shared.resumeIfOpenURL(url) {
+                return
+            }
             if GoogleCalendarLinkedOAuthCoordinator.shared.resumeLinkedOAuthIfOpenURL(url) {
                 return
             }
@@ -121,6 +129,32 @@ struct ContentView: View {
             Button("OK", role: .cancel) { }
         } message: {
             Text(signOutErrorMessage)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .connectionReauthorizationRequired)) { notification in
+            guard let request = ConnectionReauthorizationNotifier.request(from: notification) else { return }
+            reauthorizationRequest = request
+        }
+        .alert(
+            reauthorizationTitle(for: reauthorizationRequest),
+            isPresented: Binding(
+                get: { reauthorizationRequest != nil },
+                set: { if !$0 { reauthorizationRequest = nil } }
+            ),
+            presenting: reauthorizationRequest
+        ) { request in
+            Button(reauthorizationButtonTitle(for: request)) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                    startConnectionReauthorization(for: request)
+                }
+            }
+            Button("Not now", role: .cancel) { }
+        } message: { request in
+            Text(reauthorizationMessage(for: request))
+        }
+        .alert("Connection Issue", isPresented: $showReauthorizationFailureAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(reauthorizationFailureMessage)
         }
     }
 
@@ -220,6 +254,7 @@ struct ContentView: View {
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
                 Task {
                     await processNewDayLogicIfNeeded()
+                    await TrelloTaskSyncService.refreshTrelloMirroredTasks(modelContext: modelContext)
                     await TaskEndMonitor.shared.checkForEndedTasks()
                     await MainActor.run {
                         journalViewModel.reconcileJournalPromptsFromMonitor()
@@ -359,6 +394,126 @@ struct ContentView: View {
                 self.showSignOutErrorAlert = true
             }
         }
+    }
+
+    private func reauthorizationTitle(for request: ConnectionReauthorizationRequest?) -> String {
+        switch request?.service {
+        case .googleCalendar:
+            return "Google Calendar Needs Access"
+        case .trello:
+            return "Trello Needs Access"
+        case .none:
+            return "Connection Needs Access"
+        }
+    }
+
+    private func reauthorizationButtonTitle(for request: ConnectionReauthorizationRequest) -> String {
+        switch request.service {
+        case .googleCalendar:
+            return request.isLinkedGoogleCalendarAccount ? "Reconnect Google Account" : "Reconnect Google Calendar"
+        case .trello:
+            return "Reconnect Trello"
+        }
+    }
+
+    private func reauthorizationMessage(for request: ConnectionReauthorizationRequest) -> String {
+        switch request.service {
+        case .googleCalendar:
+            let accountLabel = request.displayName ?? "Google Calendar"
+            if request.isLinkedGoogleCalendarAccount {
+                return "\(accountLabel) stopped allowing calendar access. Reconnect it to keep showing events from that account."
+            }
+            return "\(accountLabel) stopped allowing calendar access. Reconnect Google Calendar so YourDay can keep reading and creating events."
+        case .trello:
+            return "Your Trello authorization stopped working. Reconnect Trello so YourDay can keep syncing cards and tasks."
+        }
+    }
+
+    private func startConnectionReauthorization(for request: ConnectionReauthorizationRequest) {
+        switch request.service {
+        case .googleCalendar:
+            if request.isLinkedGoogleCalendarAccount {
+                reconnectLinkedGoogleCalendarAccount()
+            } else {
+                reconnectPrimaryGoogleCalendar()
+            }
+        case .trello:
+            reconnectTrello()
+        }
+    }
+
+    private func reconnectPrimaryGoogleCalendar() {
+        GoogleCalendarManager.shared.reauthorizeCalendarWriteAccess { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success:
+                    GoogleCalendarEventFetchService.syncPrimaryAccountRecordIfNeeded()
+                case .failure(let error):
+                    showConnectionReauthorizationFailure(error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    private func reconnectLinkedGoogleCalendarAccount() {
+        guard let presenting = rootViewController() else {
+            showConnectionReauthorizationFailure("Could not show Google sign-in. Try again after closing other sheets.")
+            return
+        }
+        GoogleCalendarLinkedOAuthCoordinator.shared.signInReadOnlyLinkedAccount(presenting: presenting) { result in
+            Task { @MainActor in
+                switch result {
+                case .success:
+                    break
+                case .failure(let error):
+                    showConnectionReauthorizationFailure(error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    private func reconnectTrello() {
+        guard let anchor = presentationAnchor() else {
+            showConnectionReauthorizationFailure("Could not open Trello sign-in.")
+            return
+        }
+        TrelloOAuthCoordinator.shared.start(presentationAnchor: anchor) { result in
+            Task { @MainActor in
+                switch result {
+                case .success(let token):
+                    do {
+                        try TrelloConnectionKeychain.saveUserToken(token)
+                        await TrelloTaskSyncService.refreshTrelloMirroredTasks(modelContext: modelContext)
+                    } catch {
+                        showConnectionReauthorizationFailure(error.localizedDescription)
+                    }
+                case .failure(let error):
+                    if let trelloError = error as? TrelloOAuthError,
+                       case .userCancelled = trelloError {
+                        return
+                    }
+                    showConnectionReauthorizationFailure(error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    private func showConnectionReauthorizationFailure(_ message: String) {
+        reauthorizationFailureMessage = message
+        showReauthorizationFailureAlert = true
+    }
+
+    private func rootViewController() -> UIViewController? {
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let root = windowScene.windows.first?.rootViewController else { return nil }
+        var top = root
+        while let presented = top.presentedViewController { top = presented }
+        return top
+    }
+
+    private func presentationAnchor() -> ASPresentationAnchor? {
+        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene else { return nil }
+        return scene.windows.first(where: { $0.isKeyWindow }) ?? scene.windows.first
     }
 
     private func clearAllLocalUserDataOnLogout() {

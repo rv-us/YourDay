@@ -27,6 +27,8 @@ struct Todoview: View {
     @State private var navigateToCalendar = false
     @State private var showGoogleCalendarView = false
     @State private var pendingProofFromList: TaskProofCaptureContext?
+    @State private var pendingMasterMoveTask: TodoItem?
+    @State private var pendingMasterMoveDueDate = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: Date())) ?? Date()
 
     enum TaskListFilter {
         case today
@@ -249,6 +251,9 @@ struct Todoview: View {
             }
             .sheet(isPresented: $viewModel.showingNewItemView) {
                 NewItemview(newItemPresented: $viewModel.showingNewItemView, selectedOrigin: selectedFilter == .today ? .today : .master)
+            }
+            .sheet(item: $pendingMasterMoveTask) { item in
+                masterMoveDueDateSheet(for: item)
             }
             .alert("Sign Out", isPresented: $showSignOutAlertInTodoView) {
                 Button("OK", role: .cancel) {}
@@ -474,6 +479,17 @@ struct Todoview: View {
     }
     
     private func deleteTask(_ item: TodoItem) {
+        if item.trelloCardId != nil {
+            Task { @MainActor in
+                await TrelloTaskSyncService.deleteRemoteCardIfNeeded(for: item)
+                deleteLocalTask(item)
+            }
+            return
+        }
+        deleteLocalTask(item)
+    }
+
+    private func deleteLocalTask(_ item: TodoItem) {
         let taskId = item.localTaskId
 
         if let sharedId = item.sharedTaskId {
@@ -540,8 +556,24 @@ struct Todoview: View {
     }
 
     private func moveToOtherList(_ item: TodoItem) {
+        if selectedFilter == .today {
+            pendingMasterMoveDueDate = defaultFutureDueDate()
+            pendingMasterMoveTask = item
+            return
+        }
+        applyMoveToOtherList(item)
+    }
+
+    private func applyMoveToOtherList(_ item: TodoItem, newDueDate: Date? = nil) {
+        if let newDueDate {
+            item.dueDate = newDueDate
+        }
         item.origin = selectedFilter == .today ? .master : .today
         try? context.save()
+
+        if item.trelloCardId != nil {
+            Task { await TrelloTaskSyncService.pushEdit(for: item) }
+        }
         
         // Sync origin change to Firebase
         if let userId = FirebaseAuth.Auth.auth().currentUser?.uid {
@@ -554,6 +586,74 @@ struct Todoview: View {
                 }
             }
         }
+    }
+
+    private func defaultFutureDueDate() -> Date {
+        let today = Calendar.current.startOfDay(for: Date())
+        return Calendar.current.date(byAdding: .day, value: 1, to: today) ?? Date()
+    }
+
+    private func masterMoveDueDateSheet(for item: TodoItem) -> some View {
+        NavigationView {
+            Form {
+                Section {
+                    Text("Optionally choose a new due date before moving “\(item.title)” to Master List.")
+                        .font(.caption)
+                        .foregroundColor(dynamicSecondaryTextColor)
+                        .listRowBackground(dynamicSecondaryBackgroundColor)
+
+                    DatePicker(
+                        "Select Due Date",
+                        selection: $pendingMasterMoveDueDate,
+                        in: defaultFutureDueDate()...,
+                        displayedComponents: .date
+                    )
+                    .datePickerStyle(.graphical)
+                    .tint(dynamicPrimaryColor)
+                    .colorScheme(.light)
+                    .foregroundColor(.black)
+                    .background(dynamicSecondaryBackgroundColor)
+                    .cornerRadius(10)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(dynamicSecondaryTextColor.opacity(0.5), lineWidth: 1)
+                    )
+                    .listRowBackground(dynamicSecondaryBackgroundColor)
+                } header: {
+                    Text("New Due Date")
+                        .foregroundColor(dynamicTextColor)
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(dynamicBackgroundColor.ignoresSafeArea())
+            .navigationTitle("Move to Master")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(dynamicSecondaryBackgroundColor, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        pendingMasterMoveTask = nil
+                    }
+                    .foregroundColor(dynamicPrimaryColor)
+                }
+                ToolbarItem(placement: .bottomBar) {
+                    Button("Skip Due Date") {
+                        applyMoveToOtherList(item)
+                        pendingMasterMoveTask = nil
+                    }
+                    .foregroundColor(dynamicSecondaryTextColor)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Move & Update") {
+                        applyMoveToOtherList(item, newDueDate: pendingMasterMoveDueDate)
+                        pendingMasterMoveTask = nil
+                    }
+                    .foregroundColor(dynamicPrimaryColor)
+                }
+            }
+        }
+        .navigationViewStyle(.stack)
     }
 
     private func applyProofPostId(_ postId: String, localTaskId: String?) {
