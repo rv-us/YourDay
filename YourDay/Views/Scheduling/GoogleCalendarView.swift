@@ -18,6 +18,10 @@ struct GoogleCalendarEvent: Identifiable, Codable, Equatable {
     let description: String?
     let location: String?
     let htmlLink: String?
+    /// Populated when merging events from multiple calendars / accounts (not from Google JSON).
+    var sourceCalendarId: String?
+    /// Stable Google subject / GID `userID` for the account that owns the event.
+    var sourceAccountKey: String?
     
     struct EventDateTime: Codable, Equatable {
         let date: String?
@@ -66,6 +70,7 @@ struct GoogleCalendarView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var firebaseManager: FirebaseManager
     @StateObject private var loginViewModel = LoginViewModel()
+    @ObservedObject private var calendarConnectionSettings = CalendarConnectionsSettingsStore.shared
     
     /// When `true`, this view is meant to be embedded inside another screen (e.g. `Todoview`)
     /// and should not create its own `NavigationView` or "Done" button.
@@ -268,7 +273,24 @@ struct GoogleCalendarView: View {
             }
             .padding(.vertical, 12)
             .background(dynamicSecondaryBackgroundColor)
-            
+
+            if canShowMergedCalendar, needsCalendarScope, GIDSignIn.sharedInstance.currentUser != nil {
+                HStack(spacing: 8) {
+                    Image(systemName: "calendar.badge.exclamationmark")
+                        .foregroundColor(dynamicSecondaryColor)
+                    Text("Grant calendar access to include this Google account. Linked accounts are still shown.")
+                        .font(.caption)
+                        .foregroundColor(dynamicSecondaryTextColor)
+                    Spacer(minLength: 0)
+                    Button("Grant") { authenticateWithGoogle() }
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(dynamicPrimaryColor)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(dynamicSecondaryBackgroundColor.opacity(0.6))
+            }
+
             Divider()
             
             // Timeline View
@@ -418,7 +440,7 @@ struct GoogleCalendarView: View {
         }
         .onAppear {
             checkAuthentication()
-            if isAuthenticated {
+            if canShowMergedCalendar {
                 fetchMonthEvents()
                 fetchEvents()
             }
@@ -511,8 +533,21 @@ struct GoogleCalendarView: View {
     private func hasEventsOn(date: Date) -> Bool {
         monthEventDays.contains(calendar.startOfDay(for: date))
     }
-    
+
+    /// Primary Google user with full calendar scope, or at least one linked read-only account with a saved refresh token.
+    private var canShowMergedCalendar: Bool {
+        let calendarScope = "https://www.googleapis.com/auth/calendar"
+        if let user = GIDSignIn.sharedInstance.currentUser,
+           user.grantedScopes?.contains(calendarScope) == true {
+            return true
+        }
+        return calendarConnectionSettings.linkedReadOnlyAccounts.contains {
+            CalendarConnectionKeychain.loadRefreshToken(accountKey: $0.accountKey) != nil
+        }
+    }
+
     private func checkAuthentication() {
+        GoogleCalendarEventFetchService.syncPrimaryAccountRecordIfNeeded()
         // First, try to restore previous sign-in session
         if GIDSignIn.sharedInstance.currentUser == nil {
             // Ensure configuration is set
@@ -531,16 +566,27 @@ struct GoogleCalendarView: View {
                 DispatchQueue.main.async {
                     if let user = user {
                         self.isAuthenticated = true
-                        self.needsCalendarScope = false
                         let calendarScope = "https://www.googleapis.com/auth/calendar"
                         if user.grantedScopes?.contains(calendarScope) == true {
+                            self.needsCalendarScope = false
+                            self.errorMessage = nil
+                            self.fetchMonthEvents()
+                            self.fetchEvents()
+                        } else if self.canShowMergedCalendar {
+                            self.needsCalendarScope = true
                             self.errorMessage = nil
                             self.fetchMonthEvents()
                             self.fetchEvents()
                         } else {
-                            self.errorMessage = "Grant calendar access to see your events and tasks."
                             self.needsCalendarScope = true
+                            self.errorMessage = "Grant calendar access to see your events and tasks."
                         }
+                    } else if self.canShowMergedCalendar {
+                        self.isAuthenticated = true
+                        self.needsCalendarScope = false
+                        self.errorMessage = nil
+                        self.fetchMonthEvents()
+                        self.fetchEvents()
                     } else {
                         self.isAuthenticated = false
                         self.needsCalendarScope = false
@@ -554,6 +600,11 @@ struct GoogleCalendarView: View {
             let calendarScope = "https://www.googleapis.com/auth/calendar"
             if GIDSignIn.sharedInstance.currentUser?.grantedScopes?.contains(calendarScope) == true {
                 needsCalendarScope = false
+                errorMessage = nil
+                fetchMonthEvents()
+                fetchEvents()
+            } else if canShowMergedCalendar {
+                needsCalendarScope = true
                 errorMessage = nil
                 fetchMonthEvents()
                 fetchEvents()
@@ -636,101 +687,55 @@ struct GoogleCalendarView: View {
     }
     
     private func fetchEvents() {
-        guard let user = GIDSignIn.sharedInstance.currentUser else { return }
-        
+        guard canShowMergedCalendar else { return }
+
         isLoading = true
         errorMessage = nil
-        
-        user.refreshTokensIfNeeded { refreshedUser, error in
-            DispatchQueue.main.async {
-                if let user = refreshedUser {
-                    self.performFetchEventsForDate(self.selectedDate, user: user) { fetchedEvents in
-                        DispatchQueue.main.async {
-                            self.events = fetchedEvents
-                            self.isLoading = false
-                        }
-                    }
-                } else {
-                    self.isLoading = false
-                    self.errorMessage = "Session expired. Please sign in again to view your calendar."
-                }
+
+        let startOfDay = calendar.startOfDay(for: selectedDate)
+        let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
+
+        Task { @MainActor in
+            do {
+                let merged = try await GoogleCalendarEventFetchService.fetchMergedVisibleEvents(
+                    start: startOfDay,
+                    end: endOfDay
+                )
+                self.events = merged
+                self.isLoading = false
+            } catch {
+                self.isLoading = false
+                self.errorMessage = "Could not load calendar: \(error.localizedDescription)"
             }
         }
     }
-    
+
     private func fetchMonthEvents() {
-        guard let user = GIDSignIn.sharedInstance.currentUser else { return }
-        
-        // Fetch events for the entire visible week-slider range (not just the calendar month).
-        // This keeps the dot indicators correct while avoiding repeated refetches during swipes.
+        guard canShowMergedCalendar else { return }
+
         let weeks = weeksInRange
         let rangeStart = calendar.startOfDay(for: weeks.first ?? currentMonth)
         let rangeEnd = calendar.date(byAdding: .day, value: 7, to: (weeks.last ?? currentMonth))!
-        
-        user.refreshTokensIfNeeded { refreshedUser, error in
-            guard let user = refreshedUser else { return }
-            self.performFetchEventsInRange(start: rangeStart, end: rangeEnd, user: user) { fetchedEvents in
-                DispatchQueue.main.async {
-                    self.monthEvents = fetchedEvents
-                    var days: Set<Date> = []
-                    days.reserveCapacity(fetchedEvents.count)
-                    for event in fetchedEvents {
-                        if let d = event.start.startDate {
-                            days.insert(self.calendar.startOfDay(for: d))
-                        }
+
+        Task { @MainActor in
+            do {
+                let fetchedEvents = try await GoogleCalendarEventFetchService.fetchMergedVisibleEvents(
+                    start: rangeStart,
+                    end: rangeEnd
+                )
+                self.monthEvents = fetchedEvents
+                var days: Set<Date> = []
+                days.reserveCapacity(fetchedEvents.count)
+                for event in fetchedEvents {
+                    if let d = event.start.startDate {
+                        days.insert(self.calendar.startOfDay(for: d))
                     }
-                    self.monthEventDays = days
                 }
+                self.monthEventDays = days
+            } catch {
+                self.errorMessage = "Could not load calendar: \(error.localizedDescription)"
             }
         }
-    }
-    
-    private func performFetchEventsForDate(_ date: Date, user: GIDGoogleUser, completion: @escaping ([GoogleCalendarEvent]) -> Void) {
-        let startOfDay = calendar.startOfDay(for: date)
-        let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
-        
-        performFetchEventsInRange(start: startOfDay, end: endOfDay, user: user, completion: completion)
-    }
-    
-    private func performFetchEventsInRange(start: Date, end: Date, user: GIDGoogleUser, completion: @escaping ([GoogleCalendarEvent]) -> Void) {
-        let accessToken = user.accessToken.tokenString
-        
-        var urlComponents = URLComponents(string: "https://www.googleapis.com/calendar/v3/calendars/primary/events")!
-        urlComponents.queryItems = [
-            URLQueryItem(name: "timeMin", value: Self.queryISOFormatter.string(from: start)),
-            URLQueryItem(name: "timeMax", value: Self.queryISOFormatter.string(from: end)),
-            URLQueryItem(name: "singleEvents", value: "true"),
-            URLQueryItem(name: "orderBy", value: "startTime")
-        ]
-        
-        var request = URLRequest(url: urlComponents.url!)
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            DispatchQueue.main.async {
-                if let error = error {
-                    self.errorMessage = "Could not load calendar: \(error.localizedDescription)"
-                    completion([])
-                    return
-                }
-                if let http = response as? HTTPURLResponse, http.statusCode != 200 {
-                    if http.statusCode == 401 || http.statusCode == 403 {
-                        self.errorMessage = "Calendar access expired or denied. Please sign in again."
-                    } else {
-                        self.errorMessage = "Could not load calendar (error \(http.statusCode))."
-                    }
-                    completion([])
-                    return
-                }
-                if let data = data, let result = try? JSONDecoder().decode(GoogleCalendarResponse.self, from: data) {
-                    completion(result.items)
-                } else {
-                    self.errorMessage = "Could not load calendar events."
-                    completion([])
-                }
-            }
-        }.resume()
     }
     
     private func getRootViewController() -> UIViewController? {
@@ -801,5 +806,5 @@ struct MonthYearPicker: View {
 // MARK: - Response Models
 
 struct GoogleCalendarResponse: Codable {
-    let items: [GoogleCalendarEvent]
+    let items: [GoogleCalendarEvent]?
 }

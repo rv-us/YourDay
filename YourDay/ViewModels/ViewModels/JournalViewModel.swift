@@ -58,6 +58,22 @@ class JournalViewModel: ObservableObject {
         errorMessage = nil
     }
 
+    /// Call after `TaskEndMonitor` has refreshed (e.g. app became active, auth ready).
+    /// Ensures queued prompts match the monitor and re-presents the sheet if work is still pending.
+    func reconcileJournalPromptsFromMonitor() {
+        guard !showingTaskProofCapture else { return }
+        for event in taskEndMonitor.pendingJournalEvents {
+            enqueueEventIfNeeded(event, prioritize: false)
+        }
+        if pendingJournalPrompt != nil, !showingJournalPrompt {
+            showingJournalPrompt = true
+            return
+        }
+        if !showingJournalPrompt {
+            showNextPendingPrompt()
+        }
+    }
+
     func isEventInActiveJournalUI(eventId: String) -> Bool {
         guard !eventId.isEmpty else { return false }
         if pendingJournalPrompt?.eventId == eventId {

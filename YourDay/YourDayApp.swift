@@ -120,6 +120,7 @@ struct YourDayApp: App {
         // Clear potentially corrupted UserDefaults data that could cause crashes
         let dateKeys = [
             "lastSummaryDate",
+            "lastDailyEvaluationDate",
             "lastAppOpenDateForWitheringCheck", 
             "lastAppActiveDate"
         ]

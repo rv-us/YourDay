@@ -34,6 +34,17 @@ struct SettingsHubView: View {
                         )
                     }
                     .listRowBackground(dynamicSecondaryBackgroundColor)
+
+                    NavigationLink {
+                        ConnectionsSettingsView()
+                    } label: {
+                        settingsRow(
+                            icon: "link.circle.fill",
+                            title: "Connections",
+                            subtitle: "Google Calendar, linked accounts"
+                        )
+                    }
+                    .listRowBackground(dynamicSecondaryBackgroundColor)
                 } header: {
                     Text("Settings")
                         .foregroundColor(dynamicTextColor)

@@ -24,7 +24,10 @@ struct ContentView: View {
     @State private var showSignOutErrorAlert = false
     @State private var signOutErrorMessage = ""
     @State private var showLastDayView = false
+    /// Calendar day (yyyy-MM-dd) when the user dismissed LastDay; gates re-showing until the next day.
     @AppStorage("lastSummaryDate") private var lastSummaryDateString: String = ""
+    /// Calendar day when daily eval + cleanup ran; separate so LastDay can reappear until dismiss.
+    @AppStorage("lastDailyEvaluationDate") private var lastDailyEvaluationDateString: String = ""
     @AppStorage("lastAppOpenDateForWitheringCheck") private var lastAppOpenDateForWitheringCheckString: String = ""
 
     @State private var showMigrateTasksView = false
@@ -81,6 +84,12 @@ struct ContentView: View {
         .onChange(of: loginViewModel.isAuthenticated) { _, userIsAuthenticated in
             if userIsAuthenticated {
                 loginViewModel.handleUserSession(localPlayerStats: localPlayerStatsList.first, modelContext: modelContext)
+                Task {
+                    await TaskEndMonitor.shared.checkForEndedTasks()
+                    await MainActor.run {
+                        journalViewModel.reconcileJournalPromptsFromMonitor()
+                    }
+                }
             } else {
                 if !loginViewModel.isGuest {
                     clearAllLocalUserDataOnLogout()
@@ -103,6 +112,9 @@ struct ContentView: View {
             }
         }
         .onOpenURL { url in
+            if GoogleCalendarLinkedOAuthCoordinator.shared.resumeLinkedOAuthIfOpenURL(url) {
+                return
+            }
             GIDSignIn.sharedInstance.handle(url)
         }
         .alert("Sign Out Issue", isPresented: $showSignOutErrorAlert) {
@@ -117,8 +129,15 @@ struct ContentView: View {
             .tint(dynamicSecondaryColor)
             .task {
                 await processNewDayLogicIfNeeded()
+                await TaskEndMonitor.shared.checkForEndedTasks()
+                journalViewModel.reconcileJournalPromptsFromMonitor()
             }
             .sheet(isPresented: $showLastDayView, onDismiss: {
+                let formatter = DateFormatter()
+                formatter.dateFormat = "yyyy-MM-dd"
+                let todayString = formatter.string(from: Calendar.current.startOfDay(for: Date()))
+                lastSummaryDateString = todayString
+
                 if newDayEvaluationTriggeredLastDayView {
                     newDayEvaluationTriggeredLastDayView = false
                     isInDailyFlow = true
@@ -201,8 +220,11 @@ struct ContentView: View {
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
                 Task {
                     await processNewDayLogicIfNeeded()
+                    await TaskEndMonitor.shared.checkForEndedTasks()
+                    await MainActor.run {
+                        journalViewModel.reconcileJournalPromptsFromMonitor()
+                    }
                 }
-                TaskEndMonitor.shared.forceCheck()
                 Task { @MainActor in
                     await FocusPenaltyProcessor.shared.drainPending(
                         context: modelContext,
@@ -377,7 +399,7 @@ struct ContentView: View {
         let todayString = formatter.string(from: today)
         var shouldSyncStats = false
         
-        print("🕒 [DEBUG] todayString: \(todayString), lastSummaryDateString: \(lastSummaryDateString)")
+        print("🕒 [DEBUG] todayString: \(todayString), lastSummaryDate: \(lastSummaryDateString), lastDailyEval: \(lastDailyEvaluationDateString)")
 
         if todayString != lastAppOpenDateForWitheringCheckString {
             if let lastLoginActual = stats.lastLoginDate {
@@ -426,7 +448,7 @@ struct ContentView: View {
         shouldSyncStats = true
 
         var proofTallyForCleanup: YesterdayTaskProofTallyResult?
-        if todayString != lastSummaryDateString {
+        if todayString != lastDailyEvaluationDateString {
             print("[DailyEval] new calendar day — running daily point evaluation (today=\(todayString))")
             let tally = await withCheckedContinuation { (continuation: CheckedContinuation<YesterdayTaskProofTallyResult, Never>) in
                 firebaseManager.fetchYesterdayTaskProofTallyForPoints(evaluationDate: Date()) { result in
@@ -467,11 +489,13 @@ struct ContentView: View {
 
             await deleteOldDoneTasks()
 
-            // Always trigger the flow when a new day is detected
+            lastDailyEvaluationDateString = todayString
+            shouldSyncStats = true
+        }
+
+        if lastDailyEvaluationDateString == todayString, todayString != lastSummaryDateString {
             newDayEvaluationTriggeredLastDayView = true
             showLastDayView = true
-
-            lastSummaryDateString = todayString
             shouldSyncStats = true
         } else {
             newDayEvaluationTriggeredLastDayView = false

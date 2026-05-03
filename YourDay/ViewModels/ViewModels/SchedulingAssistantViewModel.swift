@@ -134,126 +134,58 @@ class SchedulingAssistantViewModel: ObservableObject {
     }
     
     func fetchCalendarEvents(for date: Date = Date()) {
-        guard let user = GIDSignIn.sharedInstance.currentUser else {
-            calendarFetchError = "Sign in with Google and grant calendar access to load your schedule."
-            calendarEvents = []
-            calendarFetchCompletion?()
-            calendarFetchCompletion = nil
-            isFetchingCalendar = false
-            return
-        }
-        
-        let accessToken = user.accessToken.tokenString
-        guard !accessToken.isEmpty else {
-            calendarFetchError = "Sign in with Google and grant calendar access to load your schedule."
-            calendarEvents = []
-            calendarFetchCompletion?()
-            calendarFetchCompletion = nil
-            isFetchingCalendar = false
-            return
-        }
-        
         let calendarScope = "https://www.googleapis.com/auth/calendar"
-        if user.grantedScopes?.contains(calendarScope) != true {
-            calendarFetchError = "Grant calendar access in Google sign-in to load your schedule."
+        let user = GIDSignIn.sharedInstance.currentUser
+        let primaryReady = user.map { u in
+            u.grantedScopes?.contains(calendarScope) == true && !u.accessToken.tokenString.isEmpty
+        } ?? false
+        let linkedReady = CalendarConnectionsSettingsStore.shared.linkedReadOnlyAccounts.contains {
+            CalendarConnectionKeychain.loadRefreshToken(accountKey: $0.accountKey) != nil
+        }
+
+        guard primaryReady || linkedReady else {
+            if user != nil {
+                calendarFetchError = "Grant calendar access in Google sign-in, or add a read-only Google account in Settings → Connections."
+            } else {
+                calendarFetchError = "Sign in with Google and grant calendar access, or add a read-only Google account in Settings → Connections."
+            }
             calendarEvents = []
             calendarFetchCompletion?()
             calendarFetchCompletion = nil
             isFetchingCalendar = false
             return
         }
-        
+
         isFetchingCalendar = true
         calendarFetchError = nil
         showStatus("Fetching calendar events...")
-        
-        // Fetch events for the specified date
+
         let calendar = Calendar.current
         let startOfDay = calendar.startOfDay(for: date)
         let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay)!
-        
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        let timeMin = formatter.string(from: startOfDay)
-        let timeMax = formatter.string(from: endOfDay)
-        
-        var urlComponents = URLComponents(string: "https://www.googleapis.com/calendar/v3/calendars/primary/events")!
-        urlComponents.queryItems = [
-            URLQueryItem(name: "timeMin", value: timeMin),
-            URLQueryItem(name: "timeMax", value: timeMax),
-            URLQueryItem(name: "singleEvents", value: "true"),
-            URLQueryItem(name: "orderBy", value: "startTime")
-        ]
-        
-        guard let url = urlComponents.url else {
-            calendarFetchError = "Could not build calendar request."
-            calendarFetchCompletion?()
-            calendarFetchCompletion = nil
-            isFetchingCalendar = false
-            return
-        }
-        
-        var request = URLRequest(url: url)
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.httpMethod = "GET"
-        
-        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
-            guard let self = self else { return }
-            
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
             defer {
-                DispatchQueue.main.async {
-                    self.isFetchingCalendar = false
-                    self.calendarFetchCompletion?()
-                    self.calendarFetchCompletion = nil
-                }
+                self.isFetchingCalendar = false
+                self.calendarFetchCompletion?()
+                self.calendarFetchCompletion = nil
             }
-            
-            if let error = error {
-                DispatchQueue.main.async {
-                    self.clearStatus()
-                    self.calendarFetchError = "Could not load calendar: \(error.localizedDescription)"
-                }
-                print("Error fetching calendar events: \(error.localizedDescription)")
-                return
-            }
-            
-            guard let data = data else {
-                DispatchQueue.main.async {
-                    self.clearStatus()
-                    self.calendarFetchError = "No data received from Google Calendar."
-                }
-                return
-            }
-            
-            if let http = response as? HTTPURLResponse, http.statusCode != 200 {
-                DispatchQueue.main.async {
-                    self.clearStatus()
-                    if http.statusCode == 401 || http.statusCode == 403 {
-                        self.calendarFetchError = "Calendar access expired or denied. Sign in again."
-                    } else {
-                        self.calendarFetchError = "Could not load calendar (error \(http.statusCode))."
-                    }
-                }
-                return
-            }
-            
             do {
-                let response = try JSONDecoder().decode(GoogleCalendarResponse.self, from: data)
-                DispatchQueue.main.async {
-                    self.calendarEvents = response.items
-                    self.calendarFetchError = nil
-                    self.clearStatus()
-                    print("📅 Fetched \(response.items.count) calendar events for date")
-                }
+                let events = try await GoogleCalendarEventFetchService.fetchMergedVisibleEvents(
+                    start: startOfDay,
+                    end: endOfDay
+                )
+                self.calendarEvents = events
+                self.calendarFetchError = nil
+                self.clearStatus()
+                print("📅 Fetched \(events.count) merged calendar events for date")
             } catch {
-                DispatchQueue.main.async {
-                    self.clearStatus()
-                    self.calendarFetchError = "Could not read calendar events."
-                }
-                print("Error decoding calendar events: \(error.localizedDescription)")
+                self.clearStatus()
+                self.calendarFetchError = "Could not load calendar: \(error.localizedDescription)"
+                print("Error fetching calendar events: \(error.localizedDescription)")
             }
-        }.resume()
+        }
     }
     
     // MARK: - Schedule Preferences
