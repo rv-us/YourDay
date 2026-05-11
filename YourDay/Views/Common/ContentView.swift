@@ -176,6 +176,7 @@ struct ContentView: View {
                     newDayEvaluationTriggeredLastDayView = false
                     isInDailyFlow = true
                     self.showMigrateTasksView = true
+                    GeofenceManager.shared.classifyAndSetupGeofences(context: modelContext)
                 }
             }) {
                 NavigationView {
@@ -276,7 +277,6 @@ struct ContentView: View {
             .onAppear {
                 NotificationManager.shared.setJournalViewModel(journalViewModel)
                 startIncomingChatListenerIfNeeded()
-                updateLocationManagerTaskSummary()
                 Task { @MainActor in
                     await FocusPenaltyProcessor.shared.drainPending(
                         context: modelContext,
@@ -286,7 +286,6 @@ struct ContentView: View {
                 }
             }
             .onChange(of: allTodoItems.map { "\($0.title)-\($0.isDone)-\($0.manualScheduleGoogleEventId ?? "")" }.sorted().joined(separator: "|")) { _, _ in
-                updateLocationManagerTaskSummary()
                 ScreenTimeManager.shared.scheduleSnapshotRefresh(context: modelContext)
             }
             .onChange(of: penaltyProcessor.lastDrainResult) { _, result in
@@ -312,11 +311,6 @@ struct ContentView: View {
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
             }
-    }
-
-    private func updateLocationManagerTaskSummary() {
-        let summary = allTodoItems.filter { !$0.isDone }.map(\.title).joined(separator: ", ")
-        locationManager.updateTaskSummary(summary.isEmpty ? "No tasks" : summary)
     }
 
     private func startIncomingChatListenerIfNeeded() {

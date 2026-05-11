@@ -45,6 +45,17 @@ struct SettingsHubView: View {
                         )
                     }
                     .listRowBackground(dynamicSecondaryBackgroundColor)
+
+                    NavigationLink {
+                        LocationSettingsView()
+                    } label: {
+                        settingsRow(
+                            icon: "location.fill",
+                            title: "Location & Places",
+                            subtitle: "Smart geofence reminders, home, points of interest"
+                        )
+                    }
+                    .listRowBackground(dynamicSecondaryBackgroundColor)
                 } header: {
                     Text("Settings")
                         .foregroundColor(dynamicTextColor)

@@ -13,6 +13,14 @@ enum TaskOrigin: String, Codable {
     case master
 }
 
+/// A concrete location (with resolved coordinates) attached to a task for geofencing.
+struct TaskLocation: Codable, Identifiable, Hashable {
+    var id: String = UUID().uuidString
+    var name: String
+    var latitude: Double
+    var longitude: Double
+}
+
 @Model
 class TodoItem {
     var localTaskId: String = UUID().uuidString
@@ -42,6 +50,11 @@ class TodoItem {
     var createdAt: Date = Date()
     /// True once the user has manually dragged this task to a specific spot in the list. Pinned tasks sort by `position` and rank above the auto-sorted (scheduled / unscheduled) groups.
     var userPinned: Bool = false
+    /// Primary location category from LLM classification (for display and AI context).
+    var locationCategory: String? = nil
+    /// Resolved geofence locations for this task. Each entry has concrete coordinates.
+    /// Populated by LLM classification (via MKLocalSearch or user-defined places) or manual user selection.
+    var taskLocations: [TaskLocation] = []
 
     init(localTaskId: String = UUID().uuidString, title: String, detail: String, dueDate: Date, isDone: Bool = false, subtasks: [Subtask] = [], position: Int = 0, origin: TaskOrigin = TaskOrigin.today, sharedTaskId: String? = nil, isSharedPending: Bool = false, proofPostId: String? = nil, manualScheduleGoogleEventId: String? = nil, scheduledStartTime: Date? = nil, scheduledEndTime: Date? = nil, trelloCardId: String? = nil, trelloBoardId: String? = nil, trelloListId: String? = nil, trelloDateLastActivity: Date? = nil, createdAt: Date = Date(), userPinned: Bool = false) {
         self.localTaskId = localTaskId

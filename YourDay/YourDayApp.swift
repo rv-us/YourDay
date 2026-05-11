@@ -80,6 +80,10 @@ struct YourDayApp: App {
         UNUserNotificationCenter.current().delegate = NotificationManager.shared
         NotificationManager.shared.requestPermissionIfNeeded()
 
+        // Must be initialized here so the CLLocationManagerDelegate is set up
+        // before the OS delivers any geofence events on a background relaunch.
+        _ = GeofenceManager.shared
+
         Task { @MainActor in
             ScreenTimeManager.shared.loadPersistedState()
             // On a cold launch `AuthorizationCenter.authorizationStatus` can

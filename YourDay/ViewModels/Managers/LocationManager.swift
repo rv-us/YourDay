@@ -24,7 +24,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         let status = locationManager.authorizationStatus
         switch status {
         case .notDetermined:
-            locationManager.requestWhenInUseAuthorization()
+            locationManager.requestAlwaysAuthorization()
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                 let authStatus = self.locationManager.authorizationStatus
                 let granted = authStatus == .authorizedAlways || authStatus == .authorizedWhenInUse
@@ -45,14 +45,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         guard let latest = locations.last else { return }
         DispatchQueue.main.async {
             self.currentLocation = latest
-            NotificationManager.shared.handleLocationUpdate(location: latest, taskSummary: self.cachedTaskSummary)
         }
     }
 
-    /// Call from a view that has task data to keep location reminders context-aware.
-    func updateTaskSummary(_ summary: String) {
-        cachedTaskSummary = summary
-    }
-
-    private var cachedTaskSummary: String = ""
 }

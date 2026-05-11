@@ -7,15 +7,15 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		1FB1C9DF2F9DEF35008CF260 /* ManagedSettings.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1FB1C9DE2F9DEF35008CF260 /* ManagedSettings.framework */; };
-		1FB1C9E12F9DEF35008CF260 /* ManagedSettingsUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1FB1C9E02F9DEF35008CF260 /* ManagedSettingsUI.framework */; };
-		1FB1C9E92F9DEF35008CF260 /* YourDayShieldConfiguration.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 1FB1C9DC2F9DEF35008CF260 /* YourDayShieldConfiguration.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		1FB1C9F42F9DF069008CF260 /* ManagedSettings.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1FB1C9DE2F9DEF35008CF260 /* ManagedSettings.framework */; };
-		1FB1C9FC2F9DF069008CF260 /* YourDayShieldAction.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 1FB1C9F32F9DF069008CF260 /* YourDayShieldAction.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		1FB1CA072F9DF096008CF260 /* DeviceActivity.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1FB1CA062F9DF096008CF260 /* DeviceActivity.framework */; };
-		1FB1CA0F2F9DF096008CF260 /* YourDayDeviceActivity.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 1FB1CA052F9DF096008CF260 /* YourDayDeviceActivity.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		AA00000100000000FCA00001 /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = AA00000200000000FCA00001 /* FirebaseMessaging */; };
 		C94CCFEB2DE3ED0000249A99 /* GoogleGenerativeAI in Frameworks */ = {isa = PBXBuildFile; productRef = C94CCFEA2DE3ED0000249A99 /* GoogleGenerativeAI */; };
+		C99859E22F97EB93003B69E8 /* ManagedSettings.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C99859E12F97EB93003B69E8 /* ManagedSettings.framework */; };
+		C99859E42F97EB93003B69E8 /* ManagedSettingsUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C99859E32F97EB93003B69E8 /* ManagedSettingsUI.framework */; };
+		C99859EC2F97EB93003B69E8 /* YourDayShieldConfiguration.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = C99859DF2F97EB93003B69E8 /* YourDayShieldConfiguration.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		C99859F72F97EC16003B69E8 /* ManagedSettings.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C99859E12F97EB93003B69E8 /* ManagedSettings.framework */; };
+		C99859FF2F97EC16003B69E8 /* YourDayShieldAction.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = C99859F62F97EC16003B69E8 /* YourDayShieldAction.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		C9985A0A2F97ECBF003B69E8 /* DeviceActivity.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C9985A092F97ECBF003B69E8 /* DeviceActivity.framework */; };
+		C9985A122F97ECBF003B69E8 /* YourDayDeviceActivity.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = C9985A082F97ECBF003B69E8 /* YourDayDeviceActivity.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		C9A89A1A2DBF16EE00D2C382 /* FirebaseVertexAI in Frameworks */ = {isa = PBXBuildFile; productRef = C9A89A192DBF16EE00D2C382 /* FirebaseVertexAI */; };
 		C9BF6B8D2DE6EF75007D4B0F /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = C9BF6B8C2DE6EF75007D4B0F /* Lottie */; };
 		C9FE7D0C2DDB10F4005E5576 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = C9FE7D0B2DDB10F4005E5576 /* FirebaseAuth */; };
@@ -24,28 +24,29 @@
 		C9FE7D1D2DDB1C1C005E5576 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = C9FE7D1C2DDB1C1C005E5576 /* GoogleSignIn */; };
 		C9FE7D1F2DDB1C1C005E5576 /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = C9FE7D1E2DDB1C1C005E5576 /* GoogleSignInSwift */; };
 		E11A00012E00000100AAA001 /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = E11A00022E00000100AAA001 /* FirebaseStorage */; };
+		E11D00032E00000100AAA000 /* AppAuth in Frameworks */ = {isa = PBXBuildFile; productRef = E11D00022E00000100AAA000 /* AppAuth */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
-		1FB1C9E72F9DEF35008CF260 /* PBXContainerItemProxy */ = {
+		C99859EA2F97EB93003B69E8 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = C99DF22D2DA61BEB003048F2 /* Project object */;
 			proxyType = 1;
-			remoteGlobalIDString = 1FB1C9DB2F9DEF35008CF260;
+			remoteGlobalIDString = C99859DE2F97EB93003B69E8;
 			remoteInfo = YourDayShieldConfiguration;
 		};
-		1FB1C9FA2F9DF069008CF260 /* PBXContainerItemProxy */ = {
+		C99859FD2F97EC16003B69E8 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = C99DF22D2DA61BEB003048F2 /* Project object */;
 			proxyType = 1;
-			remoteGlobalIDString = 1FB1C9F22F9DF069008CF260;
+			remoteGlobalIDString = C99859F52F97EC16003B69E8;
 			remoteInfo = YourDayShieldAction;
 		};
-		1FB1CA0D2F9DF096008CF260 /* PBXContainerItemProxy */ = {
+		C9985A102F97ECBF003B69E8 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = C99DF22D2DA61BEB003048F2 /* Project object */;
 			proxyType = 1;
-			remoteGlobalIDString = 1FB1CA042F9DF096008CF260;
+			remoteGlobalIDString = C9985A072F97ECBF003B69E8;
 			remoteInfo = YourDayDeviceActivity;
 		};
 		C99DF2472DA61BEC003048F2 /* PBXContainerItemProxy */ = {
@@ -65,15 +66,15 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
-		1FB1C9EE2F9DEF35008CF260 /* Embed Foundation Extensions */ = {
+		C99859F12F97EB93003B69E8 /* Embed Foundation Extensions */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
-				1FB1CA0F2F9DF096008CF260 /* YourDayDeviceActivity.appex in Embed Foundation Extensions */,
-				1FB1C9E92F9DEF35008CF260 /* YourDayShieldConfiguration.appex in Embed Foundation Extensions */,
-				1FB1C9FC2F9DF069008CF260 /* YourDayShieldAction.appex in Embed Foundation Extensions */,
+				C9985A122F97ECBF003B69E8 /* YourDayDeviceActivity.appex in Embed Foundation Extensions */,
+				C99859EC2F97EB93003B69E8 /* YourDayShieldConfiguration.appex in Embed Foundation Extensions */,
+				C99859FF2F97EC16003B69E8 /* YourDayShieldAction.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -81,66 +82,18 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		1FB1C9DC2F9DEF35008CF260 /* YourDayShieldConfiguration.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = YourDayShieldConfiguration.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		1FB1C9DE2F9DEF35008CF260 /* ManagedSettings.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ManagedSettings.framework; path = System/Library/Frameworks/ManagedSettings.framework; sourceTree = SDKROOT; };
-		1FB1C9E02F9DEF35008CF260 /* ManagedSettingsUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ManagedSettingsUI.framework; path = Library/Frameworks/ManagedSettingsUI.framework; sourceTree = DEVELOPER_DIR; };
-		1FB1C9F32F9DF069008CF260 /* YourDayShieldAction.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = YourDayShieldAction.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		1FB1CA052F9DF096008CF260 /* YourDayDeviceActivity.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = YourDayDeviceActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		1FB1CA062F9DF096008CF260 /* DeviceActivity.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = DeviceActivity.framework; path = System/Library/Frameworks/DeviceActivity.framework; sourceTree = SDKROOT; };
+		C99859DF2F97EB93003B69E8 /* YourDayShieldConfiguration.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = YourDayShieldConfiguration.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		C99859E12F97EB93003B69E8 /* ManagedSettings.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ManagedSettings.framework; path = System/Library/Frameworks/ManagedSettings.framework; sourceTree = SDKROOT; };
+		C99859E32F97EB93003B69E8 /* ManagedSettingsUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ManagedSettingsUI.framework; path = Library/Frameworks/ManagedSettingsUI.framework; sourceTree = DEVELOPER_DIR; };
+		C99859F62F97EC16003B69E8 /* YourDayShieldAction.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = YourDayShieldAction.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		C9985A082F97ECBF003B69E8 /* YourDayDeviceActivity.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = YourDayDeviceActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		C9985A092F97ECBF003B69E8 /* DeviceActivity.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = DeviceActivity.framework; path = System/Library/Frameworks/DeviceActivity.framework; sourceTree = SDKROOT; };
 		C99DF2352DA61BEB003048F2 /* YourDay.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = YourDay.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C99DF2462DA61BEC003048F2 /* YourDayTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = YourDayTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		C99DF2502DA61BEC003048F2 /* YourDayUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = YourDayUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		1FB1C9ED2F9DEF35008CF260 /* Exceptions for "YourDayShieldConfiguration" folder in "YourDayShieldConfiguration" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Info.plist,
-			);
-			target = 1FB1C9DB2F9DEF35008CF260 /* YourDayShieldConfiguration */;
-		};
-		1FB1CA002F9DF069008CF260 /* Exceptions for "YourDayShieldAction" folder in "YourDayShieldAction" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Info.plist,
-			);
-			target = 1FB1C9F22F9DF069008CF260 /* YourDayShieldAction */;
-		};
-		1FB1CA132F9DF096008CF260 /* Exceptions for "YourDayDeviceActivity" folder in "YourDayDeviceActivity" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Info.plist,
-			);
-			target = 1FB1CA042F9DF096008CF260 /* YourDayDeviceActivity */;
-		};
-		1FB1CA172F9DF220008CF260 /* Exceptions for "YourDay" folder in "YourDayShieldConfiguration" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				ViewModels/Models/PendingPenalty.swift,
-				ViewModels/Models/ShieldSnapshot.swift,
-				ViewModels/Shared/AppGroupDefaults.swift,
-			);
-			target = 1FB1C9DB2F9DEF35008CF260 /* YourDayShieldConfiguration */;
-		};
-		1FB1CA182F9DF220008CF260 /* Exceptions for "YourDay" folder in "YourDayShieldAction" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				ViewModels/Models/PendingPenalty.swift,
-				ViewModels/Models/ShieldSnapshot.swift,
-				ViewModels/Shared/AppGroupDefaults.swift,
-			);
-			target = 1FB1C9F22F9DF069008CF260 /* YourDayShieldAction */;
-		};
-		1FB1CA192F9DF220008CF260 /* Exceptions for "YourDay" folder in "YourDayDeviceActivity" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				ViewModels/Models/PendingPenalty.swift,
-				ViewModels/Models/ShieldSnapshot.swift,
-				ViewModels/Shared/AppGroupDefaults.swift,
-			);
-			target = 1FB1CA042F9DF096008CF260 /* YourDayDeviceActivity */;
-		};
 		1FB1FD9D2F8D758100EC2A9A /* Exceptions for "YourDay" folder in "YourDayTests" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -155,6 +108,54 @@
 			);
 			target = C99DF24F2DA61BEC003048F2 /* YourDayUITests */;
 		};
+		C99859F02F97EB93003B69E8 /* Exceptions for "YourDayShieldConfiguration" folder in "YourDayShieldConfiguration" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = C99859DE2F97EB93003B69E8 /* YourDayShieldConfiguration */;
+		};
+		C9985A032F97EC16003B69E8 /* Exceptions for "YourDayShieldAction" folder in "YourDayShieldAction" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = C99859F52F97EC16003B69E8 /* YourDayShieldAction */;
+		};
+		C9985A162F97ECBF003B69E8 /* Exceptions for "YourDayDeviceActivity" folder in "YourDayDeviceActivity" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = C9985A072F97ECBF003B69E8 /* YourDayDeviceActivity */;
+		};
+		C9985A1A2F97F7BD003B69E8 /* Exceptions for "YourDay" folder in "YourDayShieldConfiguration" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				ViewModels/Models/PendingPenalty.swift,
+				ViewModels/Models/ShieldSnapshot.swift,
+				ViewModels/Shared/AppGroupDefaults.swift,
+			);
+			target = C99859DE2F97EB93003B69E8 /* YourDayShieldConfiguration */;
+		};
+		C9985A1B2F97F7BD003B69E8 /* Exceptions for "YourDay" folder in "YourDayShieldAction" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				ViewModels/Models/PendingPenalty.swift,
+				ViewModels/Models/ShieldSnapshot.swift,
+				ViewModels/Shared/AppGroupDefaults.swift,
+			);
+			target = C99859F52F97EC16003B69E8 /* YourDayShieldAction */;
+		};
+		C9985A1C2F97F7BD003B69E8 /* Exceptions for "YourDay" folder in "YourDayDeviceActivity" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				ViewModels/Models/PendingPenalty.swift,
+				ViewModels/Models/ShieldSnapshot.swift,
+				ViewModels/Shared/AppGroupDefaults.swift,
+			);
+			target = C9985A072F97ECBF003B69E8 /* YourDayDeviceActivity */;
+		};
 		C9FE7D212DDB1DF3005E5576 /* Exceptions for "YourDay" folder in "YourDay" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -165,26 +166,26 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		1FB1C9E22F9DEF35008CF260 /* YourDayShieldConfiguration */ = {
+		C99859E52F97EB93003B69E8 /* YourDayShieldConfiguration */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				1FB1C9ED2F9DEF35008CF260 /* Exceptions for "YourDayShieldConfiguration" folder in "YourDayShieldConfiguration" target */,
+				C99859F02F97EB93003B69E8 /* Exceptions for "YourDayShieldConfiguration" folder in "YourDayShieldConfiguration" target */,
 			);
 			path = YourDayShieldConfiguration;
 			sourceTree = "<group>";
 		};
-		1FB1C9F52F9DF069008CF260 /* YourDayShieldAction */ = {
+		C99859F82F97EC16003B69E8 /* YourDayShieldAction */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				1FB1CA002F9DF069008CF260 /* Exceptions for "YourDayShieldAction" folder in "YourDayShieldAction" target */,
+				C9985A032F97EC16003B69E8 /* Exceptions for "YourDayShieldAction" folder in "YourDayShieldAction" target */,
 			);
 			path = YourDayShieldAction;
 			sourceTree = "<group>";
 		};
-		1FB1CA082F9DF096008CF260 /* YourDayDeviceActivity */ = {
+		C9985A0B2F97ECBF003B69E8 /* YourDayDeviceActivity */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				1FB1CA132F9DF096008CF260 /* Exceptions for "YourDayDeviceActivity" folder in "YourDayDeviceActivity" target */,
+				C9985A162F97ECBF003B69E8 /* Exceptions for "YourDayDeviceActivity" folder in "YourDayDeviceActivity" target */,
 			);
 			path = YourDayDeviceActivity;
 			sourceTree = "<group>";
@@ -195,9 +196,9 @@
 				C9FE7D212DDB1DF3005E5576 /* Exceptions for "YourDay" folder in "YourDay" target */,
 				1FB1FD9D2F8D758100EC2A9A /* Exceptions for "YourDay" folder in "YourDayTests" target */,
 				1FB1FD9E2F8D758100EC2A9A /* Exceptions for "YourDay" folder in "YourDayUITests" target */,
-				1FB1CA172F9DF220008CF260 /* Exceptions for "YourDay" folder in "YourDayShieldConfiguration" target */,
-				1FB1CA182F9DF220008CF260 /* Exceptions for "YourDay" folder in "YourDayShieldAction" target */,
-				1FB1CA192F9DF220008CF260 /* Exceptions for "YourDay" folder in "YourDayDeviceActivity" target */,
+				C9985A1A2F97F7BD003B69E8 /* Exceptions for "YourDay" folder in "YourDayShieldConfiguration" target */,
+				C9985A1B2F97F7BD003B69E8 /* Exceptions for "YourDay" folder in "YourDayShieldAction" target */,
+				C9985A1C2F97F7BD003B69E8 /* Exceptions for "YourDay" folder in "YourDayDeviceActivity" target */,
 			);
 			path = YourDay;
 			sourceTree = "<group>";
@@ -215,28 +216,28 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		1FB1C9D92F9DEF35008CF260 /* Frameworks */ = {
+		C99859DC2F97EB93003B69E8 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				1FB1C9DF2F9DEF35008CF260 /* ManagedSettings.framework in Frameworks */,
-				1FB1C9E12F9DEF35008CF260 /* ManagedSettingsUI.framework in Frameworks */,
+				C99859E22F97EB93003B69E8 /* ManagedSettings.framework in Frameworks */,
+				C99859E42F97EB93003B69E8 /* ManagedSettingsUI.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		1FB1C9F02F9DF069008CF260 /* Frameworks */ = {
+		C99859F32F97EC16003B69E8 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				1FB1C9F42F9DF069008CF260 /* ManagedSettings.framework in Frameworks */,
+				C99859F72F97EC16003B69E8 /* ManagedSettings.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		1FB1CA022F9DF096008CF260 /* Frameworks */ = {
+		C9985A052F97ECBF003B69E8 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				1FB1CA072F9DF096008CF260 /* DeviceActivity.framework in Frameworks */,
+				C9985A0A2F97ECBF003B69E8 /* DeviceActivity.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -254,6 +255,7 @@
 				E11A00012E00000100AAA001 /* FirebaseStorage in Frameworks */,
 				C9BF6B8D2DE6EF75007D4B0F /* Lottie in Frameworks */,
 				AA00000100000000FCA00001 /* FirebaseMessaging in Frameworks */,
+				E11D00032E00000100AAA000 /* AppAuth in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -274,12 +276,12 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		1FB1C9DD2F9DEF35008CF260 /* Frameworks */ = {
+		C99859E02F97EB93003B69E8 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
-				1FB1C9DE2F9DEF35008CF260 /* ManagedSettings.framework */,
-				1FB1C9E02F9DEF35008CF260 /* ManagedSettingsUI.framework */,
-				1FB1CA062F9DF096008CF260 /* DeviceActivity.framework */,
+				C99859E12F97EB93003B69E8 /* ManagedSettings.framework */,
+				C99859E32F97EB93003B69E8 /* ManagedSettingsUI.framework */,
+				C9985A092F97ECBF003B69E8 /* DeviceActivity.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -290,10 +292,10 @@
 				C99DF2372DA61BEB003048F2 /* YourDay */,
 				C99DF2492DA61BEC003048F2 /* YourDayTests */,
 				C99DF2532DA61BED003048F2 /* YourDayUITests */,
-				1FB1C9E22F9DEF35008CF260 /* YourDayShieldConfiguration */,
-				1FB1C9F52F9DF069008CF260 /* YourDayShieldAction */,
-				1FB1CA082F9DF096008CF260 /* YourDayDeviceActivity */,
-				1FB1C9DD2F9DEF35008CF260 /* Frameworks */,
+				C99859E52F97EB93003B69E8 /* YourDayShieldConfiguration */,
+				C99859F82F97EC16003B69E8 /* YourDayShieldAction */,
+				C9985A0B2F97ECBF003B69E8 /* YourDayDeviceActivity */,
+				C99859E02F97EB93003B69E8 /* Frameworks */,
 				C99DF2362DA61BEB003048F2 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -304,9 +306,9 @@
 				C99DF2352DA61BEB003048F2 /* YourDay.app */,
 				C99DF2462DA61BEC003048F2 /* YourDayTests.xctest */,
 				C99DF2502DA61BEC003048F2 /* YourDayUITests.xctest */,
-				1FB1C9DC2F9DEF35008CF260 /* YourDayShieldConfiguration.appex */,
-				1FB1C9F32F9DF069008CF260 /* YourDayShieldAction.appex */,
-				1FB1CA052F9DF096008CF260 /* YourDayDeviceActivity.appex */,
+				C99859DF2F97EB93003B69E8 /* YourDayShieldConfiguration.appex */,
+				C99859F62F97EC16003B69E8 /* YourDayShieldAction.appex */,
+				C9985A082F97ECBF003B69E8 /* YourDayDeviceActivity.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -314,70 +316,70 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		1FB1C9DB2F9DEF35008CF260 /* YourDayShieldConfiguration */ = {
+		C99859DE2F97EB93003B69E8 /* YourDayShieldConfiguration */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 1FB1C9EA2F9DEF35008CF260 /* Build configuration list for PBXNativeTarget "YourDayShieldConfiguration" */;
+			buildConfigurationList = C99859ED2F97EB93003B69E8 /* Build configuration list for PBXNativeTarget "YourDayShieldConfiguration" */;
 			buildPhases = (
-				1FB1C9D82F9DEF35008CF260 /* Sources */,
-				1FB1C9D92F9DEF35008CF260 /* Frameworks */,
-				1FB1C9DA2F9DEF35008CF260 /* Resources */,
+				C99859DB2F97EB93003B69E8 /* Sources */,
+				C99859DC2F97EB93003B69E8 /* Frameworks */,
+				C99859DD2F97EB93003B69E8 /* Resources */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				1FB1C9E22F9DEF35008CF260 /* YourDayShieldConfiguration */,
+				C99859E52F97EB93003B69E8 /* YourDayShieldConfiguration */,
 			);
 			name = YourDayShieldConfiguration;
 			packageProductDependencies = (
 			);
 			productName = YourDayShieldConfiguration;
-			productReference = 1FB1C9DC2F9DEF35008CF260 /* YourDayShieldConfiguration.appex */;
+			productReference = C99859DF2F97EB93003B69E8 /* YourDayShieldConfiguration.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
-		1FB1C9F22F9DF069008CF260 /* YourDayShieldAction */ = {
+		C99859F52F97EC16003B69E8 /* YourDayShieldAction */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 1FB1C9FD2F9DF069008CF260 /* Build configuration list for PBXNativeTarget "YourDayShieldAction" */;
+			buildConfigurationList = C9985A002F97EC16003B69E8 /* Build configuration list for PBXNativeTarget "YourDayShieldAction" */;
 			buildPhases = (
-				1FB1C9EF2F9DF069008CF260 /* Sources */,
-				1FB1C9F02F9DF069008CF260 /* Frameworks */,
-				1FB1C9F12F9DF069008CF260 /* Resources */,
+				C99859F22F97EC16003B69E8 /* Sources */,
+				C99859F32F97EC16003B69E8 /* Frameworks */,
+				C99859F42F97EC16003B69E8 /* Resources */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				1FB1C9F52F9DF069008CF260 /* YourDayShieldAction */,
+				C99859F82F97EC16003B69E8 /* YourDayShieldAction */,
 			);
 			name = YourDayShieldAction;
 			packageProductDependencies = (
 			);
 			productName = YourDayShieldAction;
-			productReference = 1FB1C9F32F9DF069008CF260 /* YourDayShieldAction.appex */;
+			productReference = C99859F62F97EC16003B69E8 /* YourDayShieldAction.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
-		1FB1CA042F9DF096008CF260 /* YourDayDeviceActivity */ = {
+		C9985A072F97ECBF003B69E8 /* YourDayDeviceActivity */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 1FB1CA102F9DF096008CF260 /* Build configuration list for PBXNativeTarget "YourDayDeviceActivity" */;
+			buildConfigurationList = C9985A132F97ECBF003B69E8 /* Build configuration list for PBXNativeTarget "YourDayDeviceActivity" */;
 			buildPhases = (
-				1FB1CA012F9DF096008CF260 /* Sources */,
-				1FB1CA022F9DF096008CF260 /* Frameworks */,
-				1FB1CA032F9DF096008CF260 /* Resources */,
+				C9985A042F97ECBF003B69E8 /* Sources */,
+				C9985A052F97ECBF003B69E8 /* Frameworks */,
+				C9985A062F97ECBF003B69E8 /* Resources */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				1FB1CA082F9DF096008CF260 /* YourDayDeviceActivity */,
+				C9985A0B2F97ECBF003B69E8 /* YourDayDeviceActivity */,
 			);
 			name = YourDayDeviceActivity;
 			packageProductDependencies = (
 			);
 			productName = YourDayDeviceActivity;
-			productReference = 1FB1CA052F9DF096008CF260 /* YourDayDeviceActivity.appex */;
+			productReference = C9985A082F97ECBF003B69E8 /* YourDayDeviceActivity.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
 		C99DF2342DA61BEB003048F2 /* YourDay */ = {
@@ -387,14 +389,14 @@
 				C99DF2312DA61BEB003048F2 /* Sources */,
 				C99DF2322DA61BEB003048F2 /* Frameworks */,
 				C99DF2332DA61BEB003048F2 /* Resources */,
-				1FB1C9EE2F9DEF35008CF260 /* Embed Foundation Extensions */,
+				C99859F12F97EB93003B69E8 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
-				1FB1C9E82F9DEF35008CF260 /* PBXTargetDependency */,
-				1FB1C9FB2F9DF069008CF260 /* PBXTargetDependency */,
-				1FB1CA0E2F9DF096008CF260 /* PBXTargetDependency */,
+				C99859EB2F97EB93003B69E8 /* PBXTargetDependency */,
+				C99859FE2F97EC16003B69E8 /* PBXTargetDependency */,
+				C9985A112F97ECBF003B69E8 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				C99DF2372DA61BEB003048F2 /* YourDay */,
@@ -411,6 +413,7 @@
 				C94CCFEA2DE3ED0000249A99 /* GoogleGenerativeAI */,
 				C9BF6B8C2DE6EF75007D4B0F /* Lottie */,
 				AA00000200000000FCA00001 /* FirebaseMessaging */,
+				E11D00022E00000100AAA000 /* AppAuth */,
 			);
 			productName = YourDay;
 			productReference = C99DF2352DA61BEB003048F2 /* YourDay.app */;
@@ -469,17 +472,17 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 2620;
+				LastSwiftUpdateCheck = 1620;
 				LastUpgradeCheck = 1620;
 				TargetAttributes = {
-					1FB1C9DB2F9DEF35008CF260 = {
-						CreatedOnToolsVersion = 26.2;
+					C99859DE2F97EB93003B69E8 = {
+						CreatedOnToolsVersion = 16.2;
 					};
-					1FB1C9F22F9DF069008CF260 = {
-						CreatedOnToolsVersion = 26.2;
+					C99859F52F97EC16003B69E8 = {
+						CreatedOnToolsVersion = 16.2;
 					};
-					1FB1CA042F9DF096008CF260 = {
-						CreatedOnToolsVersion = 26.2;
+					C9985A072F97ECBF003B69E8 = {
+						CreatedOnToolsVersion = 16.2;
 					};
 					C99DF2342DA61BEB003048F2 = {
 						CreatedOnToolsVersion = 16.2;
@@ -508,6 +511,7 @@
 				C9FE7D1B2DDB1C1C005E5576 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
 				C94CCFE92DE3ED0000249A99 /* XCRemoteSwiftPackageReference "deprecated-generative-ai-swift" */,
 				C9BF6B8B2DE6EF75007D4B0F /* XCRemoteSwiftPackageReference "lottie-spm" */,
+				E11D00012E00000100AAA000 /* XCRemoteSwiftPackageReference "AppAuth-iOS" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = C99DF2362DA61BEB003048F2 /* Products */;
@@ -517,29 +521,29 @@
 				C99DF2342DA61BEB003048F2 /* YourDay */,
 				C99DF2452DA61BEC003048F2 /* YourDayTests */,
 				C99DF24F2DA61BEC003048F2 /* YourDayUITests */,
-				1FB1C9DB2F9DEF35008CF260 /* YourDayShieldConfiguration */,
-				1FB1C9F22F9DF069008CF260 /* YourDayShieldAction */,
-				1FB1CA042F9DF096008CF260 /* YourDayDeviceActivity */,
+				C99859DE2F97EB93003B69E8 /* YourDayShieldConfiguration */,
+				C99859F52F97EC16003B69E8 /* YourDayShieldAction */,
+				C9985A072F97ECBF003B69E8 /* YourDayDeviceActivity */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		1FB1C9DA2F9DEF35008CF260 /* Resources */ = {
+		C99859DD2F97EB93003B69E8 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		1FB1C9F12F9DF069008CF260 /* Resources */ = {
+		C99859F42F97EC16003B69E8 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		1FB1CA032F9DF096008CF260 /* Resources */ = {
+		C9985A062F97ECBF003B69E8 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -570,21 +574,21 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		1FB1C9D82F9DEF35008CF260 /* Sources */ = {
+		C99859DB2F97EB93003B69E8 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		1FB1C9EF2F9DF069008CF260 /* Sources */ = {
+		C99859F22F97EC16003B69E8 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		1FB1CA012F9DF096008CF260 /* Sources */ = {
+		C9985A042F97ECBF003B69E8 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -615,20 +619,20 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		1FB1C9E82F9DEF35008CF260 /* PBXTargetDependency */ = {
+		C99859EB2F97EB93003B69E8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 1FB1C9DB2F9DEF35008CF260 /* YourDayShieldConfiguration */;
-			targetProxy = 1FB1C9E72F9DEF35008CF260 /* PBXContainerItemProxy */;
+			target = C99859DE2F97EB93003B69E8 /* YourDayShieldConfiguration */;
+			targetProxy = C99859EA2F97EB93003B69E8 /* PBXContainerItemProxy */;
 		};
-		1FB1C9FB2F9DF069008CF260 /* PBXTargetDependency */ = {
+		C99859FE2F97EC16003B69E8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 1FB1C9F22F9DF069008CF260 /* YourDayShieldAction */;
-			targetProxy = 1FB1C9FA2F9DF069008CF260 /* PBXContainerItemProxy */;
+			target = C99859F52F97EC16003B69E8 /* YourDayShieldAction */;
+			targetProxy = C99859FD2F97EC16003B69E8 /* PBXContainerItemProxy */;
 		};
-		1FB1CA0E2F9DF096008CF260 /* PBXTargetDependency */ = {
+		C9985A112F97ECBF003B69E8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 1FB1CA042F9DF096008CF260 /* YourDayDeviceActivity */;
-			targetProxy = 1FB1CA0D2F9DF096008CF260 /* PBXContainerItemProxy */;
+			target = C9985A072F97ECBF003B69E8 /* YourDayDeviceActivity */;
+			targetProxy = C9985A102F97ECBF003B69E8 /* PBXContainerItemProxy */;
 		};
 		C99DF2482DA61BEC003048F2 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -643,7 +647,7 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
-		1FB1C9EB2F9DEF35008CF260 /* Debug */ = {
+		C99859EE2F97EB93003B69E8 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = YourDayShieldConfiguration/YourDayShieldConfiguration.entitlements;
@@ -654,27 +658,24 @@
 				INFOPLIST_FILE = YourDayShieldConfiguration/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = YourDayShieldConfiguration;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.2;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "Yourday-dev.YourDayShieldConfiguration";
+				PRODUCT_BUNDLE_IDENTIFIER = Yourday.dev.YourDayShieldConfiguration;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
 		};
-		1FB1C9EC2F9DEF35008CF260 /* Release */ = {
+		C99859EF2F97EB93003B69E8 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = YourDayShieldConfiguration/YourDayShieldConfiguration.entitlements;
@@ -685,28 +686,25 @@
 				INFOPLIST_FILE = YourDayShieldConfiguration/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = YourDayShieldConfiguration;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.2;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "Yourday-dev.YourDayShieldConfiguration";
+				PRODUCT_BUNDLE_IDENTIFIER = Yourday.dev.YourDayShieldConfiguration;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;
 		};
-		1FB1C9FE2F9DF069008CF260 /* Debug */ = {
+		C9985A012F97EC16003B69E8 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = YourDayShieldAction/YourDayShieldAction.entitlements;
@@ -717,27 +715,24 @@
 				INFOPLIST_FILE = YourDayShieldAction/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = YourDayShieldAction;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.2;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "Yourday-dev.YourDayShieldAction";
+				PRODUCT_BUNDLE_IDENTIFIER = Yourday.dev.YourDayShieldAction;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
 		};
-		1FB1C9FF2F9DF069008CF260 /* Release */ = {
+		C9985A022F97EC16003B69E8 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = YourDayShieldAction/YourDayShieldAction.entitlements;
@@ -748,28 +743,25 @@
 				INFOPLIST_FILE = YourDayShieldAction/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = YourDayShieldAction;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.2;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "Yourday-dev.YourDayShieldAction";
+				PRODUCT_BUNDLE_IDENTIFIER = Yourday.dev.YourDayShieldAction;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;
 		};
-		1FB1CA112F9DF096008CF260 /* Debug */ = {
+		C9985A142F97ECBF003B69E8 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = YourDayDeviceActivity/YourDayDeviceActivity.entitlements;
@@ -780,27 +772,24 @@
 				INFOPLIST_FILE = YourDayDeviceActivity/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = YourDayDeviceActivity;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.2;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "Yourday-dev.YourDayDeviceActivity";
+				PRODUCT_BUNDLE_IDENTIFIER = Yourday.dev.YourDayDeviceActivity;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
 		};
-		1FB1CA122F9DF096008CF260 /* Release */ = {
+		C9985A152F97ECBF003B69E8 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = YourDayDeviceActivity/YourDayDeviceActivity.entitlements;
@@ -811,21 +800,18 @@
 				INFOPLIST_FILE = YourDayDeviceActivity/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = YourDayDeviceActivity;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.2;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "Yourday-dev.YourDayDeviceActivity";
+				PRODUCT_BUNDLE_IDENTIFIER = Yourday.dev.YourDayDeviceActivity;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VALIDATE_PRODUCT = YES;
@@ -962,6 +948,7 @@
 				INFOPLIST_FILE = YourDay/Info.plist;
 				INFOPLIST_KEY_NSCalendarsUsageDescription = "YourDay needs access to your calendar to sync your tasks and help you stay organized.";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Attach photo proof to completed tasks.";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "YourDay uses your location in the background to remind you of tasks when you're near relevant places like grocery stores and libraries.";
 				INFOPLIST_KEY_NSLocationAlwaysUsageDescription = "We use your location to send smart reminders based on where you are.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "We use your location to send smart reminders based on where you are.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Attach photo proof to completed tasks.";
@@ -980,7 +967,7 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.7;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "Yourday-dev";
+				PRODUCT_BUNDLE_IDENTIFIER = Yourday.dev;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
@@ -1007,6 +994,7 @@
 				INFOPLIST_FILE = YourDay/Info.plist;
 				INFOPLIST_KEY_NSCalendarsUsageDescription = "YourDay needs access to your calendar to sync your tasks and help you stay organized.";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Attach photo proof to completed tasks.";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "YourDay uses your location in the background to remind you of tasks when you're near relevant places like grocery stores and libraries.";
 				INFOPLIST_KEY_NSLocationAlwaysUsageDescription = "We use your location to send smart reminders based on where you are.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "We use your location to send smart reminders based on where you are.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Attach photo proof to completed tasks.";
@@ -1025,7 +1013,7 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.7;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "Yourday-dev";
+				PRODUCT_BUNDLE_IDENTIFIER = Yourday.dev;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
@@ -1129,29 +1117,29 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		1FB1C9EA2F9DEF35008CF260 /* Build configuration list for PBXNativeTarget "YourDayShieldConfiguration" */ = {
+		C99859ED2F97EB93003B69E8 /* Build configuration list for PBXNativeTarget "YourDayShieldConfiguration" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				1FB1C9EB2F9DEF35008CF260 /* Debug */,
-				1FB1C9EC2F9DEF35008CF260 /* Release */,
+				C99859EE2F97EB93003B69E8 /* Debug */,
+				C99859EF2F97EB93003B69E8 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		1FB1C9FD2F9DF069008CF260 /* Build configuration list for PBXNativeTarget "YourDayShieldAction" */ = {
+		C9985A002F97EC16003B69E8 /* Build configuration list for PBXNativeTarget "YourDayShieldAction" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				1FB1C9FE2F9DF069008CF260 /* Debug */,
-				1FB1C9FF2F9DF069008CF260 /* Release */,
+				C9985A012F97EC16003B69E8 /* Debug */,
+				C9985A022F97EC16003B69E8 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		1FB1CA102F9DF096008CF260 /* Build configuration list for PBXNativeTarget "YourDayDeviceActivity" */ = {
+		C9985A132F97ECBF003B69E8 /* Build configuration list for PBXNativeTarget "YourDayDeviceActivity" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				1FB1CA112F9DF096008CF260 /* Debug */,
-				1FB1CA122F9DF096008CF260 /* Release */,
+				C9985A142F97ECBF003B69E8 /* Debug */,
+				C9985A152F97ECBF003B69E8 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -1227,6 +1215,14 @@
 				minimumVersion = 8.0.0;
 			};
 		};
+		E11D00012E00000100AAA000 /* XCRemoteSwiftPackageReference "AppAuth-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/openid/AppAuth-iOS.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.7.6;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -1279,6 +1275,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = C9A89A182DBF16EE00D2C382 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseStorage;
+		};
+		E11D00022E00000100AAA000 /* AppAuth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E11D00012E00000100AAA000 /* XCRemoteSwiftPackageReference "AppAuth-iOS" */;
+			productName = AppAuth;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -1,8 +1,6 @@
 import Foundation
 import UserNotifications
 import SwiftData
-import CoreLocation
-import FirebaseVertexAI
 
 final class NotificationManager: NSObject, ObservableObject, UNUserNotificationCenterDelegate {
     static let shared = NotificationManager()
@@ -258,22 +256,26 @@ final class NotificationManager: NSObject, ObservableObject, UNUserNotificationC
 
         let progressPercentage = calculateProgressPercentage(completed: completedTasks.count, total: totalTasks)
         let randomTask = incompleteTasks.randomElement()
-        let hour = Calendar.current.component(.hour, from: Date())
-
-        if hour < 12 {
+        switch currentTimeSegment() {
+        case .morning:
             return (
                 "Morning Check-in ☀️",
                 "You have \(incompleteTasks.count) task\(incompleteTasks.count == 1 ? "" : "s") left. How about tackling '\(randomTask?.title ?? "your next task")'?"
             )
-        } else if hour < 17 {
+        case .afternoon:
             return (
                 "Afternoon Boost! ☕",
                 "You're \(Int(progressPercentage * 100))% done! Keep the momentum going with '\(randomTask?.title ?? "your next task")'."
             )
-        } else {
+        case .evening:
             return (
                 "Evening Wrap-up 🌆",
                 "\(incompleteTasks.count) task\(incompleteTasks.count == 1 ? "" : "s") remaining. Finish strong with '\(randomTask?.title ?? "your next task")'!"
+            )
+        case .night:
+            return (
+                "Night Focus 🌙",
+                "\(incompleteTasks.count) task\(incompleteTasks.count == 1 ? "" : "s") still open. A quick push on '\(randomTask?.title ?? "your next task")' can set up tomorrow."
             )
         }
     }
@@ -350,75 +352,18 @@ final class NotificationManager: NSObject, ObservableObject, UNUserNotificationC
 
     // MARK: - Location-based reminders
 
-    func handleLocationUpdate(location: CLLocation, taskSummary: String) {
-        let locationRemindersEnabled = UserDefaults.standard.object(forKey: Self.locationRemindersEnabledKey) as? Bool ?? true
+    func scheduleGeofenceNotification(regionTitle: String, tasks: [String]) {
         let notificationsEnabled = UserDefaults.standard.object(forKey: Self.notificationsEnabledKey) as? Bool ?? true
-        guard notificationsEnabled && locationRemindersEnabled else { return }
+        guard notificationsEnabled else { return }
 
-        let maxReminders = UserDefaults.standard.object(forKey: Self.extraNotificationsKey) as? Int ?? 3
-        resetDailyReminderCountIfNeeded()
-        let sentCount = UserDefaults.standard.integer(forKey: "totalExtraRemindersSentToday")
-        guard sentCount < maxReminders else { return }
-
-        let normalizedTaskSummary = taskSummary.isEmpty ? "No tasks" : taskSummary
-        let idleTime = 0
-
-        evaluateWithGemini(location: location, taskSummary: normalizedTaskSummary, idleTime: idleTime) { shouldSend, message in
-            if shouldSend, let message {
-                self.scheduleLLMBasedNotification(message: message)
-                UserDefaults.standard.set(sentCount + 1, forKey: "totalExtraRemindersSentToday")
-            }
-        }
-    }
-
-    private func scheduleLLMBasedNotification(message: String) {
         let content = UNMutableNotificationContent()
-        content.title = "Smart Reminder"
-        content.body = message
+        content.title = "You're near \(regionTitle)"
+        let preview = tasks.prefix(3).joined(separator: ", ")
+        content.body = tasks.count > 3 ? "\(preview) +\(tasks.count - 3) more" : preview
         content.sound = .default
 
-        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        let request = UNNotificationRequest(identifier: "geo_\(UUID().uuidString)", content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request)
-    }
-
-    private func resetDailyReminderCountIfNeeded() {
-        let calendar = Calendar.current
-        let lastReset = UserDefaults.standard.object(forKey: "lastReminderReset") as? Date ?? .distantPast
-        if !calendar.isDateInToday(lastReset) {
-            UserDefaults.standard.set(0, forKey: "totalExtraRemindersSentToday")
-            UserDefaults.standard.set(Date(), forKey: "lastReminderReset")
-        }
-    }
-
-    private func evaluateWithGemini(location: CLLocation, taskSummary: String, idleTime: Int, completion: @escaping (Bool, String?) -> Void) {
-        let prompt = """
-        The user is currently at coordinates: \(location.coordinate.latitude), \(location.coordinate.longitude).
-        They have been idle for \(idleTime) minutes.
-        Their tasks for today include: \(taskSummary).
-
-        Based on this context, should we notify them with a motivational or context-aware reminder?
-        Reply in strict JSON format only:
-        {"sendNotification": true, "message": "Time to focus on your report!"}
-        """
-
-        Task {
-            do {
-                let vertex = VertexAI.vertexAI()
-                let model = vertex.generativeModel(modelName: "gemini-2.5-flash")
-                let response = try await model.generateContent(prompt)
-                if let text = response.text,
-                   let data = text.data(using: .utf8),
-                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                   let send = json["sendNotification"] as? Bool {
-                    completion(send, json["message"] as? String)
-                } else {
-                    completion(false, nil)
-                }
-            } catch {
-                print("NotificationManager: Gemini evaluation failed - \(error)")
-                completion(false, nil)
-            }
-        }
     }
 
     // MARK: - UNUserNotificationCenterDelegate
@@ -488,7 +433,7 @@ final class NotificationManager: NSObject, ObservableObject, UNUserNotificationC
             predicate: #Predicate<TodoItem> { !$0.isDone }
         )
         do {
-            return try context.fetch(descriptor)
+            return try context.fetch(descriptor).filter { $0.origin == .today }
         } catch {
             print("NotificationManager: Error fetching incomplete tasks - \(error)")
             return []
@@ -500,7 +445,7 @@ final class NotificationManager: NSObject, ObservableObject, UNUserNotificationC
             predicate: #Predicate<TodoItem> { $0.isDone }
         )
         do {
-            return try context.fetch(descriptor)
+            return try context.fetch(descriptor).filter { $0.origin == .today }
         } catch {
             print("NotificationManager: Error fetching completed tasks - \(error)")
             return []
@@ -510,7 +455,7 @@ final class NotificationManager: NSObject, ObservableObject, UNUserNotificationC
     private func getTotalTasks(_ context: SwiftData.ModelContext) -> Int {
         let descriptor = FetchDescriptor<TodoItem>()
         do {
-            return try context.fetch(descriptor).count
+            return try context.fetch(descriptor).filter { $0.origin == .today }.count
         } catch {
             print("NotificationManager: Error fetching total tasks - \(error)")
             return 0
@@ -520,6 +465,29 @@ final class NotificationManager: NSObject, ObservableObject, UNUserNotificationC
     private func calculateProgressPercentage(completed: Int, total: Int) -> Double {
         guard total > 0 else { return 0.0 }
         return Double(completed) / Double(total)
+    }
+
+    private enum TimeSegment {
+        case morning
+        case afternoon
+        case evening
+        case night
+    }
+
+    private func currentTimeSegment() -> TimeSegment {
+        let hour = Calendar.current.component(.hour, from: Date())
+
+        if hour < 8 {
+            return .night
+        } else if hour < 12 {
+            return .morning
+        } else if hour < 16 {
+            return .afternoon
+        } else if hour < 19 {
+            return .evening
+        } else {
+            return .night
+        }
     }
 }
 
