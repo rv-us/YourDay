@@ -54,6 +54,7 @@ enum ManualCalendarEventDeletionService {
                             }
                             for id in idList {
                                 NotificationManager.shared.cancelJournalPromptNotification(eventId: id)
+                                NotificationManager.shared.cancelPreTaskNotification(eventId: id)
                                 firebaseManager.deleteScheduledEvent(eventId: id) { _ in }
                             }
                             for t in tasksToUnlink {

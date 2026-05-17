@@ -330,6 +330,45 @@ final class NotificationManager: NSObject, ObservableObject, UNUserNotificationC
         UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [identifier])
     }
 
+    // MARK: - Pre-task notifications (10 min before start)
+
+    func schedulePreTaskNotification(eventId: String, taskTitle: String, scheduledStartTime: Date) {
+        let notificationsEnabled = UserDefaults.standard.object(forKey: Self.notificationsEnabledKey) as? Bool ?? true
+        guard notificationsEnabled else { return }
+
+        let fireTime = scheduledStartTime.addingTimeInterval(-10 * 60)
+        guard fireTime > Date() else { return }
+
+        let content = UNMutableNotificationContent()
+        content.title = "Starting soon"
+        content.body = "\(taskTitle) starts in 10 minutes."
+        content.sound = .default
+        content.userInfo = [
+            "type": "preTask",
+            "eventId": eventId
+        ]
+
+        let identifier = "preTask_\(eventId)"
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: [identifier])
+        center.removeDeliveredNotifications(withIdentifiers: [identifier])
+
+        let components = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute, .second], from: fireTime)
+        let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
+        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+        center.add(request) { error in
+            if let error = error {
+                print("NotificationManager: Error scheduling pre-task notification - \(error.localizedDescription)")
+            }
+        }
+    }
+
+    func cancelPreTaskNotification(eventId: String) {
+        let identifier = "preTask_\(eventId)"
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [identifier])
+        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [identifier])
+    }
+
     func cancelAllJournalPromptNotifications() {
         let center = UNUserNotificationCenter.current()
 

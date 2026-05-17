@@ -73,7 +73,15 @@ final class ShieldConfigurationExtension: ShieldConfigurationDataSource {
             logger.notice("task[\(index)] title=\(task.title, privacy: .public) start=\(start, privacy: .public) end=\(end, privacy: .public) isDone=\(task.isDone)")
         }
 
-        if let active = snapshot.activeTask() {
+        let activeTasks = snapshot.activeTasks()
+        if activeTasks.count > 1 {
+            logger.notice("multiple active tasks -> multipleFocusConfiguration count=\(activeTasks.count, privacy: .public)")
+            return multipleFocusConfiguration(
+                background: background,
+                penaltyAmount: penaltyAmount,
+                tasks: activeTasks
+            )
+        } else if let active = activeTasks.first {
             logger.notice("active task found -> focusWindowConfiguration task=\(active.title, privacy: .public)")
             return focusWindowConfiguration(
                 icon: icon,
@@ -202,6 +210,43 @@ final class ShieldConfigurationExtension: ShieldConfigurationDataSource {
         )
     }
 
+    private func multipleFocusConfiguration(
+        background: UIColor,
+        penaltyAmount: Int,
+        tasks: [ScheduledTaskBrief]
+    ) -> ShieldConfiguration {
+        let now = Date()
+        let taskLines = tasks.prefix(4).map { task -> String in
+            let remaining = pomodoroClockString(end: task.endTime, now: now) ?? "--:--"
+            return "• \(task.title) (\(remaining) left)"
+        }.joined(separator: "\n")
+
+        let ringIcon = multipleRingImage(tasks: Array(tasks.prefix(3)), now: now)
+
+        return ShieldConfiguration(
+            backgroundBlurStyle: .systemThinMaterialLight,
+            backgroundColor: background,
+            icon: ringIcon,
+            title: ShieldConfiguration.Label(
+                text: "\(tasks.count) Overlapping Focus Blocks",
+                color: UIColor(red: 0.1, green: 0.26, blue: 0.2, alpha: 1.0)
+            ),
+            subtitle: ShieldConfiguration.Label(
+                text: taskLines,
+                color: UIColor(red: 0.22, green: 0.34, blue: 0.28, alpha: 1.0)
+            ),
+            primaryButtonLabel: ShieldConfiguration.Label(
+                text: "Break focus (-\(penaltyAmount) pts)",
+                color: .white
+            ),
+            primaryButtonBackgroundColor: primaryButtonColor(incursPenalty: true),
+            secondaryButtonLabel: ShieldConfiguration.Label(
+                text: "Close",
+                color: UIColor(red: 0.17, green: 0.53, blue: 0.38, alpha: 1.0)
+            )
+        )
+    }
+
     private func primaryButtonColor(incursPenalty: Bool) -> UIColor {
         if incursPenalty {
             return UIColor(red: 0.87, green: 0.24, blue: 0.26, alpha: 1.0)
@@ -248,6 +293,60 @@ final class ShieldConfigurationExtension: ShieldConfigurationDataSource {
                 clockwise: false
             )
             cg.strokePath()
+        }
+        return image.withRenderingMode(.alwaysOriginal)
+    }
+
+    private func multipleRingImage(
+        tasks: [ScheduledTaskBrief],
+        now: Date,
+        size: CGFloat = 160
+    ) -> UIImage? {
+        guard !tasks.isEmpty else { return nil }
+        let lineWidth: CGFloat = 11
+        let ringSpacing: CGFloat = 4
+        let canvas = CGSize(width: size, height: size)
+        let renderer = UIGraphicsImageRenderer(size: canvas)
+
+        let progressColors: [UIColor] = [
+            UIColor(red: 0.17, green: 0.53, blue: 0.38, alpha: 1.0),
+            UIColor(red: 0.24, green: 0.60, blue: 0.78, alpha: 1.0),
+            UIColor(red: 0.82, green: 0.55, blue: 0.18, alpha: 1.0),
+        ]
+        let trackColor = UIColor(red: 0.80, green: 0.92, blue: 0.86, alpha: 1.0)
+
+        let image = renderer.image { ctx in
+            let cg = ctx.cgContext
+            let center = CGPoint(x: size / 2, y: size / 2)
+
+            for (i, task) in tasks.enumerated() {
+                let radius = (size - lineWidth) / 2 - CGFloat(i) * (lineWidth + ringSpacing)
+                guard radius > lineWidth / 2 else { continue }
+
+                let remainingFraction: CGFloat
+                if let start = task.startTime, let end = task.endTime, end > start {
+                    let total = end.timeIntervalSince(start)
+                    let elapsed = max(0, min(total, now.timeIntervalSince(start)))
+                    remainingFraction = CGFloat(max(0, min(1, 1 - elapsed / total)))
+                } else {
+                    remainingFraction = 0
+                }
+
+                let progressColor = i < progressColors.count ? progressColors[i] : progressColors.last!
+
+                cg.setLineWidth(lineWidth)
+                cg.setStrokeColor(trackColor.cgColor)
+                cg.addArc(center: center, radius: radius, startAngle: 0, endAngle: .pi * 2, clockwise: false)
+                cg.strokePath()
+
+                guard remainingFraction > 0 else { continue }
+                cg.setLineCap(.round)
+                cg.setStrokeColor(progressColor.cgColor)
+                let startAngle: CGFloat = -.pi / 2
+                let endAngle = startAngle + .pi * 2 * remainingFraction
+                cg.addArc(center: center, radius: radius, startAngle: startAngle, endAngle: endAngle, clockwise: false)
+                cg.strokePath()
+            }
         }
         return image.withRenderingMode(.alwaysOriginal)
     }

@@ -6,13 +6,36 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct JournalCompletionFlowView: View {
     @ObservedObject var journalViewModel: JournalViewModel
     let pendingEvent: TaskEndMonitor.PendingJournalEvent
 
+    @Environment(\.modelContext) private var modelContext
+
     @State private var step: FlowStep = .completion
-    @State private var selectedCompletionStatus: CompletionStatus = .completed
+
+    // Extend step
+    @State private var extensionMinutes = 30
+    @State private var isExtending = false
+    @State private var extendError: String?
+
+    // Green step
+    @State private var greenWhatDid = ""
+    @State private var isSavingGreen = false
+
+    // Yellow step
+    @State private var completedTaskIndices: Set<Int> = []
+    @State private var partialWhatDid = ""
+    @State private var partialWhatLeft = ""
+    @State private var isSavingPartial = false
+    // Stored partial data for "Save & Reschedule" path
+    @State private var pendingPartialWhatDid = ""
+    @State private var pendingPartialWhatLeft = ""
+    @State private var hasPendingPartialSave = false
+
+    // Reschedule step
     @State private var proposedStartTime: Date
     @State private var proposedDuration: Int
     @State private var showingCalendarPicker = false
@@ -26,7 +49,9 @@ struct JournalCompletionFlowView: View {
 
     private enum FlowStep {
         case completion
-        case journal
+        case extend
+        case greenDetail
+        case yellowDetail
         case reschedule
     }
 
@@ -59,17 +84,21 @@ struct JournalCompletionFlowView: View {
         Calendar.current.date(byAdding: .minute, value: proposedDuration, to: proposedStartTime) ?? proposedStartTime
     }
 
+    private var extendedEndTime: Date {
+        Calendar.current.date(byAdding: .minute, value: extensionMinutes, to: pendingEvent.scheduledEndTime) ?? pendingEvent.scheduledEndTime
+    }
+
     var body: some View {
         Group {
             switch step {
             case .completion:
                 completionView
-            case .journal:
-                JournalPromptView(
-                    journalViewModel: journalViewModel,
-                    pendingEvent: pendingEvent,
-                    initialCompletionStatus: selectedCompletionStatus
-                )
+            case .extend:
+                extendView
+            case .greenDetail:
+                greenDetailView
+            case .yellowDetail:
+                yellowDetailView
             case .reschedule:
                 rescheduleView
             }
@@ -80,7 +109,6 @@ struct JournalCompletionFlowView: View {
         .onChange(of: step) { _, newStep in
             if newStep == .reschedule {
                 refreshCalendarIfNeeded(for: proposedStartTime)
-                // Don't auto-open calendar picker - let user tap "Adjust on calendar" button manually (Bug 2 fix)
             }
         }
         .onChange(of: proposedStartTime) { _, newValue in
@@ -89,6 +117,8 @@ struct JournalCompletionFlowView: View {
             }
         }
     }
+
+    // MARK: - Completion screen
 
     private var completionView: some View {
         NavigationView {
@@ -103,29 +133,62 @@ struct JournalCompletionFlowView: View {
                     taskInfoCard
 
                     VStack(alignment: .leading, spacing: 12) {
+                        // "Still working on it" — extend time
+                        Button {
+                            step = .extend
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "clock.badge.plus")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(dynamicPrimaryColor)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Still working on it")
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(dynamicTextColor)
+                                    Text("Add more time and get another check-in")
+                                        .font(.caption)
+                                        .foregroundColor(dynamicSecondaryTextColor)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption)
+                                    .foregroundColor(dynamicSecondaryTextColor)
+                            }
+                            .padding()
+                            .background(dynamicSecondaryBackgroundColor)
+                            .cornerRadius(12)
+                        }
+                        .buttonStyle(ScaleButtonStyle())
+                        .padding(.horizontal)
+
+                        Divider()
+                            .padding(.horizontal)
+
                         Text("What happened?")
                             .font(.headline)
                             .foregroundColor(dynamicTextColor)
+                            .padding(.horizontal)
 
                         completionOptionButton(
-                            title: "Completed",
-                            subtitle: "You finished the session",
+                            title: "Finished it!",
+                            subtitle: "All done",
                             icon: "checkmark.circle.fill",
                             tint: .green
                         ) {
-                            selectedCompletionStatus = .completed
-                            step = .journal
+                            step = .greenDetail
                         }
+                        .padding(.horizontal)
 
                         completionOptionButton(
-                            title: "Partially completed",
-                            subtitle: "You made some progress",
+                            title: "Partially done",
+                            subtitle: "I made some progress",
                             icon: "circle.lefthalf.filled",
                             tint: .orange
                         ) {
-                            selectedCompletionStatus = .partial
-                            step = .journal
+                            step = .yellowDetail
                         }
+                        .padding(.horizontal)
 
                         completionOptionButton(
                             title: "Didn't get to it",
@@ -133,11 +196,10 @@ struct JournalCompletionFlowView: View {
                             icon: "arrow.uturn.left.circle.fill",
                             tint: .red
                         ) {
-                            selectedCompletionStatus = .notStarted
                             step = .reschedule
                         }
+                        .padding(.horizontal)
                     }
-                    .padding(.horizontal)
 
                     Button(action: {
                         journalViewModel.skipJournalPrompt()
@@ -168,6 +230,347 @@ struct JournalCompletionFlowView: View {
         .interactiveDismissDisabled(true)
     }
 
+    // MARK: - Extend time screen
+
+    private var extendView: some View {
+        NavigationView {
+            ScrollView {
+                VStack(spacing: 20) {
+                    headerSection(
+                        icon: "clock.badge.plus",
+                        title: "Add more time",
+                        subtitle: "Extend your session and we'll check in again when you're done."
+                    )
+
+                    taskInfoCard
+
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("How much more time do you need?")
+                            .font(.headline)
+                            .foregroundColor(dynamicTextColor)
+
+                        // Quick-pick pills
+                        HStack(spacing: 10) {
+                            ForEach([15, 30, 60, 120], id: \.self) { mins in
+                                Button {
+                                    extensionMinutes = mins
+                                } label: {
+                                    Text(mins < 60 ? "+\(mins) min" : "+\(mins / 60) hr")
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundColor(extensionMinutes == mins ? .white : dynamicPrimaryColor)
+                                        .padding(.horizontal, 14)
+                                        .padding(.vertical, 10)
+                                        .background(
+                                            Capsule().fill(extensionMinutes == mins
+                                                ? dynamicPrimaryColor
+                                                : dynamicPrimaryColor.opacity(0.12))
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+
+                        HStack {
+                            Text("New end time:")
+                                .font(.caption)
+                                .foregroundColor(dynamicSecondaryTextColor)
+                            Text(timeFormatter.string(from: extendedEndTime))
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .foregroundColor(dynamicTextColor)
+                        }
+
+                        if let err = extendError {
+                            Text(err)
+                                .font(.caption)
+                                .foregroundColor(.red)
+                        }
+
+                        Button(action: extendTask) {
+                            HStack {
+                                if isExtending {
+                                    ProgressView().tint(.white)
+                                } else {
+                                    Image(systemName: "clock.badge.checkmark")
+                                    Text("Extend Session")
+                                }
+                            }
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(isExtending ? Color.gray : dynamicPrimaryColor)
+                            .cornerRadius(10)
+                        }
+                        .buttonStyle(ScaleButtonStyle())
+                        .disabled(isExtending)
+                    }
+                    .padding()
+                    .background(dynamicSecondaryBackgroundColor)
+                    .cornerRadius(12)
+                    .padding(.horizontal)
+                }
+                .padding(.bottom, 20)
+            }
+            .background(dynamicBackgroundColor)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Back") { step = .completion }
+                        .foregroundColor(dynamicPrimaryColor)
+                        .disabled(isExtending)
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: { journalViewModel.skipJournalPrompt() }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(dynamicSecondaryTextColor)
+                    }
+                    .disabled(isExtending)
+                }
+            }
+        }
+        .interactiveDismissDisabled(true)
+    }
+
+    // MARK: - Green (completed) detail screen
+
+    private var greenDetailView: some View {
+        NavigationView {
+            ScrollView {
+                VStack(spacing: 20) {
+                    VStack(spacing: 8) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 48))
+                            .foregroundColor(.green)
+                        Text("Great work!")
+                            .font(.headline)
+                            .foregroundColor(dynamicTextColor)
+                        Text("Anything worth noting about this session?")
+                            .font(.subheadline)
+                            .foregroundColor(dynamicSecondaryTextColor)
+                            .multilineTextAlignment(.center)
+                        if journalViewModel.pendingCount > 1 {
+                            Text("\(journalViewModel.pendingCount - 1) more reflection\(journalViewModel.pendingCount - 1 == 1 ? "" : "s") waiting")
+                                .font(.caption)
+                                .foregroundColor(dynamicSecondaryTextColor)
+                        }
+                    }
+                    .padding(.top, 20)
+
+                    taskInfoCard
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("What did you do? (optional)")
+                            .font(.headline)
+                            .foregroundColor(dynamicTextColor)
+                        AppTextField(placeholder: "Briefly describe what you worked on…", text: $greenWhatDid, axis: .vertical, lineLimit: 3...6)
+                    }
+                    .padding()
+                    .background(dynamicSecondaryBackgroundColor)
+                    .cornerRadius(12)
+                    .padding(.horizontal)
+
+                    VStack(spacing: 12) {
+                        Button(action: saveGreenEntry) {
+                            HStack {
+                                if isSavingGreen || journalViewModel.isLoading {
+                                    ProgressView().tint(.white)
+                                } else {
+                                    Image(systemName: "checkmark")
+                                    Text("Done")
+                                }
+                            }
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(.green)
+                            .cornerRadius(10)
+                        }
+                        .buttonStyle(ScaleButtonStyle())
+                        .disabled(isSavingGreen || journalViewModel.isLoading)
+                        .padding(.horizontal)
+
+                        Button(action: { journalViewModel.skipJournalPrompt() }) {
+                            Text("Skip")
+                                .font(.subheadline)
+                                .foregroundColor(dynamicSecondaryTextColor)
+                        }
+                        .disabled(isSavingGreen || journalViewModel.isLoading)
+                    }
+                }
+                .padding(.bottom, 20)
+            }
+            .background(dynamicBackgroundColor)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Back") { step = .completion }
+                        .foregroundColor(dynamicPrimaryColor)
+                        .disabled(isSavingGreen || journalViewModel.isLoading)
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: { journalViewModel.skipJournalPrompt() }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(dynamicSecondaryTextColor)
+                    }
+                    .disabled(isSavingGreen || journalViewModel.isLoading)
+                }
+            }
+        }
+        .interactiveDismissDisabled(true)
+    }
+
+    // MARK: - Yellow (partial) detail screen
+
+    private var yellowDetailView: some View {
+        NavigationView {
+            ScrollView {
+                VStack(spacing: 20) {
+                    VStack(spacing: 8) {
+                        Image(systemName: "circle.lefthalf.filled")
+                            .font(.system(size: 48))
+                            .foregroundColor(.orange)
+                        Text("What did you get done?")
+                            .font(.headline)
+                            .foregroundColor(dynamicTextColor)
+                        Text("Check off what you completed and note what's left.")
+                            .font(.subheadline)
+                            .foregroundColor(dynamicSecondaryTextColor)
+                            .multilineTextAlignment(.center)
+                        if journalViewModel.pendingCount > 1 {
+                            Text("\(journalViewModel.pendingCount - 1) more reflection\(journalViewModel.pendingCount - 1 == 1 ? "" : "s") waiting")
+                                .font(.caption)
+                                .foregroundColor(dynamicSecondaryTextColor)
+                        }
+                    }
+                    .padding(.top, 20)
+
+                    taskInfoCard
+
+                    // Subtask checklist (if multiple tasks on this event)
+                    if taskTitles.count > 1 {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("What did you complete?")
+                                .font(.headline)
+                                .foregroundColor(dynamicTextColor)
+                            ForEach(Array(taskTitles.enumerated()), id: \.offset) { index, title in
+                                Button {
+                                    if completedTaskIndices.contains(index) {
+                                        completedTaskIndices.remove(index)
+                                    } else {
+                                        completedTaskIndices.insert(index)
+                                    }
+                                } label: {
+                                    HStack(spacing: 10) {
+                                        Image(systemName: completedTaskIndices.contains(index) ? "checkmark.circle.fill" : "circle")
+                                            .foregroundColor(completedTaskIndices.contains(index) ? .green : dynamicSecondaryTextColor)
+                                        Text(title)
+                                            .font(.subheadline)
+                                            .foregroundColor(dynamicTextColor)
+                                            .multilineTextAlignment(.leading)
+                                        Spacer()
+                                    }
+                                    .padding(.vertical, 6)
+                                }
+                                .buttonStyle(.plain)
+                                if index < taskTitles.count - 1 {
+                                    Divider()
+                                }
+                            }
+                        }
+                        .padding()
+                        .background(dynamicSecondaryBackgroundColor)
+                        .cornerRadius(12)
+                        .padding(.horizontal)
+                    }
+
+                    // Optional text fields
+                    VStack(alignment: .leading, spacing: 14) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("What did you finish? (optional)")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundColor(dynamicTextColor)
+                            AppTextField(placeholder: "Describe what you accomplished…", text: $partialWhatDid, axis: .vertical, lineLimit: 2...4)
+                        }
+                        Divider()
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("What's still left? (optional)")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundColor(dynamicTextColor)
+                            AppTextField(placeholder: "Describe what remains to be done…", text: $partialWhatLeft, axis: .vertical, lineLimit: 2...4)
+                        }
+                    }
+                    .padding()
+                    .background(dynamicSecondaryBackgroundColor)
+                    .cornerRadius(12)
+                    .padding(.horizontal)
+
+                    // Action buttons
+                    VStack(spacing: 10) {
+                        Button(action: { saveAndReschedulePartial() }) {
+                            HStack {
+                                if isSavingPartial {
+                                    ProgressView().tint(.white)
+                                } else {
+                                    Image(systemName: "calendar.badge.clock")
+                                    Text("Save & Reschedule Remaining")
+                                }
+                            }
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(dynamicPrimaryColor)
+                            .cornerRadius(10)
+                        }
+                        .buttonStyle(ScaleButtonStyle())
+                        .disabled(isSavingPartial || journalViewModel.isLoading)
+                        .padding(.horizontal)
+
+                        Button(action: { savePartialEntry() }) {
+                            Text(isSavingPartial || journalViewModel.isLoading ? "Saving…" : "Save & Done")
+                                .font(.subheadline.weight(.medium))
+                                .foregroundColor(dynamicPrimaryColor)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(isSavingPartial || journalViewModel.isLoading)
+                        .padding(.horizontal)
+
+                        Button(action: { journalViewModel.skipJournalPrompt() }) {
+                            Text("Skip")
+                                .font(.subheadline)
+                                .foregroundColor(dynamicSecondaryTextColor)
+                        }
+                        .disabled(isSavingPartial || journalViewModel.isLoading)
+                    }
+                }
+                .padding(.bottom, 20)
+            }
+            .background(dynamicBackgroundColor)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Back") { step = .completion }
+                        .foregroundColor(dynamicPrimaryColor)
+                        .disabled(isSavingPartial || journalViewModel.isLoading)
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: { journalViewModel.skipJournalPrompt() }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(dynamicSecondaryTextColor)
+                    }
+                    .disabled(isSavingPartial || journalViewModel.isLoading)
+                }
+            }
+        }
+        .interactiveDismissDisabled(true)
+    }
+
+    // MARK: - Reschedule screen
+
     private var rescheduleView: some View {
         NavigationView {
             ScrollView {
@@ -195,7 +598,7 @@ struct JournalCompletionFlowView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Back") {
-                        step = .completion
+                        step = hasPendingPartialSave ? .yellowDetail : .completion
                     }
                     .foregroundColor(dynamicPrimaryColor)
                     .disabled(isScheduling)
@@ -222,19 +625,15 @@ struct JournalCompletionFlowView: View {
         }
         .alert("Reschedule Issue", isPresented: Binding(
             get: { rescheduleError != nil },
-            set: { isPresented in
-                if !isPresented {
-                    rescheduleError = nil
-                }
-            }
+            set: { if !$0 { rescheduleError = nil } }
         )) {
-            Button("OK", role: .cancel) {
-                rescheduleError = nil
-            }
+            Button("OK", role: .cancel) { rescheduleError = nil }
         } message: {
             Text(rescheduleError ?? "Something went wrong while rescheduling.")
         }
     }
+
+    // MARK: - Shared subviews
 
     private var taskInfoCard: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -453,6 +852,124 @@ struct JournalCompletionFlowView: View {
         )
     }
 
+    // MARK: - Actions
+
+    private func extendTask() {
+        guard !isExtending else { return }
+        isExtending = true
+        extendError = nil
+
+        let newEnd = extendedEndTime
+        let originalEventId = pendingEvent.eventId
+        let originalStart = pendingEvent.scheduledStartTime
+
+        calendarManager.ensureCalendarWriteAccess { accessResult in
+            DispatchQueue.main.async {
+                switch accessResult {
+                case .failure(let err):
+                    self.isExtending = false
+                    self.extendError = err.localizedDescription
+                case .success:
+                    self.calendarManager.updateCalendarEvent(
+                        eventId: originalEventId,
+                        title: self.pendingEvent.taskTitle,
+                        start: originalStart,
+                        end: newEnd
+                    ) { _, error in
+                        DispatchQueue.main.async {
+                            self.isExtending = false
+                            if let error = error {
+                                self.extendError = error.localizedDescription
+                                return
+                            }
+                            // Update linked TodoItems in SwiftData so TaskEndMonitor uses new end time
+                            let descriptor = FetchDescriptor<TodoItem>()
+                            if let allItems = try? self.modelContext.fetch(descriptor) {
+                                let linked = allItems.filter {
+                                    $0.manualScheduleGoogleEventId?.trimmingCharacters(in: .whitespacesAndNewlines) == originalEventId
+                                }
+                                linked.forEach { $0.scheduledEndTime = newEnd }
+                                try? self.modelContext.save()
+                            }
+                            // Update Firestore so TaskEndMonitor re-prompts at the new end time
+                            self.firebaseManager.updateScheduledEvent(eventId: originalEventId, endTime: newEnd) { err in
+                                if let err = err {
+                                    print("JournalCompletionFlowView: Failed to update scheduledEvent endTime: \(err.localizedDescription)")
+                                }
+                            }
+                            NotificationManager.shared.cancelJournalPromptNotification(eventId: originalEventId)
+                            NotificationManager.shared.cancelPreTaskNotification(eventId: originalEventId)
+                            NotificationManager.shared.scheduleJournalPromptNotification(
+                                eventId: originalEventId,
+                                taskTitle: self.pendingEvent.taskTitle,
+                                scheduledEndTime: newEnd
+                            )
+                            self.journalViewModel.dismissJournalPromptForExtension()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func saveGreenEntry() {
+        isSavingGreen = true
+        journalViewModel.saveJournalEntry(
+            eventId: pendingEvent.eventId,
+            taskTitle: pendingEvent.taskTitle,
+            scheduledStartTime: pendingEvent.scheduledStartTime,
+            scheduledEndTime: pendingEvent.scheduledEndTime,
+            actualStartTime: nil,
+            actualEndTime: nil,
+            whatDid: greenWhatDid,
+            howWent: nil,
+            learned: nil,
+            distractions: nil,
+            completionStatus: .completed
+        )
+        isSavingGreen = false
+    }
+
+    private func buildPartialWhatDid() -> String {
+        var parts: [String] = []
+        if !completedTaskIndices.isEmpty && taskTitles.count > 1 {
+            let completedNames = completedTaskIndices.sorted().map { taskTitles[$0] }
+            parts.append("Completed: \(completedNames.joined(separator: ", "))")
+        }
+        let typed = partialWhatDid.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !typed.isEmpty {
+            parts.append(typed)
+        }
+        return parts.joined(separator: ". ")
+    }
+
+    private func savePartialEntry() {
+        journalViewModel.saveJournalEntry(
+            eventId: pendingEvent.eventId,
+            taskTitle: pendingEvent.taskTitle,
+            scheduledStartTime: pendingEvent.scheduledStartTime,
+            scheduledEndTime: pendingEvent.scheduledEndTime,
+            actualStartTime: nil,
+            actualEndTime: nil,
+            whatDid: buildPartialWhatDid(),
+            howWent: partialWhatLeft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? nil : partialWhatLeft,
+            learned: nil,
+            distractions: nil,
+            completionStatus: .partial
+        )
+    }
+
+    private func saveAndReschedulePartial() {
+        // Store partial data; journal entry will be saved in finishSuccess after reschedule
+        pendingPartialWhatDid = buildPartialWhatDid()
+        pendingPartialWhatLeft = partialWhatLeft.trimmingCharacters(in: .whitespacesAndNewlines)
+        hasPendingPartialSave = true
+        step = .reschedule
+    }
+
+    // MARK: - Reschedule logic
+
     private func scheduleRescheduledSession() {
         guard !isScheduling else { return }
         isScheduling = true
@@ -485,11 +1002,9 @@ struct JournalCompletionFlowView: View {
                         print("Error saving rescheduled event mapping: \(saveError.localizedDescription)")
                     }
 
-                    // If the fallback path created a brand-new event (different id),
-                    // cancel any notification still pointing at the old id so we don't
-                    // double-prompt the user.
                     if eventId != originalEventId && !originalEventId.isEmpty {
                         NotificationManager.shared.cancelJournalPromptNotification(eventId: originalEventId)
+                        NotificationManager.shared.cancelPreTaskNotification(eventId: originalEventId)
                     }
 
                     NotificationManager.shared.scheduleJournalPromptNotification(
@@ -497,6 +1012,28 @@ struct JournalCompletionFlowView: View {
                         taskTitle: title,
                         scheduledEndTime: end
                     )
+                    NotificationManager.shared.schedulePreTaskNotification(
+                        eventId: eventId,
+                        taskTitle: title,
+                        scheduledStartTime: start
+                    )
+
+                    // If we came from "Save & Reschedule" in the partial flow, save the journal entry
+                    if self.hasPendingPartialSave {
+                        self.journalViewModel.saveJournalEntry(
+                            eventId: originalEventId,
+                            taskTitle: self.pendingEvent.taskTitle,
+                            scheduledStartTime: self.pendingEvent.scheduledStartTime,
+                            scheduledEndTime: self.pendingEvent.scheduledEndTime,
+                            actualStartTime: nil,
+                            actualEndTime: nil,
+                            whatDid: self.pendingPartialWhatDid,
+                            howWent: self.pendingPartialWhatLeft.isEmpty ? nil : self.pendingPartialWhatLeft,
+                            learned: nil,
+                            distractions: nil,
+                            completionStatus: .partial
+                        )
+                    }
 
                     self.journalViewModel.skipJournalPrompt()
                 }
@@ -537,8 +1074,6 @@ struct JournalCompletionFlowView: View {
                 DispatchQueue.main.async {
                     if let error = error {
                         let ns = error as NSError
-                        // Event is gone on Google's side (deleted/expired). Fall back
-                        // to creating a fresh one so the reschedule still succeeds.
                         if ns.code == 404 || ns.code == 410 {
                             handleCreate()
                             return
@@ -588,7 +1123,6 @@ struct JournalCompletionFlowView: View {
             var title = firstTwo.joined(separator: ", ")
             let remaining = tasks.count - 2
             let moreText = " & \(remaining) more"
-
             if title.count + moreText.count > maxTitleLength {
                 title = firstTwo[0]
                 let newRemaining = tasks.count - 1
@@ -610,7 +1144,18 @@ struct JournalCompletionFlowView: View {
 
     private func resetFlow() {
         step = .completion
-        selectedCompletionStatus = .completed
+        extensionMinutes = 30
+        isExtending = false
+        extendError = nil
+        greenWhatDid = ""
+        isSavingGreen = false
+        completedTaskIndices = []
+        partialWhatDid = ""
+        partialWhatLeft = ""
+        isSavingPartial = false
+        pendingPartialWhatDid = ""
+        pendingPartialWhatLeft = ""
+        hasPendingPartialSave = false
         proposedStartTime = pendingEvent.scheduledStartTime
         proposedDuration = max(15, Int(pendingEvent.scheduledEndTime.timeIntervalSince(pendingEvent.scheduledStartTime) / 60))
         showingCalendarPicker = false

@@ -217,22 +217,21 @@ class JournalViewModel: ObservableObject {
             return
         }
         
-        guard !whatDid.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            errorMessage = "Please describe what you did"
-            return
-        }
-        
+        let resolvedWhatDid = whatDid.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "Completed the session."
+            : whatDid.trimmingCharacters(in: .whitespacesAndNewlines)
+
         isLoading = true
         errorMessage = nil
-        
+
         // Capture the eventId and current prompt at save time to prevent race conditions
         // This ensures we're journaling the correct event even if pendingJournalPrompt changes
         let savedEventId = eventId
         let currentPromptEventId = pendingJournalPrompt?.eventId
-        
+
         // Format journal insights with LLM
         formatJournalInsights(
-            whatDid: whatDid,
+            whatDid: resolvedWhatDid,
             howWent: howWent,
             learned: learned,
             distractions: distractions
@@ -392,6 +391,15 @@ class JournalViewModel: ObservableObject {
             taskEndMonitor.markEventAsJournaled(eventId: event.eventId)
             notificationManager.cancelJournalPromptNotification(eventId: event.eventId)
         }
+        pendingJournalPrompt = nil
+        showNextPendingPrompt()
+    }
+
+    /// Dismiss the current journal prompt because the user extended the session.
+    /// Does NOT mark the event as journaled or prompt-handled so that TaskEndMonitor
+    /// will surface it again once the new (extended) scheduledEndTime passes.
+    func dismissJournalPromptForExtension() {
+        showingJournalPrompt = false
         pendingJournalPrompt = nil
         showNextPendingPrompt()
     }

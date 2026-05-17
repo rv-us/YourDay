@@ -269,6 +269,7 @@ class PointManager {
                 ))
             }
         }
-        return (total: round(totalEarnedOverall), breakdown: results)
+        let cappedTotal = min(totalEarnedOverall, effectiveGardenValue)
+        return (total: round(cappedTotal), breakdown: results)
     }
 }

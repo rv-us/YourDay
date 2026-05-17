@@ -686,6 +686,12 @@ struct ContentView: View {
         do {
             let tasksToDelete = try modelContext.fetch(descriptor)
             if tasksToDelete.isEmpty { return }
+            // Final push for any Trello-mirrored tasks whose completion may not have
+            // synced yet — ensures dueComplete=true on Trello so the next daily import
+            // won't re-create the card as an incomplete task.
+            for task in tasksToDelete where task.trelloCardId != nil {
+                await TrelloTaskSyncService.pushCompletion(for: task)
+            }
             for task in tasksToDelete { modelContext.delete(task) }
             try modelContext.save()
         } catch {

@@ -523,6 +523,11 @@ struct ManualSchedulingView: View {
                         taskTitle: googleCalendarEventTitle,
                         scheduledEndTime: end
                     )
+                    NotificationManager.shared.schedulePreTaskNotification(
+                        eventId: eventId,
+                        taskTitle: googleCalendarEventTitle,
+                        scheduledStartTime: start
+                    )
 
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                         self.schedulingViewModel.fetchCalendarEvents(for: self.selectedDate)

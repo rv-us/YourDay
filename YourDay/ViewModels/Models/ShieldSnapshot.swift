@@ -32,7 +32,11 @@ struct ShieldSnapshot: Codable {
     }
 
     func activeTask(at date: Date = Date()) -> ScheduledTaskBrief? {
-        scheduledTasks.first { task in
+        activeTasks(at: date).first
+    }
+
+    func activeTasks(at date: Date = Date()) -> [ScheduledTaskBrief] {
+        scheduledTasks.filter { task in
             guard !task.isDone,
                   let start = task.startTime,
                   let end = task.endTime else { return false }
@@ -41,6 +45,6 @@ struct ShieldSnapshot: Codable {
     }
 
     func isInTaskSlot(at date: Date = Date()) -> Bool {
-        activeTask(at: date) != nil
+        !activeTasks(at: date).isEmpty
     }
 }

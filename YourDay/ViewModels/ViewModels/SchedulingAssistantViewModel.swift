@@ -1340,6 +1340,11 @@ class SchedulingAssistantViewModel: ObservableObject {
                                             taskTitle: tasksTitle,
                                             scheduledEndTime: adjustedEndTime
                                         )
+                                        NotificationManager.shared.schedulePreTaskNotification(
+                                            eventId: eventId,
+                                            taskTitle: tasksTitle,
+                                            scheduledStartTime: adjustedStartTime
+                                        )
 
                                         let duration = Int(adjustedEndTime.timeIntervalSince(adjustedStartTime) / 60)
                                         let interaction = ProposalInteraction(

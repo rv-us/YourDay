@@ -119,6 +119,7 @@ enum TrelloTaskSyncService {
 
     private static func isEligible(_ card: TrelloCardAPIItem, memberId: String, boardId: String) -> Bool {
         guard card.closed != true else { return false }
+        guard card.dueComplete != true else { return false }
         guard (card.idBoard ?? boardId) == boardId else { return false }
         return card.idMembers?.contains(memberId) == true
     }
@@ -134,10 +135,14 @@ enum TrelloTaskSyncService {
             existing.title = card.name ?? "Trello card"
             existing.detail = card.desc ?? ""
             existing.dueDate = dueDate
-            if existing.isDone != isComplete {
-                existing.completedAt = isComplete ? Date() : nil
+            // Preserve local completion — if the user marked this done in YourDay,
+            // don't let a stale Trello sync (e.g. push failure) reset it.
+            if !existing.isDone {
+                if existing.isDone != isComplete {
+                    existing.completedAt = isComplete ? Date() : nil
+                }
+                existing.isDone = isComplete
             }
-            existing.isDone = isComplete
             existing.origin = origin
             existing.trelloBoardId = boardId
             existing.trelloListId = card.idList
