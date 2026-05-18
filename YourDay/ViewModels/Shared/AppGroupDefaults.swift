@@ -19,6 +19,8 @@ enum AppGroupDefaults {
         /// cleared when the monitor reapplies or the main app forces full shield.
         /// The main app reads this only to avoid reapplying selection during the unblock.
         static let graceWindowEndsAt = "breakFocusGraceWindowEndsAt"
+        /// `yyyy-MM-dd` for the last day the user cleared Today (no open tasks left after planning).
+        static let planningFulfilledDayKey = "shieldPlanningFulfilledDayKey"
     }
 
     // Cache the app-group UserDefaults as a single shared instance. Creating
@@ -86,5 +88,24 @@ enum AppGroupDefaults {
         let ts = defaults.double(forKey: Key.graceWindowEndsAt)
         guard ts > 0 else { return nil }
         return Date(timeIntervalSince1970: ts)
+    }
+
+    // MARK: - Daily planning fulfilled (shield off for rest of day)
+
+    static func markTodayPlanningFulfilled(dayKey: String) {
+        defaults.set(dayKey, forKey: Key.planningFulfilledDayKey)
+    }
+
+    static func isTodayPlanningFulfilled(dayKey: String) -> Bool {
+        defaults.string(forKey: Key.planningFulfilledDayKey) == dayKey
+    }
+
+    /// Whether ManagedSettings shields should be active right now.
+    static func shouldApplyShieldBlocks() -> Bool {
+        guard defaults.bool(forKey: Key.shieldEnabled) else { return false }
+        guard let snapshot = loadSnapshot(), snapshot.dayKey == ShieldSnapshot.dayKey() else {
+            return true
+        }
+        return snapshot.shouldBlockApps
     }
 }

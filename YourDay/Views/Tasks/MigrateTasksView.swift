@@ -9,6 +9,8 @@ struct MigrateTasksView: View {
 
     @Query private var allTodoItems: [TodoItem]
     @State private var selectedTasksToMigrate: Set<PersistentIdentifier> = []
+    @State private var isProcessingSelections = false
+    @State private var migrationCalendarError: String?
 
     private var tasksToReview: [TodoItem] {
         allTodoItems
@@ -44,11 +46,17 @@ struct MigrateTasksView: View {
                     .padding()
                 Spacer()
             } else {
-                Text("Select tasks to move to today's list:")
-                    .font(.headline)
-                    .foregroundColor(dynamicTextColor)
-                    .padding(.top)
-                    .padding(.horizontal)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Select tasks to move to today's list:")
+                        .font(.headline)
+                        .foregroundColor(dynamicTextColor)
+                    Text("Unselected Today tasks will return to Master List.")
+                        .font(.subheadline)
+                        .foregroundColor(dynamicSecondaryTextColor)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top)
+                .padding(.horizontal)
                 
                 List {
                     ForEach(tasksToReview) { task in
@@ -115,6 +123,13 @@ struct MigrateTasksView: View {
                             }
                         }
                         .listRowBackground(selectedTasksToMigrate.contains(task.id) ? dynamicPrimaryColor.opacity(0.3) : dynamicSecondaryBackgroundColor)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                deleteTask(task)
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
                     }
                 }
                 .listStyle(.plain)
@@ -124,10 +139,13 @@ struct MigrateTasksView: View {
             VStack(spacing: 15) {
                 if !tasksToReview.isEmpty {
                     Button {
-                        processTaskSelections()
-                        dismiss()
+                        processTaskSelections {
+                            dismiss()
+                        }
                     } label: {
-                        Text("Confirm Selections (\(selectedTasksToMigrate.count) for Today)")
+                        Text(isProcessingSelections
+                            ? "Updating calendar…"
+                            : "Confirm Selections (\(selectedTasksToMigrate.count) for Today)")
                             .font(.headline)
                             .padding()
                             .frame(maxWidth: .infinity)
@@ -135,6 +153,7 @@ struct MigrateTasksView: View {
                             .foregroundColor(.white)
                             .cornerRadius(10)
                     }
+                    .disabled(isProcessingSelections)
                     
                     Button {
                         if !tasksToReview.isEmpty {
@@ -142,7 +161,7 @@ struct MigrateTasksView: View {
                         }
                         dismiss()
                     } label: {
-                        Text(tasksToReview.isEmpty ? "All Clear!" : "Discard All Reviewed Tasks")
+                        Text(tasksToReview.isEmpty ? "All Clear!" : "Delete All Reviewed Tasks")
                             .font(.headline)
                             .padding()
                             .frame(maxWidth: .infinity)
@@ -155,6 +174,16 @@ struct MigrateTasksView: View {
             .padding()
         }
         .background(dynamicBackgroundColor.edgesIgnoringSafeArea(.all))
+        .alert("Could Not Update Calendar", isPresented: Binding(
+            get: { migrationCalendarError != nil },
+            set: { if !$0 { migrationCalendarError = nil } }
+        )) {
+            Button("OK", role: .cancel) {
+                migrationCalendarError = nil
+            }
+        } message: {
+            Text(migrationCalendarError ?? "Something went wrong removing scheduled tasks from your calendar.")
+        }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(dynamicSecondaryBackgroundColor, for: .navigationBar)
@@ -174,93 +203,181 @@ struct MigrateTasksView: View {
         }
     }
 
-    private func processTaskSelections() {
+    private func defaultFutureDueDate() -> Date {
         let today = Calendar.current.startOfDay(for: Date())
+        return Calendar.current.date(byAdding: .day, value: 1, to: today) ?? Date()
+    }
 
-        for taskInReview in tasksToReview {
-            if selectedTasksToMigrate.contains(taskInReview.id) {
-                taskInReview.dueDate = today
-                taskInReview.origin = .today
-                taskInReview.isDone = false
-                taskInReview.completedAt = nil
-                print("Migrating task: \(taskInReview.title) to today. Subtask statuses preserved.")
-                
-                // Sync migration to Firebase if shared
-                if taskInReview.sharedTaskId != nil {
-                    firebaseManager.syncLocalTaskToSharedTask(localTask: taskInReview) { error in
-                        if let error = error {
-                            print("Failed to sync migrated task: \(error)")
-                        }
-                    }
+    private func finishMoveToMasterList(_ task: TodoItem) {
+        task.origin = .master
+        task.dueDate = defaultFutureDueDate()
+        print("Moving unselected TODAY task to Master List: \(task.title)")
+
+        if task.trelloCardId != nil {
+            Task { await TrelloTaskSyncService.pushEdit(for: task) }
+        }
+
+        if task.sharedTaskId != nil {
+            firebaseManager.syncLocalTaskToSharedTask(localTask: task) { error in
+                if let error = error {
+                    print("MigrateTasksView: Failed to sync moved task to shared task: \(error.localizedDescription)")
                 }
-            } else if taskInReview.origin == .today {
-                    print("Deleting unselected TODAY task: \(taskInReview.title)")
-                    
-                    // Mark as discarded in Firebase if shared
-                    if let sharedId = taskInReview.sharedTaskId {
-                        firebaseManager.markSharedTaskDiscarded(sharedTaskId: sharedId) { error in
+            }
+        }
+
+        if let userId = Auth.auth().currentUser?.uid {
+            let codableTask = TodoItemCodable(from: task, userId: userId)
+            firebaseManager.saveTodoItem(codableTask) { error in
+                if let error = error {
+                    print("MigrateTasksView: Failed to sync task move to Firebase: \(error.localizedDescription)")
+                } else {
+                    print("MigrateTasksView: Successfully synced task move to Firebase")
+                }
+            }
+        }
+    }
+
+    private func processTaskSelections(onComplete: @escaping () -> Void = {}) {
+        let today = Calendar.current.startOfDay(for: Date())
+        let tasksMovingToMaster = tasksToReview.filter {
+            !selectedTasksToMigrate.contains($0.id) && $0.origin == .today
+        }
+
+        isProcessingSelections = true
+
+        func applyTodaySelections() {
+            for taskInReview in tasksToReview {
+                if selectedTasksToMigrate.contains(taskInReview.id) {
+                    taskInReview.dueDate = today
+                    taskInReview.origin = .today
+                    taskInReview.isDone = false
+                    taskInReview.completedAt = nil
+                    print("Migrating task: \(taskInReview.title) to today. Subtask statuses preserved.")
+
+                    if taskInReview.sharedTaskId != nil {
+                        firebaseManager.syncLocalTaskToSharedTask(localTask: taskInReview) { error in
                             if let error = error {
-                                print("Failed to mark shared task as discarded: \(error.localizedDescription)")
-                            } else {
-                                print("✅ Marked shared task as discarded in Firebase")
+                                print("Failed to sync migrated task: \(error)")
                             }
                         }
                     }
-                    
-                    let taskId = taskInReview.localTaskId
-                    modelContext.delete(taskInReview)
-                    
-                    // Sync deletion to Firebase
-                    FirebaseManager.shared.deleteTodoItem(localTaskId: taskId) { error in
-                        if let error = error {
-                            print("MigrateTasksView: Failed to delete task from Firebase: \(error.localizedDescription)")
-                        } else {
-                            print("MigrateTasksView: Successfully deleted task from Firebase")
-                        }
-                    }
-                } else {
+                } else if taskInReview.origin != .today {
                     print("Keeping unselected MASTER task: \(taskInReview.title)")
                 }
             }
-        
+
+            do {
+                try modelContext.save()
+            } catch {
+                print("Error saving context after processing task selections: \(error.localizedDescription)")
+            }
+            isProcessingSelections = false
+            onComplete()
+        }
+
+        guard !tasksMovingToMaster.isEmpty else {
+            applyTodaySelections()
+            return
+        }
+
+        var remaining = tasksMovingToMaster
+        func detachNext() {
+            guard let task = remaining.first else {
+                applyTodaySelections()
+                return
+            }
+            remaining.removeFirst()
+
+            let hasCalendarLink = !(task.manualScheduleGoogleEventId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "").isEmpty
+            guard hasCalendarLink else {
+                finishMoveToMasterList(task)
+                detachNext()
+                return
+            }
+
+            ManualCalendarEventDeletionService.detachTaskFromManualScheduleWhenMovingToMaster(
+                task,
+                modelContext: modelContext,
+                firebaseManager: firebaseManager
+            ) { error in
+                DispatchQueue.main.async {
+                    if let error {
+                        migrationCalendarError = error.localizedDescription
+                        isProcessingSelections = false
+                        return
+                    }
+                    finishMoveToMasterList(task)
+                    detachNext()
+                }
+            }
+        }
+        detachNext()
+    }
+
+    private func deleteTask(_ item: TodoItem) {
+        selectedTasksToMigrate.remove(item.id)
+
+        if item.trelloCardId != nil {
+            Task { @MainActor in
+                await TrelloTaskSyncService.deleteRemoteCardIfNeeded(for: item)
+                deleteLocalTask(item)
+                saveAfterDelete()
+            }
+            return
+        }
+        deleteLocalTask(item)
+        saveAfterDelete()
+    }
+
+    private func deleteLocalTask(_ item: TodoItem) {
+        let taskId = item.localTaskId
+
+        if let sharedId = item.sharedTaskId {
+            if item.isDone {
+                firebaseManager.deleteSharedTask(sharedTaskId: sharedId) { error in
+                    if let error = error { print("Failed to delete shared task: \(error)") }
+                }
+            } else {
+                firebaseManager.markSharedTaskDiscarded(sharedTaskId: sharedId) { error in
+                    if let error = error { print("Failed to mark shared task as discarded: \(error)") }
+                }
+            }
+        }
+
+        modelContext.delete(item)
+
+        firebaseManager.deleteTodoItem(localTaskId: taskId) { error in
+            if let error = error {
+                print("MigrateTasksView: Failed to delete task from Firebase: \(error.localizedDescription)")
+            } else {
+                print("MigrateTasksView: Successfully deleted task from Firebase")
+            }
+        }
+    }
+
+    private func saveAfterDelete() {
         do {
             try modelContext.save()
         } catch {
-            print("Error saving context after processing task selections: \(error.localizedDescription)")
+            print("Error saving context after deleting task: \(error.localizedDescription)")
         }
     }
 
     private func deleteAllReviewedTasks() {
-        for task in tasksToReview {
-            print("Deleting task via 'Discard All': \(task.title)")
-            
-            // Mark as discarded in Firebase if shared
-            if let sharedId = task.sharedTaskId {
-                firebaseManager.markSharedTaskDiscarded(sharedTaskId: sharedId) { error in
-                    if let error = error {
-                        print("Failed to mark shared task '\(task.title)' as discarded: \(error.localizedDescription)")
-                    } else {
-                        print("✅ Marked shared task '\(task.title)' as discarded in Firebase")
-                    }
+        let tasks = tasksToReview
+        selectedTasksToMigrate.removeAll()
+        for task in tasks {
+            print("Deleting task via 'Delete All': \(task.title)")
+            if task.trelloCardId != nil {
+                Task { @MainActor in
+                    await TrelloTaskSyncService.deleteRemoteCardIfNeeded(for: task)
+                    deleteLocalTask(task)
+                    saveAfterDelete()
                 }
-            }
-            
-            let taskId = task.localTaskId
-            modelContext.delete(task)
-            
-            // Sync deletion to Firebase
-            FirebaseManager.shared.deleteTodoItem(localTaskId: taskId) { error in
-                if let error = error {
-                    print("MigrateTasksView: Failed to delete task '\(task.title)' from Firebase: \(error.localizedDescription)")
-                } else {
-                    print("MigrateTasksView: Successfully deleted task '\(task.title)' from Firebase")
-                }
+            } else {
+                deleteLocalTask(task)
             }
         }
-        do {
-            try modelContext.save()
-        } catch {
-            print("Error saving context after discarding all reviewed tasks: \(error.localizedDescription)")
-        }
+        saveAfterDelete()
     }
 }

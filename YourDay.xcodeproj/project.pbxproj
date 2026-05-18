@@ -135,6 +135,7 @@
 				ViewModels/Models/PendingPenalty.swift,
 				ViewModels/Models/ShieldSnapshot.swift,
 				ViewModels/Shared/AppGroupDefaults.swift,
+				ViewModels/Shared/ShieldTheme.swift,
 			);
 			target = C99859DE2F97EB93003B69E8 /* YourDayShieldConfiguration */;
 		};

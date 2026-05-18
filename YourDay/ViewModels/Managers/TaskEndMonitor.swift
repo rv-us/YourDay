@@ -17,6 +17,8 @@ class TaskEndMonitor: ObservableObject {
     
     private let firebaseManager = FirebaseManager.shared
     private var timer: Timer?
+    /// Events the user extended ("still working"); suppress prompts until this time.
+    private var deferredPromptUntil: [String: Date] = [:]
     
     private init() {
         startMonitoring()
@@ -82,6 +84,18 @@ class TaskEndMonitor: ObservableObject {
                     return
                 }
 
+                var stillActiveEventIds = Set<String>()
+                for eventData in events {
+                    if let eventId = eventData["eventId"] as? String,
+                       let endTimestamp = eventData["endTime"] as? Timestamp,
+                       endTimestamp.dateValue() > now {
+                        stillActiveEventIds.insert(eventId)
+                    }
+                }
+                if !stillActiveEventIds.isEmpty {
+                    self.pendingJournalEvents.removeAll { stillActiveEventIds.contains($0.eventId) }
+                }
+
                 var candidates: [PendingJournalEvent] = []
                 for eventData in events {
                     guard let eventId = eventData["eventId"] as? String,
@@ -100,6 +114,13 @@ class TaskEndMonitor: ObservableObject {
 
                     let scheduledStartTime = startTimestamp.dateValue()
                     let scheduledEndTime = endTimestamp.dateValue()
+
+                    if let deferredUntil = self.deferredPromptUntil[eventId] {
+                        if deferredUntil > now {
+                            continue
+                        }
+                        self.deferredPromptUntil.removeValue(forKey: eventId)
+                    }
 
                     // Only re-surface tasks scheduled for today whose end time
                     // has passed — ignore yesterday's and future events.
@@ -170,8 +191,22 @@ class TaskEndMonitor: ObservableObject {
     
     func markEventAsJournaled(eventId: String) {
         pendingJournalEvents.removeAll { $0.eventId == eventId }
+        deferredPromptUntil.removeValue(forKey: eventId)
         // Cancel notification for this event
         NotificationManager.shared.cancelJournalPromptNotification(eventId: eventId)
+    }
+
+    /// User chose "still working" and extended the session. Hide prompts and in-app
+    /// queue entries until `newEndTime`, then allow `checkForEndedTasks` to surface again.
+    func deferJournalPrompt(eventId: String, until newEndTime: Date) {
+        guard !eventId.isEmpty else { return }
+        deferredPromptUntil[eventId] = newEndTime
+        pendingJournalEvents.removeAll { $0.eventId == eventId }
+    }
+
+    func isJournalPromptDeferred(eventId: String) -> Bool {
+        guard let deferredUntil = deferredPromptUntil[eventId] else { return false }
+        return deferredUntil > Date()
     }
     
     // Force check on app activation

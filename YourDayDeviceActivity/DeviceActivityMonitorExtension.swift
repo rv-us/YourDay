@@ -109,9 +109,10 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
         logger.notice("DAMonitor reapplyShield[reason=\(reason, privacy: .public)] enabled=\(enabled, privacy: .public) hasSelectionData=\(hasData, privacy: .public)")
 
         guard enabled,
+              AppGroupDefaults.shouldApplyShieldBlocks(),
               let data = defaults.data(forKey: AppGroupDefaults.Key.familySelection),
               let selection = try? JSONDecoder().decode(FamilyActivitySelection.self, from: data) else {
-            logger.notice("DAMonitor reapplyShield: clearing shield (disabled or no selection)")
+            logger.notice("DAMonitor reapplyShield: clearing shield (disabled, day fulfilled, or no selection)")
             store.shield.applications = nil
             store.shield.applicationCategories = nil
             store.shield.webDomains = nil

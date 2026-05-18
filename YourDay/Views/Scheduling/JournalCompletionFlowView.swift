@@ -13,6 +13,7 @@ struct JournalCompletionFlowView: View {
     let pendingEvent: TaskEndMonitor.PendingJournalEvent
 
     @Environment(\.modelContext) private var modelContext
+    @Query(sort: [SortDescriptor(\TodoItem.position)]) private var allTodoItems: [TodoItem]
 
     @State private var step: FlowStep = .completion
 
@@ -69,7 +70,7 @@ struct JournalCompletionFlowView: View {
     }
 
     private var taskTitles: [String] {
-        pendingEvent.tasks.isEmpty ? [pendingEvent.taskTitle] : pendingEvent.tasks
+        JournalTaskProgressSync.scheduledTaskTitles(for: pendingEvent)
     }
 
     init(journalViewModel: JournalViewModel, pendingEvent: TaskEndMonitor.PendingJournalEvent) {
@@ -84,8 +85,12 @@ struct JournalCompletionFlowView: View {
         Calendar.current.date(byAdding: .minute, value: proposedDuration, to: proposedStartTime) ?? proposedStartTime
     }
 
+    private var extensionAnchor: Date {
+        max(Date(), pendingEvent.scheduledEndTime)
+    }
+
     private var extendedEndTime: Date {
-        Calendar.current.date(byAdding: .minute, value: extensionMinutes, to: pendingEvent.scheduledEndTime) ?? pendingEvent.scheduledEndTime
+        Calendar.current.date(byAdding: .minute, value: extensionMinutes, to: extensionAnchor) ?? extensionAnchor
     }
 
     var body: some View {
@@ -115,6 +120,11 @@ struct JournalCompletionFlowView: View {
             if step == .reschedule {
                 refreshCalendarIfNeeded(for: newValue)
             }
+        }
+        .onChange(of: journalViewModel.isLoading) { _, isLoading in
+            guard !isLoading else { return }
+            isSavingGreen = false
+            isSavingPartial = false
         }
     }
 
@@ -862,6 +872,7 @@ struct JournalCompletionFlowView: View {
         let newEnd = extendedEndTime
         let originalEventId = pendingEvent.eventId
         let originalStart = pendingEvent.scheduledStartTime
+        let eventDescription = scheduledTaskDescription(for: taskTitles)
 
         calendarManager.ensureCalendarWriteAccess { accessResult in
             DispatchQueue.main.async {
@@ -874,7 +885,8 @@ struct JournalCompletionFlowView: View {
                         eventId: originalEventId,
                         title: self.pendingEvent.taskTitle,
                         start: originalStart,
-                        end: newEnd
+                        end: newEnd,
+                        description: eventDescription
                     ) { _, error in
                         DispatchQueue.main.async {
                             self.isExtending = false
@@ -904,7 +916,7 @@ struct JournalCompletionFlowView: View {
                                 taskTitle: self.pendingEvent.taskTitle,
                                 scheduledEndTime: newEnd
                             )
-                            self.journalViewModel.dismissJournalPromptForExtension()
+                            self.journalViewModel.dismissJournalPromptForExtension(extendedUntil: newEnd)
                         }
                     }
                 }
@@ -912,7 +924,17 @@ struct JournalCompletionFlowView: View {
         }
     }
 
+    private func scheduledTaskDescription(for tasks: [String]) -> String {
+        let taskLines = tasks.map { "• \($0)" }.joined(separator: "\n")
+        let scheduledTaskMarker = "\n\n[YourDay Scheduled Task]"
+        if taskLines.isEmpty {
+            return "Tasks:\n• \(pendingEvent.taskTitle)\(scheduledTaskMarker)"
+        }
+        return "Tasks:\n\(taskLines)\(scheduledTaskMarker)"
+    }
+
     private func saveGreenEntry() {
+        guard !isSavingGreen else { return }
         isSavingGreen = true
         journalViewModel.saveJournalEntry(
             eventId: pendingEvent.eventId,
@@ -925,9 +947,19 @@ struct JournalCompletionFlowView: View {
             howWent: nil,
             learned: nil,
             distractions: nil,
-            completionStatus: .completed
+            completionStatus: .completed,
+            onSaveSuccess: {
+                JournalTaskProgressSync.markAllMatchedCompleted(
+                    in: allTodoItems,
+                    for: pendingEvent,
+                    completionTime: Date(),
+                    modelContext: modelContext,
+                    firebaseManager: firebaseManager,
+                    logPrefix: "JournalCompletionFlowView"
+                )
+                isSavingGreen = false
+            }
         )
-        isSavingGreen = false
     }
 
     private func buildPartialWhatDid() -> String {
@@ -944,6 +976,9 @@ struct JournalCompletionFlowView: View {
     }
 
     private func savePartialEntry() {
+        guard !isSavingPartial else { return }
+        isSavingPartial = true
+        let completedTitles = completedTaskTitles()
         journalViewModel.saveJournalEntry(
             eventId: pendingEvent.eventId,
             taskTitle: pendingEvent.taskTitle,
@@ -956,7 +991,11 @@ struct JournalCompletionFlowView: View {
                 ? nil : partialWhatLeft,
             learned: nil,
             distractions: nil,
-            completionStatus: .partial
+            completionStatus: .partial,
+            onSaveSuccess: {
+                applyPartialCompletion(completedTitles: completedTitles)
+                isSavingPartial = false
+            }
         )
     }
 
@@ -1020,6 +1059,7 @@ struct JournalCompletionFlowView: View {
 
                     // If we came from "Save & Reschedule" in the partial flow, save the journal entry
                     if self.hasPendingPartialSave {
+                        let completedTitles = self.completedTaskTitles()
                         self.journalViewModel.saveJournalEntry(
                             eventId: originalEventId,
                             taskTitle: self.pendingEvent.taskTitle,
@@ -1031,7 +1071,10 @@ struct JournalCompletionFlowView: View {
                             howWent: self.pendingPartialWhatLeft.isEmpty ? nil : self.pendingPartialWhatLeft,
                             learned: nil,
                             distractions: nil,
-                            completionStatus: .partial
+                            completionStatus: .partial,
+                            onSaveSuccess: {
+                                self.applyPartialCompletion(completedTitles: completedTitles)
+                            }
                         )
                     }
 
@@ -1107,6 +1150,25 @@ struct JournalCompletionFlowView: View {
                 }
             }
         }
+    }
+
+    private func completedTaskTitles() -> [String] {
+        completedTaskIndices.sorted().compactMap { index in
+            guard taskTitles.indices.contains(index) else { return nil }
+            return taskTitles[index]
+        }
+    }
+
+    private func applyPartialCompletion(completedTitles: [String]) {
+        JournalTaskProgressSync.applyPartialCompletion(
+            in: allTodoItems,
+            for: pendingEvent,
+            completedTitles: completedTitles,
+            completionTime: Date(),
+            modelContext: modelContext,
+            firebaseManager: firebaseManager,
+            logPrefix: "JournalCompletionFlowView"
+        )
     }
 
     private func buildSessionTitle(for tasks: [String]) -> String {

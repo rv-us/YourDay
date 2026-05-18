@@ -29,6 +29,8 @@ struct Todoview: View {
     @State private var pendingProofFromList: TaskProofCaptureContext?
     @State private var pendingMasterMoveTask: TodoItem?
     @State private var pendingMasterMoveDueDate = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: Date())) ?? Date()
+    @State private var masterMoveCalendarError: String?
+    @State private var isDetachingMasterMoveSchedule = false
 
     enum TaskListFilter {
         case today
@@ -565,25 +567,56 @@ struct Todoview: View {
     }
 
     private func applyMoveToOtherList(_ item: TodoItem, newDueDate: Date? = nil) {
-        if let newDueDate {
-            item.dueDate = newDueDate
-        }
-        item.origin = selectedFilter == .today ? .master : .today
-        try? context.save()
+        let movingToMaster = selectedFilter == .today
 
-        if item.trelloCardId != nil {
-            Task { await TrelloTaskSyncService.pushEdit(for: item) }
-        }
-        
-        // Sync origin change to Firebase
-        if let userId = FirebaseAuth.Auth.auth().currentUser?.uid {
-            let codableTask = TodoItemCodable(from: item, userId: userId)
-            FirebaseManager.shared.saveTodoItem(codableTask) { error in
-                if let error = error {
-                    print("Todoview: Failed to sync task move to Firebase: \(error.localizedDescription)")
-                } else {
-                    print("Todoview: Successfully synced task move to Firebase")
+        func finishListMove() {
+            if let newDueDate {
+                item.dueDate = newDueDate
+            }
+            item.origin = movingToMaster ? .master : .today
+            try? context.save()
+
+            if item.trelloCardId != nil {
+                Task { await TrelloTaskSyncService.pushEdit(for: item) }
+            }
+
+            if let userId = FirebaseAuth.Auth.auth().currentUser?.uid {
+                let codableTask = TodoItemCodable(from: item, userId: userId)
+                FirebaseManager.shared.saveTodoItem(codableTask) { error in
+                    if let error = error {
+                        print("Todoview: Failed to sync task move to Firebase: \(error.localizedDescription)")
+                    } else {
+                        print("Todoview: Successfully synced task move to Firebase")
+                    }
                 }
+            }
+            ScreenTimeManager.shared.scheduleSnapshotRefresh(context: context)
+        }
+
+        guard movingToMaster else {
+            finishListMove()
+            return
+        }
+
+        let hasCalendarLink = !(item.manualScheduleGoogleEventId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "").isEmpty
+        guard hasCalendarLink else {
+            finishListMove()
+            return
+        }
+
+        isDetachingMasterMoveSchedule = true
+        ManualCalendarEventDeletionService.detachTaskFromManualScheduleWhenMovingToMaster(
+            item,
+            modelContext: context,
+            firebaseManager: FirebaseManager.shared
+        ) { error in
+            DispatchQueue.main.async {
+                isDetachingMasterMoveSchedule = false
+                if let error {
+                    masterMoveCalendarError = error.localizedDescription
+                    return
+                }
+                finishListMove()
             }
         }
     }
@@ -653,7 +686,18 @@ struct Todoview: View {
                 }
             }
         }
-        .navigationViewStyle(.stack)
+            .navigationViewStyle(.stack)
+            .disabled(isDetachingMasterMoveSchedule)
+            .alert("Could Not Update Calendar", isPresented: Binding(
+                get: { masterMoveCalendarError != nil },
+                set: { if !$0 { masterMoveCalendarError = nil } }
+            )) {
+                Button("OK", role: .cancel) {
+                    masterMoveCalendarError = nil
+                }
+            } message: {
+                Text(masterMoveCalendarError ?? "Something went wrong removing this task from your schedule.")
+            }
     }
 
     private func applyProofPostId(_ postId: String, localTaskId: String?) {

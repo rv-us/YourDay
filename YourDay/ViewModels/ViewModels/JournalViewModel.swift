@@ -398,7 +398,11 @@ class JournalViewModel: ObservableObject {
     /// Dismiss the current journal prompt because the user extended the session.
     /// Does NOT mark the event as journaled or prompt-handled so that TaskEndMonitor
     /// will surface it again once the new (extended) scheduledEndTime passes.
-    func dismissJournalPromptForExtension() {
+    func dismissJournalPromptForExtension(extendedUntil newEndTime: Date) {
+        if let event = pendingJournalPrompt, !event.eventId.isEmpty {
+            taskEndMonitor.deferJournalPrompt(eventId: event.eventId, until: newEndTime)
+            pendingJournalQueue.removeAll { $0.eventId == event.eventId }
+        }
         showingJournalPrompt = false
         pendingJournalPrompt = nil
         showNextPendingPrompt()
@@ -415,6 +419,9 @@ class JournalViewModel: ObservableObject {
     // Method to show prompt for a specific event (used when notification is tapped)
     func showPromptForEvent(eventId: String) {
         guard !eventId.isEmpty else { return }
+        if taskEndMonitor.isJournalPromptDeferred(eventId: eventId) {
+            return
+        }
         if showingTaskProofCapture {
             if let monitorEvent = taskEndMonitor.pendingJournalEvents.first(where: { $0.eventId == eventId }) {
                 enqueueEventIfNeeded(monitorEvent, prioritize: true)

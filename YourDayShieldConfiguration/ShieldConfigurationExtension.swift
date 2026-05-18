@@ -40,27 +40,19 @@ final class ShieldConfigurationExtension: ShieldConfigurationDataSource {
         let displayApp = appName ?? "this app"
         logger.notice("makeConfiguration start appName=\(displayApp, privacy: .public) penaltyAmount=\(penaltyAmount)")
 
-        let icon: UIImage? = UIImage(systemName: "checklist.checked")
-        let background = UIColor(red: 0.95, green: 0.98, blue: 0.96, alpha: 1.0)
-
         guard let snapshot, snapshot.dayKey == ShieldSnapshot.dayKey() else {
             logger.notice("snapshot missing or stale -> unplannedConfiguration")
-            return unplannedConfiguration(
-                icon: icon,
-                background: background,
-                penaltyAmount: penaltyAmount,
-                appName: displayApp
-            )
+            return unplannedConfiguration(penaltyAmount: penaltyAmount, appName: displayApp)
+        }
+
+        if !snapshot.shouldBlockApps {
+            logger.notice("shouldBlockApps=false -> dayCompleteConfiguration")
+            return dayCompleteConfiguration(appName: displayApp)
         }
 
         if !snapshot.hasPlannedDay {
             logger.notice("no planned day -> unplannedConfiguration")
-            return unplannedConfiguration(
-                icon: icon,
-                background: background,
-                penaltyAmount: penaltyAmount,
-                appName: displayApp
-            )
+            return unplannedConfiguration(penaltyAmount: penaltyAmount, appName: displayApp)
         }
 
         let now = Date()
@@ -76,279 +68,174 @@ final class ShieldConfigurationExtension: ShieldConfigurationDataSource {
         let activeTasks = snapshot.activeTasks()
         if activeTasks.count > 1 {
             logger.notice("multiple active tasks -> multipleFocusConfiguration count=\(activeTasks.count, privacy: .public)")
-            return multipleFocusConfiguration(
-                background: background,
-                penaltyAmount: penaltyAmount,
-                tasks: activeTasks
-            )
+            return multipleFocusConfiguration(penaltyAmount: penaltyAmount, tasks: activeTasks, now: now)
         } else if let active = activeTasks.first {
             logger.notice("active task found -> focusWindowConfiguration task=\(active.title, privacy: .public)")
-            return focusWindowConfiguration(
-                icon: icon,
-                background: background,
-                penaltyAmount: penaltyAmount,
-                task: active
-            )
+            return focusWindowConfiguration(penaltyAmount: penaltyAmount, task: active, now: now)
         }
 
         logger.notice("planned day but no active task -> freeWindowConfiguration openCount=\(snapshot.openTaskTitles.count)")
-        return freeWindowConfiguration(
-            icon: icon,
-            background: background,
-            snapshot: snapshot,
-            appName: displayApp
-        )
+        return freeWindowConfiguration(snapshot: snapshot, appName: displayApp)
     }
 
-    private func unplannedConfiguration(
+    private func baseShield(
         icon: UIImage?,
-        background: UIColor,
-        penaltyAmount: Int,
-        appName: String
+        title: String,
+        subtitle: String,
+        primaryLabel: String,
+        incursPenalty: Bool,
+        secondaryLabel: String = "Close"
     ) -> ShieldConfiguration {
         ShieldConfiguration(
             backgroundBlurStyle: .systemThinMaterialLight,
-            backgroundColor: background,
+            backgroundColor: ShieldTheme.background,
             icon: icon,
-            title: ShieldConfiguration.Label(
-                text: "Plan your day first",
-                color: UIColor(red: 0.1, green: 0.26, blue: 0.2, alpha: 1.0)
-            ),
-            subtitle: ShieldConfiguration.Label(
-                text: "Open YourDay and schedule at least one task before opening \(appName).",
-                color: UIColor(red: 0.22, green: 0.34, blue: 0.28, alpha: 1.0)
-            ),
-            primaryButtonLabel: ShieldConfiguration.Label(
-                text: "Skip anyway (-\(penaltyAmount) pts)",
-                color: .white
-            ),
-            primaryButtonBackgroundColor: primaryButtonColor(incursPenalty: true),
-            secondaryButtonLabel: ShieldConfiguration.Label(
-                text: "Close",
-                color: UIColor(red: 0.17, green: 0.53, blue: 0.38, alpha: 1.0)
-            )
+            title: ShieldConfiguration.Label(text: title, color: ShieldTheme.text),
+            subtitle: ShieldConfiguration.Label(text: subtitle, color: ShieldTheme.secondaryText),
+            primaryButtonLabel: ShieldConfiguration.Label(text: primaryLabel, color: .white),
+            primaryButtonBackgroundColor: incursPenalty ? ShieldTheme.destructive : ShieldTheme.primary,
+            secondaryButtonLabel: ShieldConfiguration.Label(text: secondaryLabel, color: ShieldTheme.primary)
+        )
+    }
+
+    /// Screen Time only supports a centered `icon` image; keep copy inside the artwork
+    /// and hide system title/subtitle so the task text is not duplicated.
+    private func baseShieldArtwork(
+        icon: UIImage,
+        primaryLabel: String,
+        incursPenalty: Bool,
+        secondaryLabel: String = "Close"
+    ) -> ShieldConfiguration {
+        ShieldConfiguration(
+            backgroundBlurStyle: .systemThinMaterialLight,
+            backgroundColor: ShieldTheme.background,
+            icon: icon,
+            title: nil,
+            subtitle: nil,
+            primaryButtonLabel: ShieldConfiguration.Label(text: primaryLabel, color: .white),
+            primaryButtonBackgroundColor: incursPenalty ? ShieldTheme.destructive : ShieldTheme.primary,
+            secondaryButtonLabel: ShieldConfiguration.Label(text: secondaryLabel, color: ShieldTheme.primary)
+        )
+    }
+
+    /// Shown only if a shield is briefly visible before the main app clears blocks.
+    private func dayCompleteConfiguration(appName: String) -> ShieldConfiguration {
+        baseShield(
+            icon: UIImage(systemName: "checkmark.circle.fill"),
+            title: "You're done for today",
+            subtitle: "YourDay isn't blocking \(appName) anymore. Enjoy your break.",
+            primaryLabel: "Close",
+            incursPenalty: false
+        )
+    }
+
+    private func unplannedConfiguration(penaltyAmount: Int, appName: String) -> ShieldConfiguration {
+        let icon = ShieldArtwork.emptyTodayIllustration()
+        return baseShield(
+            icon: icon,
+            title: "Plan your day first",
+            subtitle: "Open YourDay and add at least one task to Today before opening \(appName).",
+            primaryLabel: "Skip anyway (-\(penaltyAmount) pts)",
+            incursPenalty: true
         )
     }
 
     private func focusWindowConfiguration(
-        icon: UIImage?,
-        background: UIColor,
         penaltyAmount: Int,
-        task: ScheduledTaskBrief
+        task: ScheduledTaskBrief,
+        now: Date
     ) -> ShieldConfiguration {
-        let now = Date()
-        let pomodoroRemaining = pomodoroClockString(end: task.endTime, now: now) ?? "--:--"
-        logger.notice("focusWindowConfiguration task=\(task.title, privacy: .public) remaining=\(pomodoroRemaining, privacy: .public)")
+        let remaining = pomodoroClockString(end: task.endTime, now: now) ?? "--:--"
+        logger.notice("focusWindowConfiguration task=\(task.title, privacy: .public) remaining=\(remaining, privacy: .public)")
 
-        let ringIcon = pomodoroRingImage(
+        let icon = ShieldArtwork.pomodoroRingImage(
             start: task.startTime,
             end: task.endTime,
             now: now
-        ) ?? UIImage(systemName: "timer") ?? icon
-
-        return ShieldConfiguration(
-            backgroundBlurStyle: .systemThinMaterialLight,
-            backgroundColor: background,
-            icon: ringIcon,
-            title: ShieldConfiguration.Label(
-                text: "\(task.title)",
-                color: UIColor(red: 0.1, green: 0.26, blue: 0.2, alpha: 1.0)
-            ),
-            subtitle: ShieldConfiguration.Label(
-                text: "⏱ \(pomodoroRemaining) left in this focus block",
-                color: UIColor(red: 0.22, green: 0.34, blue: 0.28, alpha: 1.0)
-            ),
-            primaryButtonLabel: ShieldConfiguration.Label(
-                text: "Break focus (-\(penaltyAmount) pts)",
-                color: .white
-            ),
-            primaryButtonBackgroundColor: primaryButtonColor(incursPenalty: true),
-            secondaryButtonLabel: ShieldConfiguration.Label(
-                text: "Close",
-                color: UIColor(red: 0.17, green: 0.53, blue: 0.38, alpha: 1.0)
-            )
+        )
+        return baseShield(
+            icon: icon,
+            title: task.title,
+            subtitle: "⏱ \(remaining) left in this focus block",
+            primaryLabel: "Break focus (-\(penaltyAmount) pts)",
+            incursPenalty: true
         )
     }
 
-    private func freeWindowConfiguration(
-        icon: UIImage?,
-        background: UIColor,
-        snapshot: ShieldSnapshot,
-        appName: String
-    ) -> ShieldConfiguration {
-        let openTitles = Array(snapshot.openTaskTitles.prefix(5))
-        let bullets = openTitles.map { "• \($0)" }.joined(separator: "\n")
-        let doneLine = "\(snapshot.completedCount) of \(snapshot.totalScheduledCount) done today"
+    private func freeWindowConfiguration(snapshot: ShieldSnapshot, appName: String) -> ShieldConfiguration {
+        let now = Date()
+        let openTasks = sortedOpenTodayTasks(from: snapshot)
+        let previewTasks = Array(openTasks.prefix(3))
+
+        let icon = ShieldArtwork.taskListPreview(
+            tasks: previewTasks,
+            sectionTitle: "Today",
+            sectionDotColor: ShieldTheme.mintAccent,
+            trailingAccessory: .progress(done: snapshot.completedCount, total: snapshot.totalScheduledCount),
+            showScheduleStatus: true,
+            now: now
+        )
+
         let subtitle: String
-        if bullets.isEmpty {
-            subtitle = "All scheduled tasks are done. \(doneLine)."
+        if openTasks.isEmpty {
+            subtitle = "All tasks for today are done. Nice work — \(appName) can wait."
         } else {
-            subtitle = "\(bullets)\n\n\(doneLine)."
+            let lines = openTasks.prefix(4).map { task in
+                "• \(task.title) — \(ShieldArtwork.scheduleStatusLine(for: task, now: now))"
+            }.joined(separator: "\n")
+            var body = "You're between focus blocks. Finish what's on Today before opening \(appName).\n\n\(lines)"
+            if openTasks.count > 4 {
+                body += "\n\n+\(openTasks.count - 4) more not shown."
+            }
+            subtitle = body
         }
 
-        return ShieldConfiguration(
-            backgroundBlurStyle: .systemThinMaterialLight,
-            backgroundColor: background,
+        return baseShield(
             icon: icon,
-            title: ShieldConfiguration.Label(
-                text: "Before you scroll…",
-                color: UIColor(red: 0.1, green: 0.26, blue: 0.2, alpha: 1.0)
-            ),
-            subtitle: ShieldConfiguration.Label(
-                text: subtitle,
-                color: UIColor(red: 0.22, green: 0.34, blue: 0.28, alpha: 1.0)
-            ),
-            primaryButtonLabel: ShieldConfiguration.Label(
-                text: "Continue anyway",
-                color: .white
-            ),
-            primaryButtonBackgroundColor: primaryButtonColor(incursPenalty: false),
-            secondaryButtonLabel: ShieldConfiguration.Label(
-                text: "Close",
-                color: UIColor(red: 0.17, green: 0.53, blue: 0.38, alpha: 1.0)
-            )
+            title: "Before you scroll…",
+            subtitle: subtitle,
+            primaryLabel: "Continue anyway",
+            incursPenalty: false
         )
+    }
+
+    private func sortedOpenTodayTasks(from snapshot: ShieldSnapshot) -> [ScheduledTaskBrief] {
+        snapshot.openTodayTasks.sorted { lhs, rhs in
+            switch (lhs.isCalendarScheduled, rhs.isCalendarScheduled) {
+            case (true, false):
+                return true
+            case (false, true):
+                return false
+            case (true, true):
+                let leftStart = lhs.startTime ?? .distantFuture
+                let rightStart = rhs.startTime ?? .distantFuture
+                if leftStart != rightStart { return leftStart < rightStart }
+                return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+            case (false, false):
+                return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+            }
+        }
     }
 
     private func multipleFocusConfiguration(
-        background: UIColor,
         penaltyAmount: Int,
-        tasks: [ScheduledTaskBrief]
+        tasks: [ScheduledTaskBrief],
+        now: Date
     ) -> ShieldConfiguration {
-        let now = Date()
+        let icon = ShieldArtwork.multipleRingImage(tasks: Array(tasks.prefix(3)), now: now)
+
         let taskLines = tasks.prefix(4).map { task -> String in
             let remaining = pomodoroClockString(end: task.endTime, now: now) ?? "--:--"
             return "• \(task.title) (\(remaining) left)"
         }.joined(separator: "\n")
 
-        let ringIcon = multipleRingImage(tasks: Array(tasks.prefix(3)), now: now)
-
-        return ShieldConfiguration(
-            backgroundBlurStyle: .systemThinMaterialLight,
-            backgroundColor: background,
-            icon: ringIcon,
-            title: ShieldConfiguration.Label(
-                text: "\(tasks.count) Overlapping Focus Blocks",
-                color: UIColor(red: 0.1, green: 0.26, blue: 0.2, alpha: 1.0)
-            ),
-            subtitle: ShieldConfiguration.Label(
-                text: taskLines,
-                color: UIColor(red: 0.22, green: 0.34, blue: 0.28, alpha: 1.0)
-            ),
-            primaryButtonLabel: ShieldConfiguration.Label(
-                text: "Break focus (-\(penaltyAmount) pts)",
-                color: .white
-            ),
-            primaryButtonBackgroundColor: primaryButtonColor(incursPenalty: true),
-            secondaryButtonLabel: ShieldConfiguration.Label(
-                text: "Close",
-                color: UIColor(red: 0.17, green: 0.53, blue: 0.38, alpha: 1.0)
-            )
+        return baseShield(
+            icon: icon,
+            title: "\(tasks.count) Overlapping Focus Blocks",
+            subtitle: taskLines,
+            primaryLabel: "Break focus (-\(penaltyAmount) pts)",
+            incursPenalty: true
         )
-    }
-
-    private func primaryButtonColor(incursPenalty: Bool) -> UIColor {
-        if incursPenalty {
-            return UIColor(red: 0.87, green: 0.24, blue: 0.26, alpha: 1.0)
-        }
-        return UIColor(red: 0.22, green: 0.69, blue: 0.47, alpha: 1.0)
-    }
-
-    private func pomodoroRingImage(
-        start: Date?,
-        end: Date?,
-        now: Date,
-        size: CGFloat = 160,
-        lineWidth: CGFloat = 14
-    ) -> UIImage? {
-        guard let start, let end, end > start else { return nil }
-        let total = end.timeIntervalSince(start)
-        let elapsed = max(0, min(total, now.timeIntervalSince(start)))
-        let remainingFraction = CGFloat(max(0, min(1, 1 - elapsed / total)))
-
-        let canvas = CGSize(width: size, height: size)
-        let renderer = UIGraphicsImageRenderer(size: canvas)
-        let image = renderer.image { ctx in
-            let cg = ctx.cgContext
-            let center = CGPoint(x: size / 2, y: size / 2)
-            let radius = (size - lineWidth) / 2
-
-            let trackColor = UIColor(red: 0.80, green: 0.92, blue: 0.86, alpha: 1.0)
-            let progressColor = UIColor(red: 0.17, green: 0.53, blue: 0.38, alpha: 1.0)
-
-            cg.setLineWidth(lineWidth)
-            cg.setStrokeColor(trackColor.cgColor)
-            cg.addArc(center: center, radius: radius, startAngle: 0, endAngle: .pi * 2, clockwise: false)
-            cg.strokePath()
-
-            cg.setLineCap(.round)
-            cg.setStrokeColor(progressColor.cgColor)
-            let startAngle: CGFloat = -.pi / 2
-            let endAngle = startAngle + .pi * 2 * remainingFraction
-            cg.addArc(
-                center: center,
-                radius: radius,
-                startAngle: startAngle,
-                endAngle: endAngle,
-                clockwise: false
-            )
-            cg.strokePath()
-        }
-        return image.withRenderingMode(.alwaysOriginal)
-    }
-
-    private func multipleRingImage(
-        tasks: [ScheduledTaskBrief],
-        now: Date,
-        size: CGFloat = 160
-    ) -> UIImage? {
-        guard !tasks.isEmpty else { return nil }
-        let lineWidth: CGFloat = 11
-        let ringSpacing: CGFloat = 4
-        let canvas = CGSize(width: size, height: size)
-        let renderer = UIGraphicsImageRenderer(size: canvas)
-
-        let progressColors: [UIColor] = [
-            UIColor(red: 0.17, green: 0.53, blue: 0.38, alpha: 1.0),
-            UIColor(red: 0.24, green: 0.60, blue: 0.78, alpha: 1.0),
-            UIColor(red: 0.82, green: 0.55, blue: 0.18, alpha: 1.0),
-        ]
-        let trackColor = UIColor(red: 0.80, green: 0.92, blue: 0.86, alpha: 1.0)
-
-        let image = renderer.image { ctx in
-            let cg = ctx.cgContext
-            let center = CGPoint(x: size / 2, y: size / 2)
-
-            for (i, task) in tasks.enumerated() {
-                let radius = (size - lineWidth) / 2 - CGFloat(i) * (lineWidth + ringSpacing)
-                guard radius > lineWidth / 2 else { continue }
-
-                let remainingFraction: CGFloat
-                if let start = task.startTime, let end = task.endTime, end > start {
-                    let total = end.timeIntervalSince(start)
-                    let elapsed = max(0, min(total, now.timeIntervalSince(start)))
-                    remainingFraction = CGFloat(max(0, min(1, 1 - elapsed / total)))
-                } else {
-                    remainingFraction = 0
-                }
-
-                let progressColor = i < progressColors.count ? progressColors[i] : progressColors.last!
-
-                cg.setLineWidth(lineWidth)
-                cg.setStrokeColor(trackColor.cgColor)
-                cg.addArc(center: center, radius: radius, startAngle: 0, endAngle: .pi * 2, clockwise: false)
-                cg.strokePath()
-
-                guard remainingFraction > 0 else { continue }
-                cg.setLineCap(.round)
-                cg.setStrokeColor(progressColor.cgColor)
-                let startAngle: CGFloat = -.pi / 2
-                let endAngle = startAngle + .pi * 2 * remainingFraction
-                cg.addArc(center: center, radius: radius, startAngle: startAngle, endAngle: endAngle, clockwise: false)
-                cg.strokePath()
-            }
-        }
-        return image.withRenderingMode(.alwaysOriginal)
     }
 
     private func pomodoroClockString(end: Date?, now: Date) -> String? {

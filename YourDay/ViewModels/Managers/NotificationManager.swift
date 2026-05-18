@@ -301,13 +301,13 @@ final class NotificationManager: NSObject, ObservableObject, UNUserNotificationC
         center.removePendingNotificationRequests(withIdentifiers: [identifier])
         center.removeDeliveredNotifications(withIdentifiers: [identifier])
 
-        let trigger: UNNotificationTrigger?
-        if scheduledEndTime > Date() {
-            let components = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute, .second], from: scheduledEndTime)
-            trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
-        } else {
-            trigger = nil
+        guard scheduledEndTime > Date() else {
+            print("NotificationManager: Skipping journal prompt notification for \(eventId) — end time is not in the future")
+            return
         }
+
+        let components = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute, .second], from: scheduledEndTime)
+        let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
 
         let request = UNNotificationRequest(
             identifier: identifier,

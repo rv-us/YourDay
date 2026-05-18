@@ -162,6 +162,7 @@ final class ScreenTimeManager: ObservableObject {
 
         guard isEnabled,
               authorizationStatus == .approved,
+              AppGroupDefaults.shouldApplyShieldBlocks(),
               !(selection.applicationTokens.isEmpty
                 && selection.categoryTokens.isEmpty
                 && selection.webDomainTokens.isEmpty) else {
@@ -241,28 +242,45 @@ final class ScreenTimeManager: ObservableObject {
         let descriptor = FetchDescriptor<TodoItem>()
         let items = (try? context.fetch(descriptor)) ?? []
         let todayListItems = items.filter { $0.origin == .today }
-        let scheduled = todayListItems.filter { $0.manualScheduleGoogleEventId != nil }
+        let calendarScheduled = todayListItems.filter { $0.manualScheduleGoogleEventId != nil }
 
         let isoFormatter = ISO8601DateFormatter()
         isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        print("ScreenTimeManager: snapshot build todayCount=\(todayListItems.count) scheduledCount=\(scheduled.count)")
-        for (idx, item) in scheduled.enumerated() {
+        print("ScreenTimeManager: snapshot build todayCount=\(todayListItems.count) calendarScheduledCount=\(calendarScheduled.count)")
+        for (idx, item) in todayListItems.enumerated() {
             let startStr = item.scheduledStartTime.map { isoFormatter.string(from: $0) } ?? "nil"
             let endStr = item.scheduledEndTime.map { isoFormatter.string(from: $0) } ?? "nil"
             let evt = item.manualScheduleGoogleEventId ?? "nil"
             print("ScreenTimeManager: task[\(idx)] title=\(item.title) isDone=\(item.isDone) start=\(startStr) end=\(endStr) evt=\(evt)")
         }
 
-        let briefs: [ScheduledTaskBrief] = scheduled.map {
-            ScheduledTaskBrief(
-                title: $0.title,
-                startTime: $0.scheduledStartTime,
-                endTime: $0.scheduledEndTime,
-                isDone: $0.isDone
+        let briefs: [ScheduledTaskBrief] = todayListItems.map { item in
+            let onCalendar = item.manualScheduleGoogleEventId != nil
+            return ScheduledTaskBrief(
+                title: item.title,
+                startTime: onCalendar ? item.scheduledStartTime : nil,
+                endTime: onCalendar ? item.scheduledEndTime : nil,
+                isDone: item.isDone,
+                isCalendarScheduled: onCalendar
             )
         }
-        let completedCount = scheduled.filter { $0.isDone }.count
-        let hasPlanned = scheduled.contains { !$0.isDone }
+        let completedCount = todayListItems.filter { $0.isDone }.count
+        let openCount = todayListItems.count - completedCount
+        let hasPlanned = openCount > 0
+        let dayKey = ShieldSnapshot.dayKey()
+
+        if openCount == 0, completedCount > 0 || !todayListItems.isEmpty {
+            AppGroupDefaults.markTodayPlanningFulfilled(dayKey: dayKey)
+        }
+
+        let shouldBlockApps: Bool
+        if openCount > 0 {
+            shouldBlockApps = true
+        } else if completedCount > 0 || !todayListItems.isEmpty {
+            shouldBlockApps = false
+        } else {
+            shouldBlockApps = !AppGroupDefaults.isTodayPlanningFulfilled(dayKey: dayKey)
+        }
 
         let statsDescriptor = FetchDescriptor<PlayerStats>()
         let playerStats = (try? context.fetch(statsDescriptor))?.first
@@ -270,14 +288,26 @@ final class ScreenTimeManager: ObservableObject {
         let penalty = max(100, Int((gardenValue * 0.10).rounded(.down)))
 
         let snapshot = ShieldSnapshot(
-            dayKey: ShieldSnapshot.dayKey(),
+            dayKey: dayKey,
             hasPlannedDay: hasPlanned,
+            shouldBlockApps: shouldBlockApps,
             scheduledTasks: briefs,
             completedCount: completedCount,
-            totalScheduledCount: scheduled.count,
+            totalScheduledCount: todayListItems.count,
             penaltyAmount: penalty,
             updatedAt: Date()
         )
         AppGroupDefaults.saveSnapshot(snapshot)
+        AppGroupDefaults.flush()
+
+        if isEnabled, authorizationStatus == .approved {
+            if shouldBlockApps {
+                applyShieldIfNeeded()
+            } else {
+                logger.notice("ScreenTimeManager: today planning fulfilled — clearing shield")
+                clearShield()
+                endBreakFocusUnblockTracking()
+            }
+        }
     }
 }

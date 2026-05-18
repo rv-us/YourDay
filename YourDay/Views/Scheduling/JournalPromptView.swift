@@ -42,10 +42,7 @@ struct JournalPromptView: View {
         case rescheduleLaterToday
     }
 
-    private struct SubtaskSelectionKey: Hashable {
-        let taskId: String
-        let subtaskId: UUID
-    }
+    private typealias SubtaskSelectionKey = JournalTaskProgressSync.SubtaskSelectionKey
 
     enum Field {
         case whatDid, whatRemains, howWent, learned, distractions
@@ -97,19 +94,11 @@ struct JournalPromptView: View {
     }
 
     private var scheduledTaskTitles: [String] {
-        var titles = pendingEvent.tasks.isEmpty ? [pendingEvent.taskTitle] : pendingEvent.tasks
-        if !titles.contains(pendingEvent.taskTitle) {
-            titles.append(pendingEvent.taskTitle)
-        }
-        return titles
+        JournalTaskProgressSync.scheduledTaskTitles(for: pendingEvent)
     }
 
     private var matchedTaskIndices: [Int] {
-        let normalizedScheduledTitles = Set(scheduledTaskTitles.map(normalizedTitle))
-        return allTodoItems.indices.filter { index in
-            let itemTitle = normalizedTitle(allTodoItems[index].title)
-            return normalizedScheduledTitles.contains(itemTitle)
-        }
+        JournalTaskProgressSync.matchedTaskIndices(in: allTodoItems, for: pendingEvent)
     }
 
     private var hasMatchedSubtasks: Bool {
@@ -624,82 +613,30 @@ struct JournalPromptView: View {
 
     private func applyTaskProgressUpdates() {
         guard !matchedTaskIndices.isEmpty else { return }
+        let completionTime = resolvedActualEndTime ?? Date()
 
         switch completionStatus {
         case .completed:
-            markMatchedTasksCompleted()
+            JournalTaskProgressSync.markAllMatchedCompleted(
+                in: allTodoItems,
+                for: pendingEvent,
+                completionTime: completionTime,
+                modelContext: modelContext,
+                firebaseManager: firebaseManager,
+                logPrefix: "JournalPromptView"
+            )
         case .partial:
-            applyPartialSubtaskSelection()
+            JournalTaskProgressSync.applyPartialSubtaskSelection(
+                in: allTodoItems,
+                for: pendingEvent,
+                selectedSubtaskKeys: completedSubtaskKeys,
+                completionTime: completionTime,
+                modelContext: modelContext,
+                firebaseManager: firebaseManager,
+                logPrefix: "JournalPromptView"
+            )
         case .notStarted:
             return
-        }
-
-        do {
-            try modelContext.save()
-        } catch {
-            print("Failed to save task updates from journal check-in: \(error.localizedDescription)")
-        }
-
-        NotificationManager.shared.rescheduleIfNeeded(context: modelContext)
-    }
-
-    private func markMatchedTasksCompleted() {
-        let completionTime = resolvedActualEndTime ?? Date()
-
-        for index in matchedTaskIndices {
-            let task = allTodoItems[index]
-            task.isDone = true
-            task.completedAt = completionTime
-
-            for subtaskIndex in task.subtasks.indices {
-                task.subtasks[subtaskIndex].isDone = true
-                task.subtasks[subtaskIndex].completedAt = completionTime
-            }
-
-            syncTaskToFirebase(task)
-        }
-    }
-
-    private func applyPartialSubtaskSelection() {
-        let completionTime = resolvedActualEndTime ?? Date()
-
-        for index in matchedTaskIndices {
-            let task = allTodoItems[index]
-            guard !task.subtasks.isEmpty else { continue }
-
-            for subtaskIndex in task.subtasks.indices {
-                let subtaskId = task.subtasks[subtaskIndex].id
-                let key = SubtaskSelectionKey(taskId: task.localTaskId, subtaskId: subtaskId)
-                let shouldBeDone = completedSubtaskKeys.contains(key)
-
-                task.subtasks[subtaskIndex].isDone = shouldBeDone
-                task.subtasks[subtaskIndex].completedAt = shouldBeDone ? completionTime : nil
-            }
-
-            let taskCompleted = task.subtasks.allSatisfy(\.isDone)
-            task.isDone = taskCompleted
-            task.completedAt = taskCompleted ? completionTime : nil
-
-            syncTaskToFirebase(task)
-        }
-    }
-
-    private func syncTaskToFirebase(_ task: TodoItem) {
-        guard let userId = Auth.auth().currentUser?.uid else { return }
-
-        let codableTask = TodoItemCodable(from: task, userId: userId)
-        firebaseManager.saveTodoItem(codableTask) { error in
-            if let error = error {
-                print("JournalPromptView: Failed to sync task '\(task.title)' to Firebase: \(error.localizedDescription)")
-            }
-        }
-
-        if task.sharedTaskId != nil {
-            firebaseManager.syncLocalTaskToSharedTask(localTask: task) { error in
-                if let error = error {
-                    print("JournalPromptView: Failed to sync shared task '\(task.title)': \(error.localizedDescription)")
-                }
-            }
         }
     }
 
