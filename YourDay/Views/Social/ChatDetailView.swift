@@ -152,8 +152,14 @@ struct ChatDetailView: View {
         }
         .onAppear {
             loginViewModel.currentChatFriendId = friend.userId
+            ChatPresenceStore.shared.activeChatFriendId = friend.userId
+            NotificationManager.shared.activeChatFriendId = friend.userId
+            IncomingChatBannerManager.shared.dismiss()
             listener = firebaseManager.listenToChat(with: friend.userId) { updated in
-                self.messages = updated
+                Task { @MainActor in
+                    self.messages = updated
+                    markConversationRead(messages: updated)
+                }
             }
             sharedTaskListener = firebaseManager.listenToSharedTasks(with: friend.userId) { updated in
                 self.sharedTasks = updated
@@ -174,7 +180,10 @@ struct ChatDetailView: View {
         }
 
         .onDisappear {
+            markConversationRead(messages: messages)
             loginViewModel.currentChatFriendId = nil
+            ChatPresenceStore.shared.activeChatFriendId = nil
+            NotificationManager.shared.activeChatFriendId = nil
             listener?.remove()
             sharedTaskListener?.remove()
         }
@@ -227,6 +236,10 @@ struct ChatDetailView: View {
                 .environmentObject(firebaseManager)
         }
         .background(dynamicBackgroundColor.edgesIgnoringSafeArea(.all))
+    }
+
+    private func markConversationRead(messages: [ChatMessage]) {
+        ChatUnreadStore.shared.markDMRead(friendId: friend.userId, upToMessage: messages.last)
     }
 
     private func sendMessage() {

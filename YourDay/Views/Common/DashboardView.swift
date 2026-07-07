@@ -46,6 +46,8 @@ struct DashboardView: View {
     @State private var proofVoteListeners: [String: ListenerRegistration] = [:]
     @State private var proofVotesByPostId: [String: [TaskProofVote]] = [:]
     @State private var proofPosts: [TaskProofPost] = []
+    @ObservedObject private var chatNavigation = ChatNavigationCoordinator.shared
+    @State private var chatNavigationPath = NavigationPath()
 
     private func updateGreeting() {
         let hour = Calendar.current.component(.hour, from: Date())
@@ -70,7 +72,7 @@ struct DashboardView: View {
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack(path: $chatNavigationPath) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     headerSection
@@ -84,10 +86,16 @@ struct DashboardView: View {
                 .padding()
             }
             .background(dynamicBackgroundColor.edgesIgnoringSafeArea(.all))
+            .navigationDestination(for: FriendEntry.self) { friend in
+                ChatDetailView(friend: friend)
+                    .environmentObject(firebaseManager)
+                    .environmentObject(loginViewModel)
+            }
             .onAppear {
                 updateGreeting()
                 friendStatsViewModel.load()
                 startProofBadgeListeners()
+                openPendingChatIfNeeded()
             }
             .onDisappear {
                 tearDownProofBadgeListeners()
@@ -103,7 +111,9 @@ struct DashboardView: View {
                 }
             }
         }
-        .navigationViewStyle(.stack)
+        .onChange(of: chatNavigation.pendingFriend) { _, _ in
+            openPendingChatIfNeeded()
+        }
         .sheet(isPresented: $showLastDayView) {
             NavigationView {
                 LastDayView(isModal: true)
@@ -115,6 +125,13 @@ struct DashboardView: View {
             }
             .environment(\.modelContext, modelContext)
         }
+    }
+
+    private func openPendingChatIfNeeded() {
+        guard let friend = chatNavigation.pendingFriend else { return }
+        chatNavigationPath = NavigationPath()
+        chatNavigationPath.append(friend)
+        chatNavigation.clearPending()
     }
 
     private var headerSection: some View {

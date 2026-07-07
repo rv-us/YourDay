@@ -29,6 +29,7 @@ private enum ConversationItem: Identifiable {
 struct ChatListView: View {
     @EnvironmentObject var firebaseManager: FirebaseManager
     @EnvironmentObject var loginViewModel: LoginViewModel
+    @ObservedObject private var unreadStore = ChatUnreadStore.shared
     @State private var friends: [FriendEntry] = []
     @State private var lastMessages: [String: ChatMessage] = [:] // friendId: lastMessage
     @State private var lastSeen: [String: Date] = [:] // friendId: lastLogin
@@ -39,9 +40,6 @@ struct ChatListView: View {
     @State private var groupListener: ListenerRegistration?
     @AppStorage("groupLastReadTimestamps") private var groupLastReadRaw: String = ""
     @State private var groupLastRead: [String: Date] = [:]
-
-    @AppStorage("readChatIds") private var readChatIdsRaw: String = ""
-    @State private var openedChats: Set<String> = [] // tracks read messages persistently
 
     @State private var showCreateGroup = false
 
@@ -88,7 +86,8 @@ struct ChatListView: View {
             }
         }
         .onAppear {
-            loadOpenedChats()
+            ChatPresenceStore.shared.isOnChatList = true
+            unreadStore.load()
             loadGroupLastRead()
             fetchFriends()
             groupListener = firebaseManager.listenToMyGroups { fetched in
@@ -96,6 +95,7 @@ struct ChatListView: View {
             }
         }
         .onDisappear {
+            ChatPresenceStore.shared.isOnChatList = false
             for (_, listener) in listeners {
                 listener.remove()
             }
@@ -114,11 +114,9 @@ struct ChatListView: View {
     @ViewBuilder
     private func dmRow(friend: FriendEntry, lastMsg: ChatMessage?) -> some View {
         NavigationLink(destination: ChatDetailView(friend: friend)
-            .onAppear {
-                openedChats.insert(friend.userId)
-                saveOpenedChats()
-            }) {
-            HStack(alignment: .top, spacing: 12) {
+            .environmentObject(firebaseManager)
+            .environmentObject(loginViewModel)) {
+            HStack(alignment: .center, spacing: 12) {
                 Image(systemName: "person.crop.circle.fill")
                     .resizable()
                     .scaledToFit()
@@ -139,22 +137,22 @@ struct ChatListView: View {
                     }
 
                     if let msg = lastMsg {
-                        HStack(alignment: .center, spacing: 6) {
-                            Text(msg.content)
-                                .font(.subheadline)
-                                .foregroundColor(dynamicSecondaryTextColor)
-                                .lineLimit(1)
-                            if msg.senderId == friend.userId && !openedChats.contains(friend.userId) {
-                                Circle()
-                                    .fill(dynamicPrimaryColor)
-                                    .frame(width: 8, height: 8)
-                            }
-                        }
+                        Text(msg.content)
+                            .font(.subheadline)
+                            .foregroundColor(dynamicSecondaryTextColor)
+                            .lineLimit(1)
                     } else {
                         Text("Tap to chat")
                             .font(.subheadline)
                             .foregroundColor(dynamicSecondaryTextColor)
                     }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                if unreadStore.isDMUnread(friendId: friend.userId, lastMessage: lastMsg) {
+                    Circle()
+                        .fill(dynamicPrimaryColor)
+                        .frame(width: 8, height: 8)
                 }
             }
             .padding(.vertical, 6)
@@ -171,7 +169,7 @@ struct ChatListView: View {
             }
             .environmentObject(firebaseManager)
             .environmentObject(loginViewModel)) {
-            HStack(alignment: .top, spacing: 12) {
+            HStack(alignment: .center, spacing: 12) {
                 Image(systemName: "person.3.fill")
                     .resizable()
                     .scaledToFit()
@@ -192,23 +190,23 @@ struct ChatListView: View {
                     }
 
                     if !group.lastMessageText.isEmpty {
-                        HStack(alignment: .center, spacing: 6) {
-                            let prefix = group.lastMessageSenderId == Auth.auth().currentUser?.uid ? "You" : senderName(for: group)
-                            Text("\(prefix): \(group.lastMessageText)")
-                                .font(.subheadline)
-                                .foregroundColor(dynamicSecondaryTextColor)
-                                .lineLimit(1)
-                            if isGroupUnread(group) {
-                                Circle()
-                                    .fill(dynamicPrimaryColor)
-                                    .frame(width: 8, height: 8)
-                            }
-                        }
+                        let prefix = group.lastMessageSenderId == Auth.auth().currentUser?.uid ? "You" : senderName(for: group)
+                        Text("\(prefix): \(group.lastMessageText)")
+                            .font(.subheadline)
+                            .foregroundColor(dynamicSecondaryTextColor)
+                            .lineLimit(1)
                     } else {
                         Text("Tap to chat")
                             .font(.subheadline)
                             .foregroundColor(dynamicSecondaryTextColor)
                     }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                if isGroupUnread(group) {
+                    Circle()
+                        .fill(dynamicPrimaryColor)
+                        .frame(width: 8, height: 8)
                 }
             }
             .padding(.vertical, 6)
@@ -225,31 +223,37 @@ struct ChatListView: View {
         return "Someone"
     }
 
-    private func isGroupUnread(_ group: GroupConversation) -> Bool {
-        guard group.lastMessageSenderId != Auth.auth().currentUser?.uid,
-              !group.lastMessageText.isEmpty else { return false }
-        let lastRead = groupLastRead[group.id ?? ""] ?? .distantPast
-        return group.lastMessageAt > lastRead
-    }
-
     private func fetchFriends() {
         firebaseManager.fetchAcceptedFriends { fetched in
-            self.friends = fetched
+            Task { @MainActor in
+                self.friends = fetched
+            }
             for friend in fetched {
                 let listener = firebaseManager.listenToChat(with: friend.userId) { messages in
-                    if let last = messages.last {
-                        lastMessages[friend.userId] = last
+                    Task { @MainActor in
+                        if let last = messages.last {
+                            lastMessages[friend.userId] = last
+                        }
                     }
                 }
                 listeners[friend.userId] = listener
 
                 firebaseManager.fetchLastLoginDate(for: friend.userId) { date in
-                    if let date = date {
-                        lastSeen[friend.userId] = date
+                    Task { @MainActor in
+                        if let date = date {
+                            lastSeen[friend.userId] = date
+                        }
                     }
                 }
             }
         }
+    }
+
+    private func isGroupUnread(_ group: GroupConversation) -> Bool {
+        guard group.lastMessageSenderId != Auth.auth().currentUser?.uid,
+              !group.lastMessageText.isEmpty else { return false }
+        let lastRead = groupLastRead[group.id ?? ""] ?? .distantPast
+        return group.lastMessageAt > lastRead
     }
 
     func formatTimestamp(_ date: Date) -> String {
@@ -267,21 +271,6 @@ struct ChatListView: View {
         } else {
             formatter.dateFormat = "MMM d"
             return formatter.string(from: date)
-        }
-    }
-
-    func saveOpenedChats() {
-        let ids = Array(openedChats)
-        if let data = try? JSONEncoder().encode(ids),
-           let str = String(data: data, encoding: .utf8) {
-            readChatIdsRaw = str
-        }
-    }
-
-    func loadOpenedChats() {
-        if let data = readChatIdsRaw.data(using: .utf8),
-           let decoded = try? JSONDecoder().decode([String].self, from: data) {
-            openedChats = Set(decoded)
         }
     }
 

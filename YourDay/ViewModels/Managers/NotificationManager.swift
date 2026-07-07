@@ -412,12 +412,9 @@ final class NotificationManager: NSObject, ObservableObject, UNUserNotificationC
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
-        let userInfo = notification.request.content.userInfo
-
-        if let type = userInfo["type"] as? String,
-           type == "chatMessage",
-           let senderId = userInfo["senderId"] as? String,
-           senderId == activeChatFriendId {
+        // Remote push (FCM/APNs): suppress while the app is foregrounded.
+        // Chat is surfaced via IncomingChatBannerManager instead of a system banner.
+        if notification.request.trigger is UNPushNotificationTrigger {
             completionHandler([])
             return
         }

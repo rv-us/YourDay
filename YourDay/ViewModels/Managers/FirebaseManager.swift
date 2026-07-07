@@ -728,9 +728,17 @@ class FirebaseManager: ObservableObject {
                     onUpdate([])
                     return
                 }
-                let messages = documents.compactMap { try? $0.data(as: ChatMessage.self) }
+                let messages = documents.compactMap { Self.decodeChatMessage(from: $0) }
                 onUpdate(messages)
             }
+    }
+
+    private static func decodeChatMessage(from doc: QueryDocumentSnapshot) -> ChatMessage? {
+        guard var message = try? doc.data(as: ChatMessage.self) else { return nil }
+        if message.id == nil || message.id?.isEmpty == true {
+            message.id = doc.documentID
+        }
+        return message
     }
     func fetchLastMessage(with friendId: String, completion: @escaping (ChatMessage?) -> Void) {
         guard let currentUserId = Auth.auth().currentUser?.uid else {
@@ -794,7 +802,7 @@ class FirebaseManager: ObservableObject {
 
                 for change in snapshot.documentChanges {
                     guard change.type == .added else { continue }
-                    guard let message = try? change.document.data(as: ChatMessage.self) else { continue }
+                    guard let message = Self.decodeChatMessage(from: change.document) else { continue }
 
                     self.fetchDisplayNameForFriend(userId: message.senderId) { displayName in
                         let name = displayName ?? "Someone"

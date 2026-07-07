@@ -18,56 +18,25 @@ struct CreateGroupChatView: View {
     }
 
     var body: some View {
-        NavigationView {
-            List {
-                Section("Group Name") {
-                    TextField("e.g. Study Crew", text: $groupName)
-                        .foregroundColor(dynamicTextColor)
-                        .listRowBackground(dynamicSecondaryBackgroundColor)
-                }
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 28) {
+                    groupNameSection
+                    membersSection
 
-                Section("Add Members") {
-                    if friends.isEmpty {
-                        Text("Add some friends first to create a group.")
-                            .font(.subheadline)
-                            .foregroundColor(dynamicSecondaryTextColor)
-                            .listRowBackground(Color.clear)
-                    } else {
-                        ForEach(friends) { friend in
-                            HStack {
-                                Image(systemName: selectedFriendIds.contains(friend.userId) ? "checkmark.circle.fill" : "circle")
-                                    .foregroundColor(dynamicPrimaryColor)
-                                Text(friend.displayName)
-                                    .foregroundColor(dynamicTextColor)
-                            }
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                if selectedFriendIds.contains(friend.userId) {
-                                    selectedFriendIds.remove(friend.userId)
-                                } else {
-                                    selectedFriendIds.insert(friend.userId)
-                                }
-                            }
-                            .listRowBackground(dynamicSecondaryBackgroundColor)
-                        }
-                    }
-                }
-
-                if let errorMessage {
-                    Section {
+                    if let errorMessage {
                         Text(errorMessage)
                             .font(.caption)
                             .foregroundColor(dynamicDestructiveColor)
                     }
-                    .listRowBackground(Color.clear)
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 20)
             }
-            .listStyle(PlainListStyle())
-            .scrollContentBackground(.hidden)
             .background(dynamicBackgroundColor)
             .navigationTitle("New Group")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(dynamicSecondaryBackgroundColor, for: .navigationBar)
+            .toolbarBackground(dynamicBackgroundColor, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -94,8 +63,71 @@ struct CreateGroupChatView: View {
                 }
             }
         }
-        .navigationViewStyle(.stack)
         .background(dynamicBackgroundColor.edgesIgnoringSafeArea(.all))
+    }
+
+    private var groupNameSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Group Name")
+                .font(.headline)
+                .foregroundColor(dynamicTextColor)
+
+            AppTextField(placeholder: "e.g. Study Crew", text: $groupName)
+                .textInputAutocapitalization(.words)
+                .autocorrectionDisabled()
+
+            Text("Choose a name everyone in the group will see.")
+                .font(.footnote)
+                .foregroundColor(dynamicSecondaryTextColor.opacity(0.65))
+        }
+    }
+
+    private var membersSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Add Members")
+                .font(.headline)
+                .foregroundColor(dynamicTextColor)
+
+            if !friends.isEmpty {
+                Text("\(selectedFriendIds.count) selected")
+                    .font(.footnote)
+                    .foregroundColor(dynamicSecondaryTextColor.opacity(0.65))
+            }
+
+            if friends.isEmpty {
+                Text("Add some friends first to create a group.")
+                    .font(.subheadline)
+                    .foregroundColor(dynamicSecondaryTextColor)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(friends) { friend in
+                        Button {
+                            if selectedFriendIds.contains(friend.userId) {
+                                selectedFriendIds.remove(friend.userId)
+                            } else {
+                                selectedFriendIds.insert(friend.userId)
+                            }
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: selectedFriendIds.contains(friend.userId) ? "checkmark.circle.fill" : "circle")
+                                    .font(.title3)
+                                    .foregroundColor(dynamicPrimaryColor)
+                                Text(friend.displayName)
+                                    .foregroundColor(dynamicTextColor)
+                                Spacer()
+                            }
+                            .padding(.vertical, 12)
+                        }
+                        .buttonStyle(.plain)
+
+                        if friend.id != friends.last?.id {
+                            Divider()
+                                .overlay(dynamicSecondaryTextColor.opacity(0.2))
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private func createGroup() {
@@ -113,7 +145,6 @@ struct CreateGroupChatView: View {
         for friend in friends where selectedFriendIds.contains(friend.userId) {
             memberDisplayNames[friend.userId] = friend.displayName
         }
-        // Add current user's display name
         let myDisplayName = loginViewModel.userDisplayName ?? Auth.auth().currentUser?.displayName ?? "Me"
         memberDisplayNames[currentUserId] = myDisplayName
 

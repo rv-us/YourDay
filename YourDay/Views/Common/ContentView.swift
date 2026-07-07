@@ -53,6 +53,7 @@ struct ContentView: View {
     @ObservedObject private var journalViewModel = JournalViewModel.shared
     @ObservedObject private var penaltyProcessor = FocusPenaltyProcessor.shared
     @ObservedObject private var screenTimeManager = ScreenTimeManager.shared
+    @ObservedObject private var incomingChatBannerManager = IncomingChatBannerManager.shared
     @State private var showFocusPenaltyToast = false
     @State private var focusPenaltyToastMessage = ""
 
@@ -89,6 +90,7 @@ struct ContentView: View {
         .onChange(of: loginViewModel.isAuthenticated) { _, userIsAuthenticated in
             if userIsAuthenticated {
                 loginViewModel.handleUserSession(localPlayerStats: localPlayerStatsList.first, modelContext: modelContext)
+                startIncomingChatListenerIfNeeded()
                 Task {
                     await TaskEndMonitor.shared.checkForEndedTasks()
                     await MainActor.run {
@@ -299,27 +301,45 @@ struct ContentView: View {
                 }
             }
             .overlay(alignment: .top) {
-                if showFocusPenaltyToast {
-                    Text(focusPenaltyToastMessage)
-                        .font(.callout)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .background(dynamicDestructiveColor.opacity(0.9))
-                        .foregroundColor(.white)
-                        .clipShape(Capsule())
-                        .padding(.top, 8)
+                VStack(spacing: 8) {
+                    if let banner = incomingChatBannerManager.activeBanner {
+                        IncomingChatBannerView(banner: banner) {
+                            incomingChatBannerManager.dismiss()
+                            selectedTab = .dashboard
+                            ChatNavigationCoordinator.shared.openChat(
+                                FriendEntry(
+                                    userId: banner.senderId,
+                                    displayName: banner.senderName
+                                )
+                            )
+                        }
                         .transition(.move(edge: .top).combined(with: .opacity))
+                        .zIndex(1)
+                    }
+
+                    if showFocusPenaltyToast {
+                        Text(focusPenaltyToastMessage)
+                            .font(.callout)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                            .background(dynamicDestructiveColor.opacity(0.9))
+                            .foregroundColor(.white)
+                            .clipShape(Capsule())
+                            .padding(.top, incomingChatBannerManager.activeBanner == nil ? 8 : 0)
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
                 }
+                .animation(.spring(response: 0.35, dampingFraction: 0.86), value: incomingChatBannerManager.activeBanner)
             }
     }
 
     private func startIncomingChatListenerIfNeeded() {
         guard loginViewModel.isAuthenticated, !loginViewModel.isGuest, incomingChatListener == nil else { return }
-        // Remote push (FCM Cloud Function) now handles chat notifications when the app is
-        // backgrounded or terminated. The Firestore listener is kept so the app can update
-        // unread state while foregrounded, but we no longer fire a local notification here
-        // to avoid duplicates with the remote push.
-        incomingChatListener = firebaseManager.listenToIncomingChatMessages { _, _ in }
+        incomingChatListener = firebaseManager.listenToIncomingChatMessages { message, senderName in
+            Task { @MainActor in
+                IncomingChatBannerManager.shared.show(message: message, senderName: senderName)
+            }
+        }
     }
 
     private var mainTabView: some View {

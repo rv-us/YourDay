@@ -302,7 +302,7 @@ struct FriendRequest: Identifiable {
     let displayName: String
 }
 
-struct FriendEntry: Identifiable {
+struct FriendEntry: Identifiable, Hashable {
     var id: String { userId }
     let userId: String
     let displayName: String

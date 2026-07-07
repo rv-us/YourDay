@@ -60,44 +60,50 @@ final class ScreenTimeManager: ObservableObject {
         self.authorizationStatus = authCenter.authorizationStatus
     }
 
-    /// On a cold launch `AuthorizationCenter.authorizationStatus` sometimes
-    /// returns `.notDetermined` even when the user has previously granted
-    /// authorization — the framework hasn't re-hydrated its cached value yet.
-    /// Silently calling `requestAuthorization(for:)` on the same scope does
-    /// **not** re-prompt the user once authorization has been granted; it just
-    /// resolves to the real status. We use this to reconcile the cached
-    /// status on startup and on foregrounding. If the persisted shield flag
-    /// is on and authorization resolves to `.approved`, we (re)apply the
-    /// shield and restart monitoring so protection resumes without the user
-    /// having to toggle the switch.
+    /// Reconciles Screen Time authorization on startup and foregrounding.
+    /// Only calls `requestAuthorization` when focus blocking is enabled and
+    /// status is `.notDetermined` (including stale cache on cold launch).
+    /// Never re-prompts after `.denied` — the user must grant access in iOS Settings.
     func refreshAuthorizationAndReapplyShieldIfNeeded() async {
         logger.notice("ScreenTimeManager refreshAuthorizationAndReapplyShieldIfNeeded ENTER now=\(Self.isoNow(), privacy: .public) isEnabled=\(self.isEnabled, privacy: .public)")
-        do {
-            try await authCenter.requestAuthorization(for: .individual)
-        } catch {
-            print("ScreenTimeManager: refresh auth failed — \(error.localizedDescription)")
-            logger.error("ScreenTimeManager refresh auth failed: \(error.localizedDescription, privacy: .public)")
+
+        guard isEnabled else {
+            authorizationStatus = authCenter.authorizationStatus
+            logger.notice("ScreenTimeManager refresh: isEnabled=false, noop")
+            return
         }
-        self.authorizationStatus = authCenter.authorizationStatus
+
+        authorizationStatus = authCenter.authorizationStatus
         logger.notice("ScreenTimeManager auth status=\(String(describing: self.authorizationStatus), privacy: .public)")
 
-        if isEnabled {
-            if authorizationStatus == .approved {
-                logger.notice("ScreenTimeManager refresh: isEnabled && approved → applyShieldIfNeeded + startDailyMonitoring")
-                applyShieldIfNeeded()
-                startDailyMonitoring()
-            } else {
-                // Authorization was revoked outside of the app (e.g. in iOS
-                // Settings). Clear the shield so we don't leave stale rules
-                // in place, but keep `isEnabled == true` so the UI can
-                // surface the "authorization required" banner and the user
-                // can re-grant without re-toggling from scratch.
-                logger.notice("ScreenTimeManager refresh: not approved → clearShield + stopMonitoring")
-                clearShield()
-                stopMonitoring()
+        if authorizationStatus == .denied {
+            logger.notice("ScreenTimeManager refresh: denied → clearShield + stopMonitoring (no re-prompt)")
+            clearShield()
+            stopMonitoring()
+            return
+        }
+
+        if authorizationStatus == .notDetermined {
+            do {
+                try await authCenter.requestAuthorization(for: .individual)
+            } catch {
+                print("ScreenTimeManager: refresh auth failed — \(error.localizedDescription)")
+                logger.error("ScreenTimeManager refresh auth failed: \(error.localizedDescription, privacy: .public)")
             }
+            authorizationStatus = authCenter.authorizationStatus
+            logger.notice("ScreenTimeManager auth status after request=\(String(describing: self.authorizationStatus), privacy: .public)")
+        }
+
+        if authorizationStatus == .approved {
+            logger.notice("ScreenTimeManager refresh: isEnabled && approved → applyShieldIfNeeded + startDailyMonitoring")
+            applyShieldIfNeeded()
+            startDailyMonitoring()
         } else {
-            logger.notice("ScreenTimeManager refresh: isEnabled=false, noop")
+            // Authorization was revoked or not granted. Clear the shield but keep
+            // `isEnabled == true` so Settings can show the authorization banner.
+            logger.notice("ScreenTimeManager refresh: not approved → clearShield + stopMonitoring")
+            clearShield()
+            stopMonitoring()
         }
     }
 
