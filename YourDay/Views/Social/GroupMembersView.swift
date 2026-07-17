@@ -15,7 +15,10 @@ struct GroupMembersView: View {
     private var currentUserId: String? { Auth.auth().currentUser?.uid }
     private var isAdmin: Bool { group.adminId == currentUserId }
     private var friendsNotInGroup: [FriendEntry] {
-        friends.filter { !group.memberIds.contains($0.userId) }
+        // Filter against the live members list, not group.memberIds — the
+        // GroupConversation passed in is a snapshot and goes stale as soon as
+        // someone is added or removed in this view.
+        friends.filter { friend in !members.contains { $0.id == friend.userId } }
     }
 
     var body: some View {

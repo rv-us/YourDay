@@ -180,7 +180,6 @@ struct OceanVideoBackgroundView: View {
     var zoomScale: CGFloat = 1.0
     var panOffset: CGSize = .zero
     
-    @State private var cloudClusters: [CloudCluster] = []
     @State private var cloudQuadrants: [UIImage] = []
     @State private var icebergPieces: [IcebergPiece] = []
     @State private var tileImage: UIImage?
@@ -188,10 +187,7 @@ struct OceanVideoBackgroundView: View {
     @State private var mapWidth: CGFloat = 0
     @State private var mapHeight: CGFloat = 0
     @State private var isReady = false
-    
-    // Single shared timer for all cloud animation at 30fps
-    private let cloudTimer = Timer.publish(every: 1.0 / 30.0, on: .main, in: .common).autoconnect()
-    
+
     var body: some View {
         GeometryReader { geometry in
             if isReady, let tileImage = tileImage {
@@ -249,11 +245,18 @@ struct OceanVideoBackgroundView: View {
                             .zIndex(0.5)
                     }
 
-                    // Cloud clusters with viewport transforms
-                    ForEach(cloudClusters) { cluster in
-                        CloudClusterView(cluster: cluster, zoomScale: zoomScale, panOffset: panOffset, viewportSize: geometry.size)
-                            .zIndex(1)
-                    }
+                    // Cloud clusters — isolated in their own view so the 30fps
+                    // animation timer only invalidates this subtree, not the
+                    // static tile Canvas / iceberg layers above.
+                    CloudFieldView(
+                        cloudQuadrants: cloudQuadrants,
+                        mapWidth: mapWidth,
+                        mapHeight: mapHeight,
+                        zoomScale: zoomScale,
+                        panOffset: panOffset,
+                        viewportSize: geometry.size
+                    )
+                    .zIndex(1)
                 }
                 .frame(width: geometry.size.width, height: geometry.size.height)
                 .clipped()
@@ -264,9 +267,6 @@ struct OceanVideoBackgroundView: View {
         .edgesIgnoringSafeArea(.all)
         .onAppear {
             initializeMap()
-        }
-        .onReceive(cloudTimer) { _ in
-            updateClouds()
         }
     }
     
@@ -289,11 +289,8 @@ struct OceanVideoBackgroundView: View {
             print("⚠️ Failed to load clouds image")
         }
 
-        // Generate initial cloud clusters
-        if cloudClusters.isEmpty && !cloudQuadrants.isEmpty {
-            cloudClusters = generateInitialClusters()
-            print("☁️ Generated \(cloudClusters.count) cloud clusters")
-        }
+        // Cloud clusters are generated inside CloudFieldView once cloudQuadrants
+        // are available (see CloudFieldView.onAppear).
 
         if GardenAssetHelper.isWinterDaytime() {
             let icebergImages = loadIcebergImages()
@@ -305,23 +302,6 @@ struct OceanVideoBackgroundView: View {
         isReady = true
     }
     
-    // MARK: - Quadrant helpers
-
-    private func quadrantBounds() -> [(xRange: ClosedRange<CGFloat>, yRange: ClosedRange<CGFloat>)] {
-        let halfW = mapWidth / 2
-        let halfH = mapHeight / 2
-        return [
-            (0...halfW,        0...halfH),        // 0: Top-Left
-            (halfW...mapWidth,  0...halfH),        // 1: Top-Right
-            (0...halfW,        halfH...mapHeight), // 2: Bottom-Left
-            (halfW...mapWidth,  halfH...mapHeight)  // 3: Bottom-Right
-        ]
-    }
-
-    private func clustersInQuadrant(_ index: Int) -> Int {
-        cloudClusters.filter { $0.quadrantIndex == index }.count
-    }
-
     // MARK: - Iceberg Layer (static)
 
     private func loadIcebergImages() -> [UIImage] {
@@ -369,10 +349,68 @@ struct OceanVideoBackgroundView: View {
         return pieces
     }
 
+}
+
+// MARK: - Cloud Field View (owns cloud state + 30fps animation timer)
+
+/// Isolates all cloud generation, drift, and respawn logic so its 30fps timer
+/// only invalidates this subtree — the static tile Canvas and iceberg layers in
+/// `OceanVideoBackgroundView` are no longer redrawn on every cloud tick.
+struct CloudFieldView: View {
+    let cloudQuadrants: [UIImage]
+    let mapWidth: CGFloat
+    let mapHeight: CGFloat
+    var zoomScale: CGFloat = 1.0
+    var panOffset: CGSize = .zero
+    var viewportSize: CGSize = .zero
+
+    @State private var cloudClusters: [CloudCluster] = []
+
+    // Single shared timer for all cloud animation at 30fps
+    private let cloudTimer = Timer.publish(every: 1.0 / 30.0, on: .main, in: .common).autoconnect()
+
+    var body: some View {
+        ZStack {
+            ForEach(cloudClusters) { cluster in
+                CloudClusterView(cluster: cluster, zoomScale: zoomScale, panOffset: panOffset, viewportSize: viewportSize)
+            }
+        }
+        .frame(width: viewportSize.width, height: viewportSize.height)
+        // Composite all cloud images into a single GPU-rasterized layer instead
+        // of hundreds of CPU-composited layers.
+        .drawingGroup()
+        .onAppear {
+            if cloudClusters.isEmpty && !cloudQuadrants.isEmpty {
+                cloudClusters = generateInitialClusters()
+                print("☁️ Generated \(cloudClusters.count) cloud clusters")
+            }
+        }
+        .onReceive(cloudTimer) { _ in
+            updateClouds()
+        }
+    }
+
+    // MARK: - Quadrant helpers
+
+    private func quadrantBounds() -> [(xRange: ClosedRange<CGFloat>, yRange: ClosedRange<CGFloat>)] {
+        let halfW = mapWidth / 2
+        let halfH = mapHeight / 2
+        return [
+            (0...halfW,        0...halfH),        // 0: Top-Left
+            (halfW...mapWidth,  0...halfH),        // 1: Top-Right
+            (0...halfW,        halfH...mapHeight), // 2: Bottom-Left
+            (halfW...mapWidth,  halfH...mapHeight)  // 3: Bottom-Right
+        ]
+    }
+
+    private func clustersInQuadrant(_ index: Int) -> Int {
+        cloudClusters.filter { $0.quadrantIndex == index }.count
+    }
+
     // MARK: - Cloud Animation Tick (single timer drives everything)
 
     private func updateClouds() {
-        guard isReady, !cloudClusters.isEmpty else { return }
+        guard !cloudClusters.isEmpty else { return }
 
         // Advance all clusters
         for i in cloudClusters.indices {
@@ -449,9 +487,9 @@ struct OceanVideoBackgroundView: View {
 
         return tooClose ? nil : makeCluster(at: CGPoint(x: x, y: y), quadrant: qi)
     }
-    
+
     // MARK: - Cluster Factory
-    
+
     private func makeCluster(at position: CGPoint, quadrant: Int = 0) -> CloudCluster {
         let pieceCount = Int.random(in: GardenMapConfig.minPiecesPerCluster...GardenMapConfig.maxPiecesPerCluster)
 

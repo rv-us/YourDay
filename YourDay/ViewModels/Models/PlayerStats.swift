@@ -124,7 +124,7 @@ struct PlacedPlant: Codable, Identifiable, Hashable {
             return (false, 1.0, nil)
         }
         if self.isFullyGrown && self.theme == currentSeason {
-            return (true, 1.5, currentSeason) // 2.0x multiplier as per getCurrentDynamicValue
+            return (true, 1.5, currentSeason)
         }
         return (false, 1.0, currentSeason)
     }

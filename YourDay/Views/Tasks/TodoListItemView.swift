@@ -64,6 +64,20 @@ struct TodoListItemView: View {
                                 .background(dynamicSecondaryBackgroundColor)
                                 .cornerRadius(6)
                         }
+                        if item.groupTaskId != nil {
+                            HStack(spacing: 3) {
+                                Image(systemName: "person.3.fill")
+                                    .font(.system(size: 8))
+                                Text(item.groupName ?? "Group")
+                                    .font(.caption2.weight(.semibold))
+                                    .lineLimit(1)
+                            }
+                            .foregroundColor(dynamicPrimaryColor)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(dynamicPrimaryColor.opacity(0.15))
+                            .cornerRadius(6)
+                        }
                     }
 
                     if !item.detail.isEmpty {
@@ -172,7 +186,11 @@ struct TodoListItemView: View {
                 }
             }
         }
-        
+
+        if let groupTaskId = item.groupTaskId {
+            firebaseManager.updateGroupTaskCompletion(groupTaskId: groupTaskId, isCompleted: item.isDone)
+        }
+
         // Sync task completion toggle to Firebase
         if let userId = FirebaseAuth.Auth.auth().currentUser?.uid {
             let codableTask = TodoItemCodable(from: item, userId: userId)
@@ -194,7 +212,9 @@ struct TodoListItemView: View {
                     scheduledEventId: scheduledEventId,
                     localTaskId: item.localTaskId,
                     sharedTaskId: item.sharedTaskId,
-                    completedAt: item.completedAt ?? Date()
+                    completedAt: item.completedAt ?? Date(),
+                    groupTaskId: item.groupTaskId,
+                    groupId: item.groupId
                 ))
             }
             ScheduledSessionCompletionCoordinator.handleEarlyCompletion(
@@ -225,6 +245,11 @@ struct TodoListItemView: View {
         // Reschedule notifications to reflect current task state
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             NotificationManager.shared.rescheduleIfNeeded(context: _modelContext)
+            // Rebuild geofences from remaining incomplete tasks so location
+            // reminders don't name tasks that were just completed.
+            if !GeofenceManager.shared.activeGeofences.isEmpty {
+                GeofenceManager.shared.refreshGeofencesFromCurrentCategories(context: _modelContext)
+            }
         }
     }
 

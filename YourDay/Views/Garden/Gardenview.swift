@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 import Lottie
 import AVKit
+import SpriteKit
 
 struct VibrantLightTheme {
     static let backgroundGradient = Gradient(colors: [Color(hex: "#A8E063"), Color(hex: "#56AB2F")])
@@ -51,6 +52,102 @@ let vibrantWaterButtonColor = Color(UIColor { _ in UIColor(VibrantLightTheme.wat
 let vibrantSellButtonColor = Color(UIColor { _ in UIColor(VibrantLightTheme.sellButton) })
 let vibrantFertilizerButtonColor = Color(UIColor { _ in UIColor(VibrantLightTheme.fertilizerButton) })
 let vibrantAccentColor = Color(UIColor { _ in UIColor(VibrantLightTheme.accent) })
+
+// MARK: - Garden HUD Styling
+
+/// Frosted-glass chip used for HUD readouts (season, plots, level, points) so
+/// they sit on the ocean/island scene like game UI instead of bare text.
+private struct GardenGlassChipModifier: ViewModifier {
+    var cornerRadius: CGFloat = 20
+
+    func body(content: Content) -> some View {
+        content
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [.white.opacity(0.55), .white.opacity(0.12)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
+            )
+            .shadow(color: .black.opacity(0.15), radius: 5, x: 0, y: 2)
+    }
+}
+
+extension View {
+    func gardenGlassChip(cornerRadius: CGFloat = 20) -> some View {
+        modifier(GardenGlassChipModifier(cornerRadius: cornerRadius))
+    }
+}
+
+/// Glossy capsule label for garden action buttons: solid fill, top light
+/// catch, hairline rim, and a soft colored glow. The fill color still carries
+/// the enabled/disabled/mode state chosen at the call site.
+struct GardenGlossyButtonLabel: View {
+    let iconAsset: String
+    let text: String
+    let fill: Color
+    var font: Font = .system(.callout, design: .rounded).weight(.bold)
+    var fullWidth: Bool = true
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Image(iconAsset)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 26, height: 26)
+            Text(text)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .font(font)
+        .foregroundColor(.white)
+        .shadow(color: .black.opacity(0.25), radius: 1, y: 1)
+        .padding(.vertical, 12)
+        .padding(.horizontal, 16)
+        .frame(maxWidth: fullWidth ? .infinity : nil)
+        .background(
+            Capsule()
+                .fill(fill)
+                .overlay(
+                    Capsule()
+                        .fill(
+                            LinearGradient(
+                                colors: [.white.opacity(0.35), .white.opacity(0.06), .clear],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                )
+                .overlay(
+                    Capsule()
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [.white.opacity(0.6), .white.opacity(0.15)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 1
+                        )
+                )
+        )
+        .shadow(color: fill.opacity(0.4), radius: 6, y: 3)
+        .shadow(color: .black.opacity(0.15), radius: 3, y: 2)
+    }
+}
+
+/// Adds a springy press-down scale to garden buttons.
+struct GardenPressableButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
+            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
+    }
+}
 
 struct IdentifiableGridPositionWrapper: Identifiable {
     let id = UUID()
@@ -146,6 +243,8 @@ enum TutorialStep: Int, Identifiable {
 
 struct GardenView: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @EnvironmentObject var loginViewModel: LoginViewModel
     @EnvironmentObject var firebaseManager: FirebaseManager
     @Query(filter: #Predicate<PlayerStats> { _ in true } ) private var playerStatsList: [PlayerStats]
@@ -186,6 +285,34 @@ struct GardenView: View {
     @State private var isTutorialActive: Bool = false
     @State private var currentTutorialStep: TutorialStep = .welcome
     @State private var wasShopVisitedForTutorial: Bool = false
+
+    // SpriteKit migration: bridge owns the scene; SwiftUI keeps all game logic.
+    @StateObject private var sceneBridge = GardenSceneBridge()
+
+    /// Plant targeted by a stationary long-press in the scene (water/sell dialog).
+    @State private var scenePlantDialogID: UUID? = nil
+
+    private var useSpriteKitScene: Bool {
+        GardenScene.useSpriteKitGarden && !IslandGridConfig.devMode
+    }
+
+    /// Disables the legacy SwiftUI zoom/pan gestures when the SpriteKit scene
+    /// handles the camera (the scene installs its own UIKit recognizers).
+    private var legacyGestureMask: GestureMask {
+        useSpriteKitScene ? .subviews : .all
+    }
+
+    /// Render state pushed into the SpriteKit scene. Equatable, so onChange
+    /// only forwards actual changes — no per-frame churn.
+    private var sceneSnapshot: GardenSnapshot {
+        GardenSnapshot(
+            plants: playerStats.placedPlants.map(PlantRenderModel.init(from:)),
+            unlockedPlotCount: playerStats.numberOfOwnedPlots,
+            mode: isSellModeActive ? .sell : (isFertilizerModeActive ? .fertilizer : .normal),
+            dragEnabled: !isTutorialActive && !isSellModeActive && !isFertilizerModeActive,
+            reduceMotion: accessibilityReduceMotion
+        )
+    }
     
     
     
@@ -254,6 +381,15 @@ struct GardenView: View {
         NavigationView {
             GeometryReader { geometry in
                 ZStack {
+                    if useSpriteKitScene {
+                        // SpriteKit world: ocean, clouds, island, plots, plants.
+                        // Camera + world input live in the scene; HUD stays SwiftUI.
+                        SpriteView(
+                            scene: sceneBridge.scene(for: geometry.size),
+                            options: [.ignoresSiblingOrder]
+                        )
+                        .ignoresSafeArea()
+                    } else {
                     // Screen-level ocean + clouds (keeps own zoom/pan for efficient Canvas rendering)
                     OceanVideoBackgroundView(zoomScale: zoomScale, panOffset: panOffset)
 
@@ -313,6 +449,7 @@ struct GardenView: View {
                     // Constrain layout footprint to viewport so the HUD stays on-screen
                     .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
                     .clipped()
+                    }
 
                     VStack(spacing: 10) {
                         currentSeasonDisplay
@@ -329,6 +466,17 @@ struct GardenView: View {
                         // Migrate old 1D grid positions to 2D island grid
                         if !playerStatsList.isEmpty {
                             playerStats.migrateToIslandGrid()
+                        }
+
+                        if useSpriteKitScene {
+                            sceneBridge.onEvent = { event in
+                                handleSceneEvent(event)
+                            }
+                            sceneBridge.apply(sceneSnapshot)
+                            sceneBridge.setSceneActive(scenePhase == .active)
+                            // Covers returning to the tab across a day/night
+                            // or season boundary.
+                            sceneBridge.refreshEnvironment()
                         }
 
                     // Store viewport size for panning calculations
@@ -429,24 +577,77 @@ struct GardenView: View {
                     }
                 }
                 .simultaneousGesture(
-                    MagnificationGesture()
+                    magnifyGesture,
+                    including: legacyGestureMask
+                )
+                .simultaneousGesture(
+                    dragGesture,
+                    including: legacyGestureMask
+                )
+                .onChange(of: sceneSnapshot) { _, newSnapshot in
+                    if useSpriteKitScene {
+                        sceneBridge.apply(newSnapshot)
+                    }
+                }
+                .onChange(of: scenePhase) { _, newPhase in
+                    if useSpriteKitScene {
+                        sceneBridge.setSceneActive(newPhase == .active)
+                        if newPhase == .active {
+                            // App foregrounded — may have crossed 6am/8pm or a season.
+                            sceneBridge.refreshEnvironment()
+                        }
+                    }
+                }
+                .confirmationDialog(
+                    "Plant Options: \(sceneDialogPlant?.name ?? "")",
+                    isPresented: Binding(
+                        get: { scenePlantDialogID != nil },
+                        set: { if !$0 { scenePlantDialogID = nil } }
+                    ),
+                    titleVisibility: .visible
+                ) {
+                    if let plant = sceneDialogPlant {
+                        if !plant.isFullyGrown && !isPlantWateredToday(plant) {
+                            Button("Water Plant") {
+                                if let index = playerStats.placedPlants.firstIndex(where: { $0.id == plant.id }) {
+                                    waterSinglePlant(at: index)
+                                }
+                            }
+                        }
+                        if plant.isFullyGrown {
+                            Button("Sell Plant (\(Int(plant.baseValue * 1.5)) Points)", role: .destructive) {
+                                triggerPlantFeedback(plantID: plant.id, text: "+\(Int(plant.baseValue * 1.5))P", color: vibrantSellButtonColor)
+                                sellSinglePlant(plantId: plant.id)
+                            }
+                        }
+                        Button("Cancel", role: .cancel) {}
+                    }
+                }
+            }
+            .navigationViewStyle(.stack)
+        }
+    }
+
+    // MARK: - Legacy SwiftUI camera gestures (unused when useSpriteKitScene)
+
+    private var magnifyGesture: some Gesture {
+        MagnifyGesture()
                         .onChanged { value in
-                            let newScale = max(minZoomScale, min(maxZoomScale, lastZoomScale * value))
-                            
-                            // Anchor zoom to the screen center so the point under the
-                            // user's fingers stays fixed.
-                            let screenCenter = CGPoint(
-                                x: geometry.size.width / 2,
-                                y: geometry.size.height / 2
-                            )
-                            // Map point currently at screen center
-                            let mapX = (screenCenter.x - lastPanOffset.width) / lastZoomScale
-                            let mapY = (screenCenter.y - lastPanOffset.height) / lastZoomScale
-                            
-                            // Adjust pan so the same map point stays at screen center
-                            let newPanWidth  = screenCenter.x - mapX * newScale
-                            let newPanHeight = screenCenter.y - mapY * newScale
-                            
+                            let newScale = max(minZoomScale, min(maxZoomScale, lastZoomScale * value.magnification))
+
+                            // Anchor zoom to the pinch's focal point so you zoom into
+                            // whatever is under your fingers — the island, or open
+                            // water when you've panned away — keeping that point fixed.
+                            let focal = value.startLocation
+
+                            // Map point currently under the focal point
+                            let mapX = (focal.x - lastPanOffset.width) / lastZoomScale
+                            let mapY = (focal.y - lastPanOffset.height) / lastZoomScale
+
+                            // Recompute pan so that map point stays under the focal point
+                            let newPanWidth  = focal.x - mapX * newScale
+                            let newPanHeight = focal.y - mapY * newScale
+
                             zoomScale = newScale
                             panOffset = clampedPanOffset(CGSize(width: newPanWidth, height: newPanHeight))
                         }
@@ -454,9 +655,10 @@ struct GardenView: View {
                             lastZoomScale = zoomScale
                             lastPanOffset = panOffset
                         }
-                )
-                .simultaneousGesture(
-                    DragGesture()
+    }
+
+    private var dragGesture: some Gesture {
+        DragGesture()
                         .onChanged { value in
                             let newOffset = CGSize(
                                 width: lastPanOffset.width + value.translation.width,
@@ -467,10 +669,6 @@ struct GardenView: View {
                         .onEnded { _ in
                             lastPanOffset = panOffset
                         }
-                )
-            }
-            .navigationViewStyle(.stack)
-        }
     }
     
     // MARK: - Island Image (same coordinate space as grid)
@@ -490,40 +688,65 @@ struct GardenView: View {
     private var currentSeasonDisplay: some View {
             Group {
                 if let season = currentSeason {
-                    Text("Current Season: \(season.rawValue)")
-                        .font(.headline)
-                        .foregroundColor(vibrantPrimaryTextColor)
-                        .padding(.vertical, 5)
-                        .frame(maxWidth: .infinity)
-                        .background(.thinMaterial)
-                        .cornerRadius(8)
-                        .padding(.horizontal)
+                    HStack(spacing: 6) {
+                        Image(seasonIconAsset(season))
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 24, height: 24)
+                        Text("\(season.rawValue) Season")
+                            .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                            .foregroundColor(vibrantPrimaryTextColor)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 7)
+                    .gardenGlassChip()
                 } else { EmptyView() }
             }
             .allowsHitTesting(!isTutorialActive)
         }
-        
+
+        private func seasonIconAsset(_ season: PlantTheme) -> String {
+            switch season {
+            case .spring: return "Season_spring_icon_small"
+            case .summer: return "Season_summer_icon_small"
+            case .fall:   return "Season_fall_icon_small"
+            case .winter: return "Season_winter_icon_small"
+            }
+        }
+
         private var plotInfoAndPurchaseSection: some View {
-            VStack {
-                Text("Plots: \(playerStats.numberOfOwnedPlots) / \(playerStats.maxPlotsForCurrentLevel)")
-                    .font(.subheadline)
-                    .foregroundColor(vibrantPrimaryTextColor)
-                
+            VStack(spacing: 8) {
+                HStack(spacing: 6) {
+                    Image("Plots_icon_small")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 23, height: 23)
+                    Text("Plots \(playerStats.numberOfOwnedPlots) / \(playerStats.maxPlotsForCurrentLevel)")
+                        .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                        .foregroundColor(vibrantPrimaryTextColor)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .gardenGlassChip()
+
                 if playerStats.numberOfOwnedPlots < playerStats.maxPlotsForCurrentLevel {
                     Button(action: attemptToBuyPlot) {
-                        Text("Buy New Plot (\(Int(playerStats.costToBuyNextPlot())) Points)")
-                            .font(.callout)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(playerStats.totalPoints >= playerStats.costToBuyNextPlot() ? vibrantAccentColor : dynamicSecondaryTextColor.opacity(0.5))
-                            .foregroundColor(.white)
-                            .cornerRadius(8)
+                        GardenGlossyButtonLabel(
+                            iconAsset: "BuyPlot_icon",
+                            text: "Buy Plot · \(Int(playerStats.costToBuyNextPlot())) pts",
+                            fill: playerStats.totalPoints >= playerStats.costToBuyNextPlot() ? vibrantAccentColor : dynamicSecondaryTextColor.opacity(0.6),
+                            fullWidth: false
+                        )
                     }
+                    .buttonStyle(GardenPressableButtonStyle())
                     .disabled((playerStats.totalPoints < playerStats.costToBuyNextPlot()) || isSellModeActive || isFertilizerModeActive || (isTutorialActive && currentTutorialStep != .explainPlotsValue))
                 } else {
-                    Text("Max plots for current level reached.")
-                        .font(.callout)
+                    Text("Max plots for this level reached")
+                        .font(.system(.caption, design: .rounded).weight(.medium))
                         .foregroundColor(vibrantSecondaryTextColor)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .gardenGlassChip()
                 }
             }
             .padding(.top)
@@ -546,94 +769,129 @@ struct GardenView: View {
         
         private var waterAllButton: some View {
             Button(action: waterAllPlants) {
-                HStack { Image(systemName: "cloud.rain.fill"); Text("Water All Plants") }
-                    .font(.headline).padding().frame(maxWidth: .infinity)
-                    .background(allPlantsWateredOrGrownToday ? dynamicSecondaryTextColor.opacity(0.5) : vibrantWaterButtonColor)
-                    .foregroundColor(.white).cornerRadius(10).shadow(radius: 3)
+                GardenGlossyButtonLabel(
+                    iconAsset: "Water_icon_small",
+                    text: "Water All Plants",
+                    fill: allPlantsWateredOrGrownToday ? dynamicSecondaryTextColor.opacity(0.55) : vibrantWaterButtonColor,
+                    font: .system(.headline, design: .rounded).weight(.bold)
+                )
             }
+            .buttonStyle(GardenPressableButtonStyle())
             .disabled(allPlantsWateredOrGrownToday || isSellModeActive || isFertilizerModeActive || (isTutorialActive && currentTutorialStep != .explainWatering))
         }
-        
+
         private var sellModeButton: some View {
             Button(action: toggleSellMode) {
-                HStack { Image(systemName: "dollarsign.circle.fill"); Text(isSellModeActive ? "Cancel Selling" : "Sell Plants") }
-                    .font(.callout).padding(EdgeInsets(top: 10, leading: 15, bottom: 10, trailing: 15)).frame(maxWidth: .infinity)
-                    .background(isSellModeActive ? dynamicDestructiveColor.opacity(0.8) : (hasGrownPlantsToSell ? vibrantSellButtonColor : dynamicSecondaryTextColor.opacity(0.5)))
-                    .foregroundColor(.white).cornerRadius(10).shadow(radius: 2)
+                GardenGlossyButtonLabel(
+                    iconAsset: "Sell_icon",
+                    text: isSellModeActive ? "Cancel Selling" : "Sell Plants",
+                    fill: isSellModeActive ? dynamicDestructiveColor.opacity(0.85) : (hasGrownPlantsToSell ? vibrantSellButtonColor : dynamicSecondaryTextColor.opacity(0.55))
+                )
             }
+            .buttonStyle(GardenPressableButtonStyle())
             .disabled((!hasGrownPlantsToSell && !isSellModeActive) || isFertilizerModeActive || (isTutorialActive && currentTutorialStep != .explainSell))
         }
-        
+
         private var useFertilizerButton: some View {
             Button(action: toggleFertilizerMode) {
-                HStack { Image(systemName: "leaf.arrow.triangle.circlepath"); Text(isFertilizerModeActive ? "Cancel Fertilizing" : "Use Fertilizer (\(playerStats.fertilizerCount))") }
-                    .font(.callout).padding(EdgeInsets(top: 10, leading: 15, bottom: 10, trailing: 15)).frame(maxWidth: .infinity)
-                    .background(isFertilizerModeActive ? dynamicDestructiveColor.opacity(0.8) : (playerStats.fertilizerCount > 0 ? vibrantFertilizerButtonColor : dynamicSecondaryTextColor.opacity(0.5)))
-                    .foregroundColor(.white).cornerRadius(10).shadow(radius: 2)
+                GardenGlossyButtonLabel(
+                    iconAsset: "Fertilizer_icon",
+                    text: isFertilizerModeActive ? "Cancel Fertilizing" : "Use Fertilizer (\(playerStats.fertilizerCount))",
+                    fill: isFertilizerModeActive ? dynamicDestructiveColor.opacity(0.85) : (playerStats.fertilizerCount > 0 ? vibrantFertilizerButtonColor : dynamicSecondaryTextColor.opacity(0.55))
+                )
             }
+            .buttonStyle(GardenPressableButtonStyle())
             .disabled((playerStats.fertilizerCount == 0 && !isFertilizerModeActive) || isSellModeActive || (isTutorialActive && currentTutorialStep != .explainFertilizer))
         }
         
+        /// Glass circle behind the toolbar icon buttons so they read as HUD
+        /// controls against the sky instead of floating glyphs.
+        private func toolbarIconLabel(_ assetName: String, size: CGFloat = 20) -> some View {
+            Image(assetName)
+                .resizable()
+                .scaledToFit()
+                .frame(width: size, height: size)
+                .padding(6)
+                .background(.ultraThinMaterial, in: Circle())
+                .overlay(
+                    Circle()
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [.white.opacity(0.55), .white.opacity(0.12)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 1
+                        )
+                )
+                .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
+        }
+
         @ToolbarContentBuilder
         private var gardenToolbarContent: some ToolbarContent {
             ToolbarItem(placement: .navigationBarLeading) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Level: \(playerStats.playerLevel)")
-                        .font(.headline)
-                        .foregroundColor(vibrantPrimaryTextColor)
-                    Text("Value: \(Int(playerStats.gardenValue))")
-                        .font(.caption)
-                        .foregroundColor(vibrantSecondaryTextColor)
-                }
-                .allowsHitTesting(!isTutorialActive || currentTutorialStep == .explainPlotsValue)
-            }
-            
-            ToolbarItemGroup(placement: .navigationBarTrailing) {
-                Button {
-                    print("Leaderboard button tapped")
-                    showingLeaderboardView = true
-                } label: {
-                    Image("Points_icon")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 22, height: 22)
-                        .colorMultiply(GardenAssetHelper.isDayTime() ? .black : .white)
-                }
-                .disabled(isSellModeActive || isFertilizerModeActive || isTutorialActive)
-                
-                Button {
-                    if isSellModeActive || isFertilizerModeActive || isTutorialActive { return }
-                    showingInventoryView = true
-                } label: {
-                    Image("Inventory_icon")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 22, height: 22)
-                        .colorMultiply(GardenAssetHelper.isDayTime() ? .black : .white)
-                }
-                .disabled(isSellModeActive || isFertilizerModeActive || isTutorialActive)
-                
-                Button {
-                    if isSellModeActive || isFertilizerModeActive || (isTutorialActive && currentTutorialStep != .explainShop) { return }
-                    if !(isTutorialActive && currentTutorialStep == .explainShop) { showingShopView = true }
-                } label: {
-                    Image("Shop_icon")
+                HStack(spacing: 6) {
+                    Image("Level_icon_small")
                         .resizable()
                         .scaledToFit()
                         .frame(width: 24, height: 24)
-                        .colorMultiply(GardenAssetHelper.isDayTime() ? .black : .white)
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("Level \(playerStats.playerLevel)")
+                            .font(.system(.footnote, design: .rounded).weight(.bold))
+                            .foregroundColor(vibrantPrimaryTextColor)
+                        Text("Value \(Int(playerStats.gardenValue))")
+                            .font(.system(.caption2, design: .rounded).weight(.semibold))
+                            .foregroundColor(vibrantSecondaryTextColor)
+                    }
                 }
-                .padding(.trailing, 5)
-                .disabled(isSellModeActive || isFertilizerModeActive || (isTutorialActive && currentTutorialStep != .explainShop) )
-                
-                Spacer()
-                
-                HStack(spacing: 4) {
-                    Image(systemName: "dollarsign.circle.fill")
-                        .foregroundColor(GardenAssetHelper.isDayTime() ? vibrantAccentColor : .white.opacity(0.9))
-                    Text("\(Int(playerStats.totalPoints))")
-                        .font(.headline)
-                        .foregroundColor(vibrantPrimaryTextColor)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .gardenGlassChip(cornerRadius: 12)
+                .allowsHitTesting(!isTutorialActive || currentTutorialStep == .explainPlotsValue)
+            }
+
+            // Single ToolbarItem (not a group): multiple wide toolbar items get
+            // collapsed by iOS into a "⋯" overflow menu, hiding the points chip.
+            ToolbarItem(placement: .navigationBarTrailing) {
+                HStack(spacing: 8) {
+                    Button {
+                        print("Leaderboard button tapped")
+                        showingLeaderboardView = true
+                    } label: {
+                        toolbarIconLabel("Points_icon_small", size: 22)
+                    }
+                    .disabled(isSellModeActive || isFertilizerModeActive || isTutorialActive)
+
+                    Button {
+                        if isSellModeActive || isFertilizerModeActive || isTutorialActive { return }
+                        showingInventoryView = true
+                    } label: {
+                        toolbarIconLabel("Inventory_icon_small", size: 22)
+                    }
+                    .disabled(isSellModeActive || isFertilizerModeActive || isTutorialActive)
+
+                    Button {
+                        if isSellModeActive || isFertilizerModeActive || (isTutorialActive && currentTutorialStep != .explainShop) { return }
+                        if !(isTutorialActive && currentTutorialStep == .explainShop) { showingShopView = true }
+                    } label: {
+                        toolbarIconLabel("Shop_icon_small", size: 22)
+                    }
+                    .disabled(isSellModeActive || isFertilizerModeActive || (isTutorialActive && currentTutorialStep != .explainShop) )
+
+                    HStack(spacing: 3) {
+                        Image("Coin_icon_small")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 19, height: 19)
+                        Text("\(Int(playerStats.totalPoints))")
+                            .font(.system(.subheadline, design: .rounded).weight(.bold))
+                            .foregroundColor(vibrantPrimaryTextColor)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .gardenGlassChip(cornerRadius: 14)
                 }
             }
         }
@@ -641,8 +899,101 @@ struct GardenView: View {
         func showStandardAlert(title: String, message: String) {
             standardAlertTitle = title; standardAlertMessage = message; showingStandardAlert = true
         }
+
+        // MARK: - SpriteKit scene event routing
+
+        private var sceneDialogPlant: PlacedPlant? {
+            scenePlantDialogID.flatMap { id in
+                playerStats.placedPlants.first { $0.id == id }
+            }
+        }
+
+        private func isPlantWateredToday(_ plant: PlacedPlant) -> Bool {
+            plant.lastWateredOnDay != nil && Calendar.current.isDateInToday(plant.lastWateredOnDay!)
+        }
+
+        /// Tutorial hit-gating for plant taps/long-presses — same conditions the
+        /// legacy IslandGridOverlayView expressed through .allowsHitTesting.
+        private func tutorialAllowsPlantInteraction(_ plant: PlacedPlant) -> Bool {
+            !isTutorialActive
+                || (currentTutorialStep == .explainFertilizer && !plant.isFullyGrown)
+                || (currentTutorialStep == .explainSell && plant.isFullyGrown)
+                || currentTutorialStep == .explainPlanting
+        }
+
+        func handleSceneEvent(_ event: GardenSceneEvent) {
+            switch event {
+            case .tappedPlant(let id):
+                guard let plant = playerStats.placedPlants.first(where: { $0.id == id }),
+                      tutorialAllowsPlantInteraction(plant) else { return }
+
+                if isFertilizerModeActive {
+                    if !plant.isFullyGrown { attemptToFertilize(plant: plant) }
+                } else if isSellModeActive {
+                    if plant.isFullyGrown {
+                        triggerPlantFeedback(plantID: plant.id, text: "+\(Int(plant.baseValue * 1.5))P", color: vibrantSellButtonColor)
+                        sellSinglePlant(plantId: plant.id)
+                    }
+                } else if !isTutorialActive {
+                    selectedPlantForInfo = plant
+                }
+
+            case .tappedEmptyTile(let position):
+                guard !isTutorialActive || currentTutorialStep == .explainPlanting else { return }
+
+                if isTutorialActive && currentTutorialStep == .explainPlanting {
+                    plantingSheetItem = IdentifiableGridPositionWrapper(position: position)
+                } else if !isFertilizerModeActive && !isSellModeActive {
+                    plantingSheetItem = IdentifiableGridPositionWrapper(position: position)
+                } else if isFertilizerModeActive {
+                    showStandardAlert(title: "Empty Plot", message: "Select a plant to use fertilizer on.")
+                } else if isSellModeActive {
+                    showStandardAlert(title: "Empty Plot", message: "Select a grown plant to sell.")
+                }
+
+            case .longPressedPlant(let id):
+                guard let plant = playerStats.placedPlants.first(where: { $0.id == id }),
+                      tutorialAllowsPlantInteraction(plant),
+                      !isFertilizerModeActive, !isSellModeActive else { return }
+                if plant.isFullyGrown || !isPlantWateredToday(plant) {
+                    scenePlantDialogID = id
+                }
+
+            case .swapRequested(let draggedID, let targetID):
+                swapPlants(draggedID: draggedID, targetID: targetID)
+            }
+        }
+
+        /// Ported from GardenDropDelegate.performDrop: swap grid positions and
+        /// array order, then persist to Firebase.
+        private func swapPlants(draggedID: UUID, targetID: UUID) {
+            guard let stats = playerStatsList.first,
+                  let fromIndex = stats.placedPlants.firstIndex(where: { $0.id == draggedID }),
+                  let toIndex = stats.placedPlants.firstIndex(where: { $0.id == targetID }),
+                  fromIndex != toIndex else { return }
+
+            let fromPos = stats.placedPlants[fromIndex].position
+            stats.placedPlants[fromIndex].position = stats.placedPlants[toIndex].position
+            stats.placedPlants[toIndex].position = fromPos
+            stats.placedPlants.swapAt(fromIndex, toIndex)
+
+            let codableStats = PlayerStatsCodable(from: stats)
+            firebaseManager.savePlayerStats(codableStats) { error in
+                if let error = error {
+                    print("🔥 Error saving reordered garden: \(error.localizedDescription)")
+                }
+            }
+        }
         
         func triggerPlantFeedback(plantID: UUID, text: String, color: Color = dynamicSecondaryColor) {
+            if useSpriteKitScene {
+                // Feedback stays call-site-triggered (the 1.5s-delayed sell
+                // depends on it) and floats from the plant's current tile.
+                if let plant = playerStats.placedPlants.first(where: { $0.id == plantID }) {
+                    sceneBridge.showFeedback(text: text, color: UIColor(color), at: plant.position)
+                }
+                return
+            }
             plantFeedbackItems.removeValue(forKey: plantID)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
                 let newItem = PlantActionFeedback(text: text, color: color)
@@ -853,6 +1204,9 @@ struct GardenView: View {
             }
             if let currentQuantity = mutablePlayerStats.unplacedPlantsInventory[blueprintID], currentQuantity > 0 {
                 let newPlant = PlacedPlant(name: blueprint.name, position: positionToPlantAt, initialDaysToGrow: blueprint.initialDaysToGrow, rarity: blueprint.rarity, theme: blueprint.theme, baseValue: blueprint.baseValue, assetName: blueprint.assetName, iconName: blueprint.iconName)
+                if useSpriteKitScene {
+                    sceneBridge.queuePlantingAnimation(for: newPlant.id)
+                }
                 mutablePlayerStats.placedPlants.append(newPlant)
                 mutablePlayerStats.unplacedPlantsInventory[blueprintID]? -= 1
                 if mutablePlayerStats.unplacedPlantsInventory[blueprintID] ?? 0 <= 0 { mutablePlayerStats.unplacedPlantsInventory.removeValue(forKey: blueprintID) }

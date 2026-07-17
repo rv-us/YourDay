@@ -1054,6 +1054,8 @@ class FirebaseManager: ObservableObject {
         sharedTaskId: String?,
         completedAt: Date,
         imageData: Data,
+        groupTaskId: String? = nil,
+        groupId: String? = nil,
         completion: @escaping (Error?, String?) -> Void
     ) {
         guard let currentUserId = Auth.auth().currentUser?.uid else {
@@ -1098,9 +1100,10 @@ class FirebaseManager: ObservableObject {
                     return
                 }
 
+                let authorDisplayName = Auth.auth().currentUser?.displayName ?? "Anonymous Gardener"
                 let payload: [String: Any] = [
                     "authorId": currentUserId,
-                    "authorDisplayName": Auth.auth().currentUser?.displayName ?? "Anonymous Gardener",
+                    "authorDisplayName": authorDisplayName,
                     "taskTitle": taskTitle,
                     "sourceType": sourceType.rawValue,
                     "scheduledEventId": scheduledEventId ?? NSNull(),
@@ -1109,13 +1112,20 @@ class FirebaseManager: ObservableObject {
                     "completedAt": Timestamp(date: completedAt),
                     "createdAt": FieldValue.serverTimestamp(),
                     "photoURL": downloadURL,
-                    "photoStoragePath": storagePath
+                    "photoStoragePath": storagePath,
+                    "groupTaskId": groupTaskId ?? NSNull(),
+                    "groupId": groupId ?? NSNull()
                 ]
 
                 postRef.setData(payload) { error in
                     if let error = error {
                         cleanupOrphan(error)
                     } else {
+                        // For group-task proofs, announce the post in the group chat.
+                        // A message failure must not fail the post itself.
+                        if groupTaskId != nil, let groupId = groupId {
+                            self.sendGroupProofMessage(groupId: groupId, postId: postId, taskTitle: taskTitle, senderId: currentUserId, senderDisplayName: authorDisplayName)
+                        }
                         completion(nil, postId)
                     }
                 }
@@ -3108,6 +3118,147 @@ class FirebaseManager: ObservableObject {
         db.collection("group_chats").document(groupId).getDocument { snapshot, _ in
             let group = snapshot.flatMap { try? $0.data(as: GroupConversation.self) }
             completion(group)
+        }
+    }
+
+    // MARK: - Group Tasks
+
+    /// Creates a group task doc plus its announcement message in the group chat, in one batch.
+    func createGroupTask(groupId: String, groupName: String, title: String, detail: String, dueDate: Date, assignees: [String: String], creatorDisplayName: String, completion: @escaping (Error?, String?) -> Void) {
+        guard let currentUserId = Auth.auth().currentUser?.uid else {
+            completion(NSError(domain: "", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]), nil)
+            return
+        }
+        let batch = db.batch()
+        let taskRef = db.collection("group_tasks").document()
+        let now = Date()
+        // Client timestamp (not serverTimestamp): GroupTask decodes createdAt as a
+        // non-optional Date, and a pending serverTimestamp is null in the creator's
+        // own local snapshot, which would drop the task from listeners on-device.
+        batch.setData([
+            "groupId": groupId,
+            "groupName": groupName,
+            "creatorId": currentUserId,
+            "creatorDisplayName": creatorDisplayName,
+            "title": title,
+            "detail": detail,
+            "dueDate": Timestamp(date: dueDate),
+            "assigneeIds": Array(assignees.keys),
+            "assigneeNames": assignees,
+            "completedBy": [String](),
+            "materializedBy": [String](),
+            "createdAt": Timestamp(date: now)
+        ], forDocument: taskRef)
+
+        let msgRef = db.collection("group_chats").document(groupId).collection("messages").document()
+        batch.setData([
+            "senderId": currentUserId,
+            "senderDisplayName": creatorDisplayName,
+            "receiverId": "",
+            "content": "Created group task: \(title)",
+            "timestamp": Timestamp(date: now),
+            "kind": "group_task",
+            "refId": taskRef.documentID
+        ], forDocument: msgRef)
+
+        let groupRef = db.collection("group_chats").document(groupId)
+        batch.updateData([
+            "lastMessageText": "Created group task: \(title)",
+            "lastMessageAt": Timestamp(date: now),
+            "lastMessageSenderId": currentUserId
+        ], forDocument: groupRef)
+
+        batch.commit { error in
+            completion(error, error == nil ? taskRef.documentID : nil)
+        }
+    }
+
+    /// All group tasks the current user is assigned to, across all groups. Feeds the todo-list materializer.
+    func listenToMyGroupTasks(onUpdate: @escaping ([GroupTask]) -> Void) -> ListenerRegistration? {
+        guard let currentUserId = Auth.auth().currentUser?.uid else { return nil }
+        return db.collection("group_tasks")
+            .whereField("assigneeIds", arrayContains: currentUserId)
+            .addSnapshotListener { snapshot, _ in
+                let tasks = snapshot?.documents.compactMap { try? $0.data(as: GroupTask.self) } ?? []
+                onUpdate(tasks)
+            }
+    }
+
+    /// All group tasks for one group. Feeds the live progress cards in the group chat.
+    func listenToGroupTasks(groupId: String, onUpdate: @escaping ([GroupTask]) -> Void) -> ListenerRegistration? {
+        return db.collection("group_tasks")
+            .whereField("groupId", isEqualTo: groupId)
+            .addSnapshotListener { snapshot, _ in
+                let tasks = snapshot?.documents.compactMap { try? $0.data(as: GroupTask.self) } ?? []
+                onUpdate(tasks)
+            }
+    }
+
+    /// Records that this device created the local TodoItem, so it is never re-added
+    /// after a local delete or the daily done-task cleanup.
+    func markGroupTaskMaterialized(groupTaskId: String) {
+        guard let currentUserId = Auth.auth().currentUser?.uid else { return }
+        db.collection("group_tasks").document(groupTaskId).updateData([
+            "materializedBy": FieldValue.arrayUnion([currentUserId])
+        ]) { error in
+            if let error = error {
+                print("markGroupTaskMaterialized failed for \(groupTaskId): \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// Adds/removes the current user from the task's completedBy set. Not-found errors
+    /// are swallowed: the task (or its group) may have been deleted while the local todo lives on.
+    func updateGroupTaskCompletion(groupTaskId: String, isCompleted: Bool) {
+        guard let currentUserId = Auth.auth().currentUser?.uid else { return }
+        let change: FieldValue = isCompleted
+            ? FieldValue.arrayUnion([currentUserId])
+            : FieldValue.arrayRemove([currentUserId])
+        db.collection("group_tasks").document(groupTaskId).updateData([
+            "completedBy": change
+        ]) { error in
+            if let error = error {
+                print("updateGroupTaskCompletion failed for \(groupTaskId): \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// Announces a group-task proof post in its group chat as a special "proof_post" message.
+    private func sendGroupProofMessage(groupId: String, postId: String, taskTitle: String, senderId: String, senderDisplayName: String) {
+        let batch = db.batch()
+        let now = Date()
+        let msgRef = db.collection("group_chats").document(groupId).collection("messages").document()
+        batch.setData([
+            "senderId": senderId,
+            "senderDisplayName": senderDisplayName,
+            "receiverId": "",
+            "content": "Posted proof for: \(taskTitle)",
+            "timestamp": Timestamp(date: now),
+            "kind": "proof_post",
+            "refId": postId
+        ], forDocument: msgRef)
+
+        let groupRef = db.collection("group_chats").document(groupId)
+        batch.updateData([
+            "lastMessageText": "Posted proof for: \(taskTitle)",
+            "lastMessageAt": Timestamp(date: now),
+            "lastMessageSenderId": senderId
+        ], forDocument: groupRef)
+
+        batch.commit { error in
+            if let error = error {
+                print("sendGroupProofMessage failed for post \(postId): \(error.localizedDescription)")
+            }
+        }
+    }
+
+    func fetchTaskProofPost(postId: String, completion: @escaping (TaskProofPost?) -> Void) {
+        db.collection("task_proof_posts").document(postId).getDocument { snapshot, _ in
+            guard let snapshot = snapshot, snapshot.exists else {
+                completion(nil)
+                return
+            }
+            completion(try? snapshot.data(as: TaskProofPost.self))
         }
     }
 }

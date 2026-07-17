@@ -16,4 +16,6 @@ struct ChatMessage: Identifiable, Codable {
     let timestamp: Date
     var groupId: String? = nil            // nil for DMs; set for group messages
     var senderDisplayName: String? = nil  // nil for DMs; set for group messages
+    var kind: String? = nil               // nil = plain text; "group_task" | "proof_post"
+    var refId: String? = nil              // groupTaskId or proofPostId, depending on kind
 }

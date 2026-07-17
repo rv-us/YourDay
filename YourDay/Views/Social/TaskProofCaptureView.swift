@@ -177,7 +177,9 @@ struct TaskProofCaptureView: View {
             localTaskId: context.localTaskId,
             sharedTaskId: context.sharedTaskId,
             completedAt: context.completedAt,
-            imageData: imageData
+            imageData: imageData,
+            groupTaskId: context.groupTaskId,
+            groupId: context.groupId
         ) { error, postId in
             DispatchQueue.main.async {
                 isPosting = false

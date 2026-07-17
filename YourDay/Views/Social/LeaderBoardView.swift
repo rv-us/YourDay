@@ -93,7 +93,7 @@ struct LeaderboardView: View {
                             }
                         }
                         .listStyle(PlainListStyle())
-                        .background(dynamicBackgroundColor)
+                        .scrollContentBackground(.hidden)
                         .onAppear {
                             self.scrollViewProxy = proxy
                             if viewModel.currentUserID != Auth.auth().currentUser?.uid {
@@ -125,12 +125,12 @@ struct LeaderboardView: View {
                             .padding(.horizontal)
                             .padding(.vertical, 8)
                         }
-                        .background(dynamicBackgroundColor)
+                        .background(.ultraThinMaterial)
                     }
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(dynamicBackgroundColor.edgesIgnoringSafeArea(.all))
+            .background(GardenScreenBackground(imageName: "Leaderboard_bg"))
             .navigationTitle("Leaderboard")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(dynamicSecondaryBackgroundColor, for: .navigationBar)
@@ -207,41 +207,26 @@ struct LeaderboardRowView: View {
     let entry: LeaderboardEntry
     let isCurrentUser: Bool
     
-    // Colorful rank indicators for top 3
-    private var rankColor: Color? {
+    // Doodle medal assets for top 3
+    private var medalAssetName: String? {
         guard let rank = entry.rank else { return nil }
         switch rank {
-        case 1: return plantPeach           // Gold/Peach for 1st
-        case 2: return plantVeryLightBlue   // Silver/Blue for 2nd
-        case 3: return plantLightMintGreen  // Bronze/Mint for 3rd
-        default: return nil
-        }
-    }
-    
-    private var rankIcon: String? {
-        guard let rank = entry.rank else { return nil }
-        switch rank {
-        case 1: return "crown.fill"
-        case 2: return "star.fill"
-        case 3: return "star.fill"
+        case 1: return "Medal_gold_icon_small"
+        case 2: return "Medal_silver_icon_small"
+        case 3: return "Medal_bronze_icon_small"
         default: return nil
         }
     }
 
     var body: some View {
         HStack {
-            // Rank with optional medal/icon for top 3
+            // Rank with medal art for top 3
             ZStack {
-                if let color = rankColor {
-                    Circle()
-                        .fill(color)
+                if let medal = medalAssetName {
+                    Image(medal)
+                        .resizable()
+                        .scaledToFit()
                         .frame(width: 36, height: 36)
-                }
-                
-                if let icon = rankIcon, let _ = rankColor {
-                    Image(systemName: icon)
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(dynamicTextColor)
                 } else {
                     Text("\(entry.rank ?? 0)")
                         .fontWeight(isCurrentUser ? .bold : .regular)
@@ -269,9 +254,24 @@ struct LeaderboardRowView: View {
                 .frame(width: 80, alignment: .trailing)
         }
         .padding(.vertical, 10)
-        .padding(.horizontal, 5)
-        .background(isCurrentUser ? dynamicPrimaryColor.opacity(0.3) : Color.clear)
-        .cornerRadius(isCurrentUser ? 8 : 0)
-        .listRowBackground(dynamicBackgroundColor)
+        .padding(.horizontal, 12)
+        .background(
+            ZStack {
+                Image("Row_plate_bg")
+                    .resizable(
+                        capInsets: EdgeInsets(top: 12, leading: 30, bottom: 12, trailing: 24),
+                        resizingMode: .stretch
+                    )
+                if isCurrentUser {
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(dynamicPrimaryColor.opacity(0.35))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                }
+            }
+        )
+        .padding(.vertical, 2)
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
     }
 }

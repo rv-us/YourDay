@@ -224,43 +224,77 @@ struct IslandGridOverlayView: View {
 
 struct EmptyTileView: View {
     let tileSize: CGSize
-    @State private var pulseScale: CGFloat = 1.0
-    
+
     var body: some View {
-        RoundedRectangle(cornerRadius: 8)
-            .fill(
+        let w = tileSize.width * 0.92
+        let h = tileSize.height * 0.92
+        let badgeSize = min(tileSize.width, tileSize.height) * 0.32
+        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+
+        ZStack {
+            // Tilled soil base
+            shape.fill(
                 LinearGradient(
                     gradient: Gradient(colors: [
-                        Color(red: 0.58, green: 0.40, blue: 0.24).opacity(0.85),
-                        Color(red: 0.45, green: 0.30, blue: 0.17).opacity(0.88)
+                        Color(red: 0.62, green: 0.44, blue: 0.27).opacity(0.92),
+                        Color(red: 0.42, green: 0.28, blue: 0.16).opacity(0.94)
                     ]),
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
+                    startPoint: .top,
+                    endPoint: .bottom
                 )
             )
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .strokeBorder(
-                        Color(red: 0.33, green: 0.22, blue: 0.12).opacity(0.95),
-                        style: StrokeStyle(lineWidth: 2.5, dash: [6, 4])
-                    )
+
+            // Soft depression toward the middle so the plot reads as dug earth
+            shape.fill(
+                RadialGradient(
+                    colors: [Color.black.opacity(0.22), .clear],
+                    center: .center,
+                    startRadius: 0,
+                    endRadius: max(w, h) * 0.6
+                )
             )
-            .overlay(
-                Image(systemName: "plus.circle.fill")
-                    .font(.system(size: min(tileSize.width, tileSize.height) * 0.35, weight: .medium))
-                    .foregroundColor(Color.white.opacity(0.92))
-                    .scaleEffect(pulseScale)
-            )
-            .shadow(color: Color.black.opacity(0.18), radius: 4, x: 0, y: 2)
-            .shadow(color: Color.black.opacity(0.12), radius: 8, x: 0, y: 4)
-            .frame(width: tileSize.width * 0.92, height: tileSize.height * 0.92)
-            .onAppear {
-                withAnimation(
-                    Animation.easeInOut(duration: 1.5)
-                        .repeatForever(autoreverses: true)
-                ) {
-                    pulseScale = 1.1
+
+            // Furrow rows
+            VStack(spacing: h * 0.16) {
+                ForEach(0..<3, id: \.self) { _ in
+                    Capsule()
+                        .fill(Color.black.opacity(0.14))
+                        .frame(height: max(1.5, h * 0.045))
+                        .padding(.horizontal, w * 0.14)
                 }
             }
+
+            // Top light catch
+            shape.strokeBorder(
+                LinearGradient(
+                    colors: [.white.opacity(0.35), .clear],
+                    startPoint: .top,
+                    endPoint: .bottom
+                ),
+                lineWidth: 1.5
+            )
+
+            // Dashed planting guide
+            shape
+                .strokeBorder(
+                    Color(red: 0.30, green: 0.20, blue: 0.11).opacity(0.9),
+                    style: StrokeStyle(lineWidth: 2, dash: [6, 4])
+                )
+                .padding(2)
+
+            // Plus badge
+            ZStack {
+                Circle().fill(Color.white.opacity(0.30))
+                Circle().strokeBorder(Color.white.opacity(0.65), lineWidth: 1)
+                Image(systemName: "plus")
+                    .font(.system(size: badgeSize * 0.55, weight: .bold))
+                    .foregroundColor(.white)
+            }
+            .frame(width: badgeSize, height: badgeSize)
+            .shadow(color: .black.opacity(0.25), radius: 2, y: 1)
+        }
+        .frame(width: w, height: h)
+        .shadow(color: Color.black.opacity(0.18), radius: 4, x: 0, y: 2)
+        .shadow(color: Color.black.opacity(0.12), radius: 8, x: 0, y: 4)
     }
 }

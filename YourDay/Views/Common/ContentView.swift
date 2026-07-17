@@ -37,6 +37,9 @@ struct ContentView: View {
 
     @State private var showMigrateTasksView = false
     @State private var newDayEvaluationTriggeredLastDayView = false
+    /// Re-entry guard: new-day logic is triggered from both .task and didBecomeActive,
+    /// which can interleave across its awaits on a cold launch.
+    @State private var isProcessingNewDayLogic = false
     
     @State private var showWitheringAlert = false
     @State private var witheringAlertMessage = ""
@@ -62,6 +65,7 @@ struct ContentView: View {
     }
     @State private var selectedTab: Tab = .dashboard
     @State private var incomingChatListener: ListenerRegistration?
+    @State private var groupTaskListener: ListenerRegistration?
 
     var body: some View {
         Group {
@@ -72,6 +76,16 @@ struct ContentView: View {
             }
         }
         .onAppear {
+            #if DEBUG
+            // UI-test seam: "-UITestGardenSmoke" jumps straight to the Garden
+            // tab as a local guest so the smoke test never touches auth,
+            // Firebase, or display-name moderation.
+            if ProcessInfo.processInfo.arguments.contains("-UITestGardenSmoke") {
+                loginViewModel.userDisplayName = "UITest"
+                loginViewModel.isGuest = true
+                selectedTab = .garden
+            }
+            #endif
             if loginViewModel.isAuthenticated && localPlayerStatsList.isEmpty {
                 let newStats = PlayerStats()
                 modelContext.insert(newStats)
@@ -103,12 +117,16 @@ struct ContentView: View {
                 }
                 incomingChatListener?.remove()
                 incomingChatListener = nil
+                groupTaskListener?.remove()
+                groupTaskListener = nil
             }
         }
         .onChange(of: loginViewModel.isGuest) { _, isGuestNow in
             if isGuestNow {
                 incomingChatListener?.remove()
                 incomingChatListener = nil
+                groupTaskListener?.remove()
+                groupTaskListener = nil
             }
             if isGuestNow && localPlayerStatsList.isEmpty {
                 // If entering guest mode and no local data exists, create it.
@@ -279,6 +297,7 @@ struct ContentView: View {
             .onAppear {
                 NotificationManager.shared.setJournalViewModel(journalViewModel)
                 startIncomingChatListenerIfNeeded()
+                startGroupTaskListenerIfNeeded()
                 Task { @MainActor in
                     await FocusPenaltyProcessor.shared.drainPending(
                         context: modelContext,
@@ -339,6 +358,58 @@ struct ContentView: View {
             Task { @MainActor in
                 IncomingChatBannerManager.shared.show(message: message, senderName: senderName)
             }
+        }
+    }
+
+    private func startGroupTaskListenerIfNeeded() {
+        guard loginViewModel.isAuthenticated, !loginViewModel.isGuest, groupTaskListener == nil else { return }
+        groupTaskListener = firebaseManager.listenToMyGroupTasks { tasks in
+            materializeGroupTasks(tasks)
+        }
+    }
+
+    /// Auto-adds group tasks assigned to this user into the local todo list.
+    /// `materializedBy` keeps a task from coming back after the user deletes it
+    /// locally or the daily cleanup removes the completed copy; the deterministic
+    /// localTaskId makes the Firestore write idempotent across the user's devices.
+    private func materializeGroupTasks(_ tasks: [GroupTask]) {
+        guard let userId = Auth.auth().currentUser?.uid else { return }
+        for task in tasks {
+            guard let groupTaskId = task.id,
+                  task.assigneeIds.contains(userId),
+                  !task.materializedBy.contains(userId) else { continue }
+
+            let localId = "gt_\(groupTaskId)"
+            let descriptor = FetchDescriptor<TodoItem>(predicate: #Predicate { $0.localTaskId == localId })
+            if let existing = try? modelContext.fetch(descriptor), !existing.isEmpty {
+                firebaseManager.markGroupTaskMaterialized(groupTaskId: groupTaskId)
+                continue
+            }
+
+            let todo = TodoItem(
+                localTaskId: localId,
+                title: task.title,
+                detail: task.detail,
+                dueDate: task.dueDate,
+                origin: .today,
+                groupTaskId: groupTaskId,
+                groupId: task.groupId,
+                groupName: task.groupName
+            )
+            modelContext.insert(todo)
+            do {
+                try modelContext.save()
+            } catch {
+                print("ContentView: Failed to save materialized group task \(groupTaskId): \(error.localizedDescription)")
+                continue
+            }
+
+            firebaseManager.saveTodoItem(TodoItemCodable(from: todo, userId: userId)) { error in
+                if let error = error {
+                    print("ContentView: Failed to sync materialized group task to Firebase: \(error.localizedDescription)")
+                }
+            }
+            firebaseManager.markGroupTaskMaterialized(groupTaskId: groupTaskId)
         }
     }
 
@@ -556,6 +627,13 @@ struct ContentView: View {
 
     private func processNewDayLogicIfNeeded() async {
         print("🕒 [DEBUG] processNewDayLogicIfNeeded called")
+        guard !isProcessingNewDayLogic else {
+            print("🕒 [DEBUG] new day logic already running, skipping")
+            return
+        }
+        isProcessingNewDayLogic = true
+        defer { isProcessingNewDayLogic = false }
+
         guard let stats = currentPlayerStats else {
             print("🕒 [DEBUG] currentPlayerStats is nil, skipping new day logic")
             return

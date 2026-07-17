@@ -90,6 +90,7 @@ struct ChatListView: View {
             unreadStore.load()
             loadGroupLastRead()
             fetchFriends()
+            groupListener?.remove()
             groupListener = firebaseManager.listenToMyGroups { fetched in
                 groups = fetched
             }
@@ -167,6 +168,9 @@ struct ChatListView: View {
             .onAppear {
                 markGroupRead(groupId: group.id ?? "")
             }
+            .onDisappear {
+                markGroupRead(groupId: group.id ?? "")
+            }
             .environmentObject(firebaseManager)
             .environmentObject(loginViewModel)) {
             HStack(alignment: .center, spacing: 12) {
@@ -229,6 +233,9 @@ struct ChatListView: View {
                 self.friends = fetched
             }
             for friend in fetched {
+                // Remove any existing listener first so repeated onAppear
+                // calls don't leak duplicate active listeners.
+                listeners[friend.userId]?.remove()
                 let listener = firebaseManager.listenToChat(with: friend.userId) { messages in
                     Task { @MainActor in
                         if let last = messages.last {

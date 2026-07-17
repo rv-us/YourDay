@@ -32,6 +32,9 @@ struct TodoItemCodable: Codable, Identifiable {
     var trelloListId: String?
     var trelloDateLastActivity: Date?
     var userPinned: Bool
+    var groupTaskId: String?
+    var groupId: String?
+    var groupName: String?
 
     // Firebase metadata
     var userId: String
@@ -63,6 +66,9 @@ struct TodoItemCodable: Codable, Identifiable {
         self.trelloListId = model.trelloListId
         self.trelloDateLastActivity = model.trelloDateLastActivity
         self.userPinned = model.userPinned
+        self.groupTaskId = model.groupTaskId
+        self.groupId = model.groupId
+        self.groupName = model.groupName
 
         self.userId = userId
         self.createdAt = model.createdAt
@@ -92,6 +98,9 @@ struct TodoItemCodable: Codable, Identifiable {
         trelloListId: String? = nil,
         trelloDateLastActivity: Date? = nil,
         userPinned: Bool = false,
+        groupTaskId: String? = nil,
+        groupId: String? = nil,
+        groupName: String? = nil,
         userId: String,
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
@@ -117,6 +126,9 @@ struct TodoItemCodable: Codable, Identifiable {
         self.trelloListId = trelloListId
         self.trelloDateLastActivity = trelloDateLastActivity
         self.userPinned = userPinned
+        self.groupTaskId = groupTaskId
+        self.groupId = groupId
+        self.groupName = groupName
         self.userId = userId
         self.createdAt = createdAt
         self.updatedAt = updatedAt
@@ -151,6 +163,9 @@ struct TodoItemCodable: Codable, Identifiable {
         trelloListId = try container.decodeIfPresent(String.self, forKey: .trelloListId)
         trelloDateLastActivity = try container.decodeIfPresent(Date.self, forKey: .trelloDateLastActivity)
         userPinned = try container.decodeIfPresent(Bool.self, forKey: .userPinned) ?? false
+        groupTaskId = try container.decodeIfPresent(String.self, forKey: .groupTaskId)
+        groupId = try container.decodeIfPresent(String.self, forKey: .groupId)
+        groupName = try container.decodeIfPresent(String.self, forKey: .groupName)
 
         userId = try container.decode(String.self, forKey: .userId)
         createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
@@ -189,6 +204,9 @@ struct TodoItemCodable: Codable, Identifiable {
         try container.encodeIfPresent(trelloListId, forKey: .trelloListId)
         try container.encodeIfPresent(trelloDateLastActivity, forKey: .trelloDateLastActivity)
         try container.encode(userPinned, forKey: .userPinned)
+        try container.encodeIfPresent(groupTaskId, forKey: .groupTaskId)
+        try container.encodeIfPresent(groupId, forKey: .groupId)
+        try container.encodeIfPresent(groupName, forKey: .groupName)
         try container.encode(userId, forKey: .userId)
         try container.encode(createdAt, forKey: .createdAt)
         try container.encode(updatedAt, forKey: .updatedAt)
@@ -199,6 +217,7 @@ struct TodoItemCodable: Codable, Identifiable {
         case localTaskId, title, detail, dueDate, isDone, subtasks, completedAt
         case origin, position, sharedTaskId, isSharedPending, proofPostId, manualScheduleGoogleEventId
         case scheduledStartTime, scheduledEndTime, trelloCardId, trelloBoardId, trelloListId, trelloDateLastActivity, userPinned
+        case groupTaskId, groupId, groupName
         case userId, createdAt, updatedAt, schemaVersion
     }
 
@@ -226,7 +245,10 @@ struct TodoItemCodable: Codable, Identifiable {
         trelloListId: String?,
         trelloDateLastActivity: Date?,
         createdAt: Date,
-        userPinned: Bool
+        userPinned: Bool,
+        groupTaskId: String?,
+        groupId: String?,
+        groupName: String?
     ) {
         return (
             localTaskId: self.localTaskId,
@@ -249,7 +271,10 @@ struct TodoItemCodable: Codable, Identifiable {
             trelloListId: self.trelloListId,
             trelloDateLastActivity: self.trelloDateLastActivity,
             createdAt: self.createdAt,
-            userPinned: self.userPinned
+            userPinned: self.userPinned,
+            groupTaskId: self.groupTaskId,
+            groupId: self.groupId,
+            groupName: self.groupName
         )
     }
 }

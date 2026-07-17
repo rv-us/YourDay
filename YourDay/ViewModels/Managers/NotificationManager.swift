@@ -370,12 +370,20 @@ final class NotificationManager: NSObject, ObservableObject, UNUserNotificationC
     }
 
     func cancelAllJournalPromptNotifications() {
+        cancelAllNotifications(withPrefix: "journalPrompt_")
+    }
+
+    func cancelAllPreTaskNotifications() {
+        cancelAllNotifications(withPrefix: "preTask_")
+    }
+
+    private func cancelAllNotifications(withPrefix prefix: String) {
         let center = UNUserNotificationCenter.current()
 
         center.getPendingNotificationRequests { requests in
             let identifiers = requests
                 .map(\.identifier)
-                .filter { $0.hasPrefix("journalPrompt_") }
+                .filter { $0.hasPrefix(prefix) }
             guard !identifiers.isEmpty else { return }
             center.removePendingNotificationRequests(withIdentifiers: identifiers)
         }
@@ -383,7 +391,7 @@ final class NotificationManager: NSObject, ObservableObject, UNUserNotificationC
         center.getDeliveredNotifications { notifications in
             let identifiers = notifications
                 .map { $0.request.identifier }
-                .filter { $0.hasPrefix("journalPrompt_") }
+                .filter { $0.hasPrefix(prefix) }
             guard !identifiers.isEmpty else { return }
             center.removeDeliveredNotifications(withIdentifiers: identifiers)
         }

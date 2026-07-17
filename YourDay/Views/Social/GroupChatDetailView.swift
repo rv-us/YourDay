@@ -27,6 +27,13 @@ struct GroupChatDetailView: View {
     @State private var progressRecipients: [GroupMember] = []
     @State private var showProgressPicker = false
 
+    // Group task flow (single sheet: pick assignees, then compose)
+    @State private var showGroupTaskFlow = false
+
+    // Live group tasks for progress cards, keyed by task id
+    @State private var groupTasks: [String: GroupTask] = [:]
+    @State private var groupTasksListener: ListenerRegistration?
+
     private var currentUserId: String? { Auth.auth().currentUser?.uid }
     private var myDisplayName: String {
         loginViewModel.userDisplayName ?? Auth.auth().currentUser?.displayName ?? "Me"
@@ -51,23 +58,30 @@ struct GroupChatDetailView: View {
                                         .foregroundColor(dynamicSecondaryTextColor)
                                         .padding(.leading, 4)
                                 }
-                                HStack(alignment: .bottom, spacing: 0) {
-                                    if msg.senderId == currentUserId {
-                                        Spacer(minLength: 60)
-                                        Text(msg.content)
-                                            .padding(.horizontal, 14)
-                                            .padding(.vertical, 10)
-                                            .background(dynamicPrimaryColor)
-                                            .cornerRadius(18)
-                                            .foregroundColor(.white)
-                                    } else {
-                                        Text(msg.content)
-                                            .padding(.horizontal, 14)
-                                            .padding(.vertical, 10)
-                                            .background(dynamicSecondaryBackgroundColor)
-                                            .cornerRadius(18)
-                                            .foregroundColor(dynamicTextColor)
-                                        Spacer(minLength: 60)
+                                if msg.kind == "group_task", let refId = msg.refId {
+                                    GroupTaskProgressCard(task: groupTasks[refId])
+                                } else if msg.kind == "proof_post", let refId = msg.refId {
+                                    GroupProofMessageCard(postId: refId)
+                                        .environmentObject(firebaseManager)
+                                } else {
+                                    HStack(alignment: .bottom, spacing: 0) {
+                                        if msg.senderId == currentUserId {
+                                            Spacer(minLength: 60)
+                                            Text(msg.content)
+                                                .padding(.horizontal, 14)
+                                                .padding(.vertical, 10)
+                                                .background(dynamicPrimaryColor)
+                                                .cornerRadius(18)
+                                                .foregroundColor(.white)
+                                        } else {
+                                            Text(msg.content)
+                                                .padding(.horizontal, 14)
+                                                .padding(.vertical, 10)
+                                                .background(dynamicSecondaryBackgroundColor)
+                                                .cornerRadius(18)
+                                                .foregroundColor(dynamicTextColor)
+                                            Spacer(minLength: 60)
+                                        }
                                     }
                                 }
                             }
@@ -101,6 +115,11 @@ struct GroupChatDetailView: View {
                     )
 
                 Menu {
+                    Button {
+                        showGroupTaskFlow = true
+                    } label: {
+                        Label("Create group task", systemImage: "person.3.sequence")
+                    }
                     Button {
                         showMemberPickerForTask = true
                     } label: {
@@ -156,9 +175,16 @@ struct GroupChatDetailView: View {
             firebaseManager.fetchGroupMembers(groupId: group.id ?? "") { fetched in
                 members = fetched
             }
+            groupTasksListener = firebaseManager.listenToGroupTasks(groupId: group.id ?? "") { tasks in
+                groupTasks = Dictionary(uniqueKeysWithValues: tasks.compactMap { task in
+                    task.id.map { ($0, task) }
+                })
+            }
         }
         .onDisappear {
             listener?.remove()
+            groupTasksListener?.remove()
+            groupTasksListener = nil
         }
         .sheet(isPresented: $showMembersSheet) {
             GroupMembersView(group: group)
@@ -172,7 +198,10 @@ struct GroupChatDetailView: View {
         // Step 1 (task): pick recipients
         .sheet(isPresented: $showMemberPickerForTask, onDismiss: {
             if !taskRecipients.isEmpty {
-                showTaskComposer = true
+                // Defer to the next run loop so the picker's dismissal
+                // transaction finishes before presenting the composer;
+                // otherwise SwiftUI drops the second presentation.
+                DispatchQueue.main.async { showTaskComposer = true }
             }
         }) {
             GroupMemberPickerView(members: otherMembers) { chosen in
@@ -200,10 +229,22 @@ struct GroupChatDetailView: View {
             })
             .environment(\.modelContext, modelContext)
         }
+        // Group task: single sheet stepping from assignee picker to composer.
+        // (Chained dismiss-then-present sheets get silently dropped by SwiftUI.)
+        .sheet(isPresented: $showGroupTaskFlow) {
+            GroupTaskCreateFlow(
+                group: group,
+                initialMembers: members,
+                myDisplayName: myDisplayName,
+                isPresented: $showGroupTaskFlow
+            )
+            .environmentObject(firebaseManager)
+            .environment(\.modelContext, modelContext)
+        }
         // Step 1 (progress): pick recipients
         .sheet(isPresented: $showMemberPickerForProgress, onDismiss: {
             if !progressRecipients.isEmpty {
-                showProgressPicker = true
+                DispatchQueue.main.async { showProgressPicker = true }
             }
         }) {
             GroupMemberPickerView(members: otherMembers) { chosen in
@@ -236,5 +277,78 @@ struct GroupChatDetailView: View {
             content: content,
             senderDisplayName: myDisplayName
         ) { _ in }
+    }
+}
+
+/// Two-step group task creation inside ONE sheet: assignee picker, then the
+/// task composer. Swapping content in place avoids the SwiftUI race where a
+/// sheet presented from another sheet's onDismiss is silently dropped. Also
+/// fetches members itself so the picker never opens on an empty list.
+private struct GroupTaskCreateFlow: View {
+    let group: GroupConversation
+    let initialMembers: [GroupMember]
+    let myDisplayName: String
+    @Binding var isPresented: Bool
+
+    @EnvironmentObject var firebaseManager: FirebaseManager
+    @Environment(\.modelContext) private var modelContext
+
+    @State private var members: [GroupMember] = []
+    @State private var isLoadingMembers = false
+    @State private var assignees: [GroupMember]? = nil
+
+    private var currentUserId: String? { Auth.auth().currentUser?.uid }
+
+    var body: some View {
+        Group {
+            if let assignees = assignees {
+                NewItemview(newItemPresented: $isPresented, selectedOrigin: .today, onSaveOverride: { title, detail, dueDate, _, _ in
+                    let assigneeMap = Dictionary(uniqueKeysWithValues: assignees.compactMap { member in
+                        member.id.map { ($0, member.displayName) }
+                    })
+                    firebaseManager.createGroupTask(
+                        groupId: group.id ?? "",
+                        groupName: group.name,
+                        title: title,
+                        detail: detail,
+                        dueDate: dueDate,
+                        assignees: assigneeMap,
+                        creatorDisplayName: myDisplayName
+                    ) { error, taskId in
+                        if let error = error {
+                            print("GroupTaskCreateFlow: createGroupTask failed: \(error.localizedDescription)")
+                        } else {
+                            print("GroupTaskCreateFlow: created group task \(taskId ?? "?") with \(assigneeMap.count) assignee(s)")
+                        }
+                    }
+                })
+                .environment(\.modelContext, modelContext)
+            } else {
+                GroupMemberPickerView(
+                    members: members,
+                    initiallySelected: Set([currentUserId].compactMap { $0 }),
+                    isLoading: isLoadingMembers,
+                    dismissesOnConfirm: false
+                ) { chosen in
+                    guard !chosen.isEmpty else { return }
+                    assignees = chosen
+                }
+            }
+        }
+        .onAppear {
+            members = initialMembers
+            if members.isEmpty {
+                reloadMembers()
+            }
+        }
+    }
+
+    private func reloadMembers() {
+        isLoadingMembers = true
+        firebaseManager.fetchGroupMembers(groupId: group.id ?? "") { fetched in
+            print("GroupTaskCreateFlow: fetched \(fetched.count) member(s) for group \(group.id ?? "?")")
+            members = fetched
+            isLoadingMembers = false
+        }
     }
 }

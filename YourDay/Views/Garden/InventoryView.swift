@@ -115,14 +115,15 @@ struct InventoryView: View {
                                     inventoryRow(for: item.blueprint, quantity: item.quantity)
                                 }
                             }
-                            .listRowBackground(dynamicSecondaryBackgroundColor.opacity(0.5))
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
                         }
                     }
                     .listStyle(PlainListStyle())
-                    .background(dynamicBackgroundColor)
+                    .scrollContentBackground(.hidden)
                 }
             }
-            .background(dynamicBackgroundColor.edgesIgnoringSafeArea(.all))
+            .background(GardenScreenBackground(imageName: "Inventory_bg"))
             .navigationTitle(isPlantingMode ? "Choose Plant" : "Inventory")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(dynamicSecondaryBackgroundColor, for: .navigationBar)
@@ -203,7 +204,16 @@ struct InventoryView: View {
                 .buttonStyle(BorderlessButtonStyle())
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 10)
+        .padding(.horizontal, 12)
+        .background(
+            Image("Inventory_plate_bg")
+                .resizable(
+                    capInsets: EdgeInsets(top: 16, leading: 56, bottom: 16, trailing: 56),
+                    resizingMode: .stretch
+                )
+        )
+        .padding(.vertical, 2)
 
         if isPlantingMode {
             Button(action: {

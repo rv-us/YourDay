@@ -1,27 +1,200 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Users may read/write their own top-level user document
-    match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+    // --- Helper Functions ---
 
-      // Only the owning user may manage their own FCM tokens.
-      // Cloud Functions use Admin SDK which bypasses these rules.
-      match /fcmTokens/{token} {
-        allow write: if request.auth != null && request.auth.uid == userId;
-        allow read: if false; // only Admin SDK (Cloud Function) reads tokens
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAcceptedFriend(otherUserId) {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)/friends/$(otherUserId)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)/friends/$(otherUserId)).data.status == "accepted";
+    }
+
+    // Proof posts are visible to the author, their accepted friends, and —
+    // for group-task proofs (groupId set) — members of that group.
+    function canReadTaskProofData(data) {
+      return isSignedIn() && (
+        request.auth.uid == data.authorId ||
+        isAcceptedFriend(data.authorId) ||
+        ('groupId' in data && data.groupId is string && isGroupMember(data.groupId))
+      );
+    }
+
+    function canReadTaskProofByPostId(postId) {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/task_proof_posts/$(postId)) &&
+        canReadTaskProofData(get(/databases/$(database)/documents/task_proof_posts/$(postId)).data);
+    }
+
+    function isGroupMember(groupId) {
+      return isSignedIn() &&
+        request.auth.uid in get(/databases/$(database)/documents/group_chats/$(groupId)).data.memberIds;
+    }
+
+    function isGroupAdmin(groupId) {
+      return isSignedIn() &&
+        get(/databases/$(database)/documents/group_chats/$(groupId)).data.adminId == request.auth.uid;
+    }
+
+    // --- Rules ---
+
+    // Leaderboard entries are public read, writable by signed-in users
+    match /leaderboard_entries/{entry} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // Chat messages: sender or receiver can read/write
+    match /chat_messages/{messageId} {
+      allow read: if isSignedIn() && (
+        request.auth.uid == resource.data.senderId ||
+        request.auth.uid == resource.data.receiverId
+      );
+
+      allow create: if isSignedIn() &&
+        request.resource.data.senderId == request.auth.uid;
+
+      allow update, delete: if false;
+    }
+
+    // Shared tasks (DM and group)
+    match /shared_tasks/{taskId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // Group chats
+    match /group_chats/{groupId} {
+      // Only members can read the group document
+      allow read: if isSignedIn() &&
+        request.auth.uid in resource.data.memberIds;
+
+      // Signed-in user can create a group; they must be in memberIds and be the admin
+      allow create: if isSignedIn() &&
+        request.auth.uid in request.resource.data.memberIds &&
+        request.resource.data.adminId == request.auth.uid;
+
+      // Current members can update (send messages, add/remove members, transfer admin)
+      allow update: if isSignedIn() &&
+        request.auth.uid in resource.data.memberIds;
+
+      // Admin can delete the group
+      allow delete: if isSignedIn() &&
+        resource.data.adminId == request.auth.uid;
+
+      // Group messages: immutable once written
+      match /messages/{messageId} {
+        allow read: if isGroupMember(groupId);
+        allow create: if isGroupMember(groupId) &&
+          request.resource.data.senderId == request.auth.uid;
+        allow update, delete: if false;
       }
 
-      // Allow authenticated users to read/write other subcollections as before
-      match /{subcollection}/{docId} {
-        allow read, write: if request.auth != null;
+      // Group members subcollection
+      match /members/{memberId} {
+        allow read: if isGroupMember(groupId);
+
+        // Allow creation during group creation (batch) OR when an existing member adds someone
+        allow create: if isSignedIn() &&
+          request.auth.uid in getAfter(/databases/$(database)/documents/group_chats/$(groupId)).data.memberIds;
+
+        // Admin can update any member doc; members can update their own
+        allow update: if isSignedIn() && (
+          request.auth.uid == memberId ||
+          isGroupAdmin(groupId)
+        );
+
+        // Members can remove themselves (leave); admin can remove anyone
+        allow delete: if isSignedIn() && (
+          request.auth.uid == memberId ||
+          isGroupAdmin(groupId)
+        );
       }
     }
 
-    // Allow authenticated access to all other collections (preserve existing behavior)
-    match /{document=**} {
-      allow read, write: if request.auth != null;
+    // Group tasks: created inside a group chat, assigned to selected members.
+    // Read paths: assignees listen via array-contains on assigneeIds (todo-list
+    // materializer); any group member listens via groupId == X (chat progress cards).
+    match /group_tasks/{taskId} {
+      allow read: if isSignedIn() && (
+        request.auth.uid in resource.data.assigneeIds ||
+        isGroupMember(resource.data.groupId)
+      );
+
+      // Any member of the group can create a task in it, as themselves.
+      allow create: if isSignedIn() &&
+        request.resource.data.creatorId == request.auth.uid &&
+        isGroupMember(request.resource.data.groupId);
+
+      // Creator can edit freely; assignees may only toggle their own progress
+      // fields (completedBy via task completion, materializedBy via the
+      // local-todo materializer).
+      allow update: if isSignedIn() && (
+        request.auth.uid == resource.data.creatorId ||
+        (request.auth.uid in resource.data.assigneeIds &&
+         request.resource.data.diff(resource.data).affectedKeys()
+           .hasOnly(['completedBy', 'materializedBy']))
+      );
+
+      allow delete: if isSignedIn() &&
+        request.auth.uid == resource.data.creatorId;
+    }
+
+    // Task proof posts + votes
+    match /task_proof_posts/{postId} {
+      allow read: if canReadTaskProofData(resource.data);
+
+      allow create: if isSignedIn() &&
+        request.resource.data.authorId == request.auth.uid;
+
+      allow update: if isSignedIn() &&
+        resource.data.authorId == request.auth.uid &&
+        request.resource.data.authorId == resource.data.authorId;
+
+      allow delete: if isSignedIn() &&
+        resource.data.authorId == request.auth.uid;
+
+      match /votes/{voteUserId} {
+        allow read: if canReadTaskProofByPostId(postId);
+
+        allow create, update: if canReadTaskProofByPostId(postId) &&
+          request.auth.uid == voteUserId &&
+          request.resource.data.voterId == request.auth.uid;
+
+        allow delete: if isSignedIn() && (
+          request.auth.uid == voteUserId ||
+          request.auth.uid == get(/databases/$(database)/documents/task_proof_posts/$(postId)).data.authorId
+        );
+      }
+    }
+
+    // User-specific data
+    match /users/{userId} {
+      allow read: if true;
+
+      match /friend_requests/{requestId} {
+        allow read: if isSignedIn() && (
+          request.auth.uid == userId ||
+          request.auth.uid == resource.data.fromUserId
+        );
+        allow write: if isSignedIn();
+      }
+
+      match /friends/{friendId} {
+        allow read, write: if isSignedIn() && (
+          request.auth.uid == userId ||
+          request.auth.uid == friendId
+        );
+      }
+
+      match /{document=**} {
+        allow read: if isSignedIn();
+        allow write: if isSignedIn() && request.auth.uid == userId;
+      }
     }
   }
 }

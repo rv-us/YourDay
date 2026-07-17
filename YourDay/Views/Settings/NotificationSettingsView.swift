@@ -143,6 +143,7 @@ struct NotificationSettingsView: View {
                                     UNUserNotificationCenter.current()
                                         .removePendingNotificationRequests(withIdentifiers: NotificationManager.scheduledReminderIDs)
                                     NotificationManager.shared.cancelAllJournalPromptNotifications()
+                                    NotificationManager.shared.cancelAllPreTaskNotifications()
                                 }
                             }
                             .listRowBackground(dynamicSecondaryBackgroundColor)
@@ -167,6 +168,7 @@ struct NotificationSettingsView: View {
                                 } else {
                                     locationRemindersEnabled = false
                                     UserDefaults.standard.set(false, forKey: NotificationManager.locationRemindersEnabledKey)
+                                    GeofenceManager.shared.clearAllGeofences()
                                 }
                             }
                             .listRowBackground(dynamicSecondaryBackgroundColor)

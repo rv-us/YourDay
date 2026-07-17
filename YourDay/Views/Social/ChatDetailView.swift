@@ -153,6 +153,7 @@ struct ChatDetailView: View {
         .onAppear {
             loginViewModel.currentChatFriendId = friend.userId
             ChatPresenceStore.shared.activeChatFriendId = friend.userId
+            // Suppress push banners for the conversation currently on screen.
             NotificationManager.shared.activeChatFriendId = friend.userId
             IncomingChatBannerManager.shared.dismiss()
             listener = firebaseManager.listenToChat(with: friend.userId) { updated in
@@ -182,8 +183,12 @@ struct ChatDetailView: View {
         .onDisappear {
             markConversationRead(messages: messages)
             loginViewModel.currentChatFriendId = nil
-            ChatPresenceStore.shared.activeChatFriendId = nil
-            NotificationManager.shared.activeChatFriendId = nil
+            if ChatPresenceStore.shared.activeChatFriendId == friend.userId {
+                ChatPresenceStore.shared.activeChatFriendId = nil
+            }
+            if NotificationManager.shared.activeChatFriendId == friend.userId {
+                NotificationManager.shared.activeChatFriendId = nil
+            }
             listener?.remove()
             sharedTaskListener?.remove()
         }
@@ -245,15 +250,18 @@ struct ChatDetailView: View {
     private func sendMessage() {
         guard !newMessage.trimmingCharacters(in: .whitespaces).isEmpty,
               let currentId = Auth.auth().currentUser?.uid else { return }
+        // Clear immediately (like the group chat) — the Firestore completion
+        // only fires after server ack, which never arrives while offline even
+        // though the message is queued and shown by the listener.
+        let content = newMessage
+        newMessage = ""
         let message = ChatMessage(
             senderId: currentId,
             receiverId: friend.userId,
-            content: newMessage,
+            content: content,
             timestamp: Date()
         )
-        firebaseManager.sendChatMessage(message) { _ in
-            newMessage = ""
-        }
+        firebaseManager.sendChatMessage(message) { _ in }
     }
 
     private func accept(_ task: SharedTask) {

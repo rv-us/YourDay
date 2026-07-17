@@ -72,9 +72,19 @@ final class GeofenceManager: NSObject, ObservableObject, CLLocationManagerDelega
 
     // MARK: - Public API
 
+    /// True only when both location-reminder toggles are on: the one in
+    /// Location & Places settings ("geofenceRemindersEnabled") and the one in
+    /// Notification settings (NotificationManager.locationRemindersEnabledKey).
+    var locationRemindersEnabled: Bool {
+        let defaults = UserDefaults.standard
+        let geofenceFlag = defaults.object(forKey: "geofenceRemindersEnabled") as? Bool ?? true
+        let notificationFlag = defaults.object(forKey: NotificationManager.locationRemindersEnabledKey) as? Bool ?? true
+        return geofenceFlag && notificationFlag
+    }
+
     /// Runs LLM classification, resolves locations to coordinates, stores on tasks, builds geofences.
     func classifyAndSetupGeofences(context: ModelContext) {
-        guard UserDefaults.standard.object(forKey: "geofenceRemindersEnabled") as? Bool ?? true else { return }
+        guard locationRemindersEnabled else { return }
         let tasks = fetchTodayTasks(context)
         guard !tasks.isEmpty else { return }
         Task { @MainActor in await classifyTasks(tasks, context: context) }
@@ -103,6 +113,10 @@ final class GeofenceManager: NSObject, ObservableObject, CLLocationManagerDelega
             task.taskLocations.append(contentsOf: newLocs)
             if task.locationCategory == nil { task.locationCategory = category }
             try? context.save()
+            // Clear first: buildGeofences assigns identifiers from index 0, so
+            // building on top of live regions creates duplicate ids in
+            // activeGeofences and stale name/task lookups in didEnterRegion.
+            clearAllGeofences()
             buildGeofences(from: fetchTodayTasks(context))
         }
     }
@@ -250,12 +264,6 @@ final class GeofenceManager: NSObject, ObservableObject, CLLocationManagerDelega
     /// Groups all TaskLocations across tasks by coordinate, then registers one CLCircularRegion per unique spot.
     @MainActor
     private func buildGeofences(from tasks: [TodoItem]) {
-        let status = locationManager.authorizationStatus
-        guard status == .authorizedAlways || status == .authorizedWhenInUse else {
-            print("GeofenceManager: Location permission not granted.")
-            return
-        }
-
         // key = "lat,lon" rounded to 4dp (~11 m); value = (display name, coordinate, all task titles there)
         var groups: [String: (name: String, coord: CLLocationCoordinate2D, titles: [String])] = [:]
         for task in tasks {
@@ -276,18 +284,67 @@ final class GeofenceManager: NSObject, ObservableObject, CLLocationManagerDelega
         for (_, group) in groups {
             guard count < 20 else { break }
             let id = "geofence_\(count)"
-            let clRegion = CLCircularRegion(center: group.coord, radius: 200, identifier: id)
-            clRegion.notifyOnEntry = true
-            clRegion.notifyOnExit = false
-            locationManager.startMonitoring(for: clRegion)
             activeGeofences.append(GeofenceInfo(
                 id: id, name: group.name, coordinate: group.coord,
                 radius: 200, tasks: group.titles, category: "custom"
             ))
-            print("GeofenceManager: Monitoring \"\(group.name)\" for [\(group.titles.joined(separator: ", "))]")
             count += 1
         }
+
+        // Persist before registering: if permission hasn't been granted yet the
+        // fences survive, and registerGeofencesWithOS() runs again from
+        // locationManagerDidChangeAuthorization once the user grants access.
         persistGeofences()
+        registerGeofencesWithOS()
+    }
+
+    /// Registers `activeGeofences` with Core Location. Kept separate from the
+    /// computation so fences built before authorization can be registered later.
+    private func registerGeofencesWithOS() {
+        guard !activeGeofences.isEmpty else { return }
+
+        switch locationManager.authorizationStatus {
+        case .notDetermined:
+            // Fences stay pending; the authorization callback registers them.
+            locationManager.requestAlwaysAuthorization()
+            print("GeofenceManager: Requested location permission — will register \(activeGeofences.count) fence(s) once granted.")
+            return
+        case .authorizedAlways:
+            break
+        case .authorizedWhenInUse:
+            print("GeofenceManager: Only When-In-Use permission — region monitoring needs Always; background events may not be delivered.")
+        default:
+            print("GeofenceManager: Location permission denied/restricted — cannot register geofences.")
+            return
+        }
+
+        for fence in activeGeofences {
+            let clRegion = CLCircularRegion(center: fence.coordinate, radius: fence.radius, identifier: fence.id)
+            clRegion.notifyOnEntry = true
+            clRegion.notifyOnExit = false
+            locationManager.startMonitoring(for: clRegion)
+            // Entry events only fire on boundary crossings, so ask whether the
+            // user is already standing inside the fence right now.
+            locationManager.requestState(for: clRegion)
+            print("GeofenceManager: Monitoring \"\(fence.name)\" for [\(fence.tasks.joined(separator: ", "))]")
+        }
+    }
+
+    /// Rate-limits geofence notifications to one per location per calendar day.
+    /// Rebuilds re-register regions and re-check state (daily classification,
+    /// manual edits), so without this the user would be re-notified every time.
+    private func markNotifiedToday(for fence: GeofenceInfo) -> Bool {
+        let key = "geofenceNotifiedDates"
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        let today = formatter.string(from: Date())
+
+        var dict = (UserDefaults.standard.dictionary(forKey: key) as? [String: String]) ?? [:]
+        if dict[fence.name] == today { return false }
+        dict = dict.filter { $0.value == today }  // prune stale days
+        dict[fence.name] = today
+        UserDefaults.standard.set(dict, forKey: key)
+        return true
     }
 
     // MARK: - MapKit POI Search
@@ -364,8 +421,27 @@ final class GeofenceManager: NSObject, ObservableObject, CLLocationManagerDelega
     // MARK: - CLLocationManagerDelegate
 
     func locationManager(_ manager: CLLocationManager, didEnterRegion region: CLRegion) {
+        notifyForRegion(region, trigger: "entered")
+    }
+
+    /// Result of requestState(for:) issued at registration time — catches the
+    /// case where the user is already inside a fence when it's created, which
+    /// didEnterRegion (boundary crossings only) never reports.
+    func locationManager(_ manager: CLLocationManager, didDetermineState state: CLRegionState, for region: CLRegion) {
+        guard state == .inside else { return }
+        notifyForRegion(region, trigger: "already inside")
+    }
+
+    private func notifyForRegion(_ region: CLRegion, trigger: String) {
+        // Regions registered with the OS can outlive the settings toggle, so
+        // re-check it before notifying.
+        guard locationRemindersEnabled else { return }
         guard let fence = activeGeofences.first(where: { $0.id == region.identifier }) else { return }
-        print("GeofenceManager: Entered \(fence.name)")
+        guard markNotifiedToday(for: fence) else {
+            print("GeofenceManager: \(trigger) \(fence.name) — already notified today, skipping")
+            return
+        }
+        print("GeofenceManager: \(trigger) \(fence.name) — notifying")
         NotificationManager.shared.scheduleGeofenceNotification(regionTitle: fence.name, tasks: fence.tasks)
     }
 
@@ -377,7 +453,16 @@ final class GeofenceManager: NSObject, ObservableObject, CLLocationManagerDelega
         print("GeofenceManager: Monitoring failed – \(error)")
     }
 
-    func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        let status = manager.authorizationStatus
         print("GeofenceManager: Auth status \(status.rawValue)")
+
+        // If fences were computed before permission was granted (or the OS
+        // dropped its registrations), register them now that we're allowed to.
+        if (status == .authorizedAlways || status == .authorizedWhenInUse),
+           !activeGeofences.isEmpty,
+           manager.monitoredRegions.isEmpty {
+            registerGeofencesWithOS()
+        }
     }
 }

@@ -938,7 +938,10 @@ class LoginViewModel: ObservableObject {
                                 trelloListId: props.trelloListId,
                                 trelloDateLastActivity: props.trelloDateLastActivity,
                                 createdAt: props.createdAt,
-                                userPinned: props.userPinned
+                                userPinned: props.userPinned,
+                                groupTaskId: props.groupTaskId,
+                                groupId: props.groupId,
+                                groupName: props.groupName
                             )
                             newTask.completedAt = props.completedAt
                             modelContext.insert(newTask)
@@ -970,6 +973,9 @@ class LoginViewModel: ObservableObject {
                             localTask.trelloListId = props.trelloListId
                             localTask.trelloDateLastActivity = props.trelloDateLastActivity
                             localTask.userPinned = props.userPinned
+                            localTask.groupTaskId = props.groupTaskId
+                            localTask.groupId = props.groupId
+                            localTask.groupName = props.groupName
                             // Preserve the earliest known creation date across devices so pre-migration cloud defaults can't overwrite a real local createdAt.
                             if props.createdAt < localTask.createdAt {
                                 localTask.createdAt = props.createdAt

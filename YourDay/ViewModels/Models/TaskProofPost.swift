@@ -20,6 +20,8 @@ struct TaskProofPost: Identifiable, Codable {
     let createdAt: Date
     let photoURL: String
     let photoStoragePath: String
+    var groupTaskId: String? = nil
+    var groupId: String? = nil
 }
 
 struct TaskProofCaptureContext: Identifiable {
@@ -30,6 +32,8 @@ struct TaskProofCaptureContext: Identifiable {
     let localTaskId: String?
     let sharedTaskId: String?
     let completedAt: Date
+    var groupTaskId: String? = nil
+    var groupId: String? = nil
 }
 
 struct FriendWithSince: Identifiable {

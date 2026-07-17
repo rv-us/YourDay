@@ -90,16 +90,25 @@ extension Color {
 
 
 struct ShopView: View {
-    @Environment(\.dismiss) var dismiss
     private let themes: [PlantTheme] = PlantTheme.allCases
 
     var body: some View {
         NavigationView {
             ScrollView {
                 VStack(alignment: .center, spacing: 20) {
-                    Text("Plant Gacha Shop")
-                        .font(.largeTitle).fontWeight(.bold).padding(.top)
-                        .foregroundColor(dynamicTextColor)
+                    HStack(spacing: 12) {
+                        Image("Shop_icon")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 44, height: 44)
+                            .accessibilityHidden(true)
+
+                        Text("Plant Gacha Shop")
+                            .font(.largeTitle)
+                            .fontWeight(.bold)
+                            .foregroundColor(dynamicTextColor)
+                    }
+                    .padding(.top)
                     Text("Select a theme to pull plants!")
                         .font(.headline).foregroundColor(dynamicSecondaryTextColor).padding(.bottom, 10)
                     ForEach(themes, id: \.self) { theme in
@@ -109,20 +118,26 @@ struct ShopView: View {
                     }
                 }.padding()
             }
-            .background(dynamicBackgroundColor.edgesIgnoringSafeArea(.all))
+            .background(GardenScreenBackground(imageName: "Shop_bg"))
             .navigationTitle("Shop")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(dynamicSecondaryBackgroundColor, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Close") { dismiss() }
-                        .foregroundColor(dynamicPrimaryColor)
+                ToolbarItem(placement: .navigationBarLeading) {
+                    BackButton(accessibilityLabel: "Close shop")
                 }
                 ToolbarItem(placement: .principal) {
-                    Text("Shop")
-                        .fontWeight(.bold)
-                        .foregroundColor(dynamicTextColor)
+                    HStack(spacing: 6) {
+                        Image("Shop_icon_small")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 22, height: 22)
+                            .accessibilityHidden(true)
+                        Text("Shop")
+                            .fontWeight(.bold)
+                            .foregroundColor(dynamicTextColor)
+                    }
                 }
             }
         }
@@ -149,6 +164,15 @@ struct ThemeBannerView: View {
         }
     }
 
+    private var seasonIconName: String {
+        switch theme {
+        case .spring: return "Season_spring_icon"
+        case .summer: return "Season_summer_icon"
+        case .fall: return "Season_fall_icon"
+        case .winter: return "Season_winter_icon"
+        }
+    }
+
     var body: some View {
         ZStack {
             bannerTintColor
@@ -157,8 +181,15 @@ struct ThemeBannerView: View {
                 .resizable()
                 .aspectRatio(contentMode: .fill)
 
-            VStack {
-                Text(theme.rawValue).font(.title).fontWeight(.bold).foregroundColor(.white)
+            VStack(spacing: 4) {
+                HStack(spacing: 8) {
+                    Image(seasonIconName)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 34, height: 34)
+                        .accessibilityHidden(true)
+                    Text(theme.rawValue).font(.title).fontWeight(.bold).foregroundColor(.white)
+                }
                 Text("Tap to Pull!").font(.caption).foregroundColor(.white.opacity(0.8))
             }
         }
@@ -234,9 +265,19 @@ struct ThemePullView: View {
         }
     }
 
+    private var seasonIconName: String {
+        switch theme {
+        case .spring: return "Season_spring_icon"
+        case .summer: return "Season_summer_icon"
+        case .fall: return "Season_fall_icon"
+        case .winter: return "Season_winter_icon"
+        }
+    }
+
 
     var body: some View {
         ZStack {
+            GardenScreenBackground(imageName: "Shop_bg")
             themePageBackgroundColor.edgesIgnoringSafeArea(.all)
             ScrollView {
                 VStack(spacing: 20) {
@@ -247,10 +288,17 @@ struct ThemePullView: View {
                             .resizable()
                             .scaledToFill()
 
-                        Text("\(theme.rawValue) Theme")
-                            .font(.system(size: 36, weight: .bold))
-                            .foregroundColor(.white)
-                            .shadow(radius: 3)
+                        HStack(spacing: 10) {
+                            Image(seasonIconName)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 48, height: 48)
+                                .accessibilityHidden(true)
+                            Text("\(theme.rawValue) Theme")
+                                .font(.system(size: 36, weight: .bold))
+                                .foregroundColor(.white)
+                                .shadow(radius: 3)
+                        }
                     }
                     .frame(width: 350, height: 180)
                     .cornerRadius(10)
@@ -258,9 +306,16 @@ struct ThemePullView: View {
                     .shadow(color: dynamicSecondaryTextColor.opacity(0.3), radius: 5, x: 0, y: 2)
                     .padding(.vertical)
 
-                    Text("Current Points: \(Int(playerStats.totalPoints))")
-                        .font(.headline)
-                        .foregroundColor(dynamicTextColor)
+                    HStack(spacing: 8) {
+                        Image("Points_icon_small")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 26, height: 26)
+                            .accessibilityHidden(true)
+                        Text("Current Points: \(Int(playerStats.totalPoints))")
+                            .font(.headline)
+                            .foregroundColor(dynamicTextColor)
+                    }
 
                     VStack(spacing: 15) {
                         pullButton(numPulls: 2, cost: 100)
@@ -275,15 +330,28 @@ struct ThemePullView: View {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 10) {
                                 ForEach(revealedPlantsThisPull) { plantBlueprint in
-                                    VStack {
+                                    VStack(spacing: 4) {
                                         plantBlueprint.iconVisual
                                             .frame(width: 60, height: 60)
-                                            .background(dynamicSecondaryBackgroundColor.opacity(0.7)).cornerRadius(8)
-                                            .shadow(color: dynamicSecondaryTextColor.opacity(0.3), radius: 2, x: 0, y: 1)
+                                            .padding(6)
+                                            .background {
+                                                Image("Card_frame")
+                                                    .resizable()
+                                                    .scaledToFill()
+                                            }
                                         Text(plantBlueprint.name).font(.caption).lineLimit(1)
                                             .foregroundColor(dynamicTextColor)
-                                        Text(plantBlueprint.rarity.rawValue).font(.caption2).foregroundColor(rarityColor(plantBlueprint.rarity))
-                                    }.frame(width: 70)
+                                        HStack(spacing: 2) {
+                                            Image("RarityStar_icon")
+                                                .resizable()
+                                                .scaledToFit()
+                                                .frame(width: 12, height: 12)
+                                                .accessibilityHidden(true)
+                                            Text(plantBlueprint.rarity.rawValue)
+                                                .font(.caption2)
+                                                .foregroundColor(rarityColor(plantBlueprint.rarity))
+                                        }
+                                    }.frame(width: 78)
                                 }
                             }.padding()
                         }.frame(height: 120)
@@ -307,7 +375,7 @@ struct ThemePullView: View {
                         .foregroundColor(.white)
                 }
                 ToolbarItem(placement: .navigationBarLeading) {
-                    BackButton(color: .white)
+                    BackButton()
                 }
             }
             .alert(isPresented: $showingFinalResultMessageAlert) {
@@ -350,13 +418,26 @@ struct ThemePullView: View {
                         Text("You got...").font(.title2).fontWeight(.bold).foregroundColor(dynamicTextColor)
                         plant.iconVisual
                             .frame(width: 150, height: 150)
-                            .background(rarityColor(plant.rarity).opacity(0.2))
-                            .cornerRadius(25)
+                            .padding(18)
+                            .background {
+                                Image("Card_frame")
+                                    .resizable()
+                                    .scaledToFill()
+                            }
                             .scaleEffect(animationStep == .revealing ? 0.5 : 1.8)
                             .animation(.spring(response: 0.4, dampingFraction: 0.6).delay(animationStep == .revealing ? 0 : 0.1), value: animationStep)
                             .padding()
                         Text(plant.name).font(.title).fontWeight(.bold).foregroundColor(dynamicTextColor)
-                        Text(plant.rarity.rawValue).font(.headline).foregroundColor(rarityColor(plant.rarity))
+                        HStack(spacing: 5) {
+                            Image("RarityStar_icon")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 20, height: 20)
+                                .accessibilityHidden(true)
+                            Text(plant.rarity.rawValue)
+                                .font(.headline)
+                                .foregroundColor(rarityColor(plant.rarity))
+                        }
                         Text(plant.theme.rawValue).font(.subheadline).foregroundColor(dynamicSecondaryTextColor)
                         if animationStep == .revealedPoppedUp {
                             Text("Tap plant to continue").font(.caption).foregroundColor(dynamicSecondaryTextColor.opacity(0.7)).padding(.top)
@@ -379,8 +460,17 @@ struct ThemePullView: View {
                 VStack {
                     Spacer()
                     HStack {
-                        Button("Skip All") {
+                        Button {
                             skipAllPullsAndShowResults()
+                        } label: {
+                            HStack(spacing: 7) {
+                                Image("Skip_icon")
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 22, height: 22)
+                                    .accessibilityHidden(true)
+                                Text("Skip All")
+                            }
                         }
                         .padding(.horizontal, 20)
                         .padding(.vertical, 10)
@@ -443,33 +533,58 @@ struct ThemePullView: View {
 
     @ViewBuilder
     private func pullButton(numPulls: Int, cost: Double, isGuaranteed: Bool = false) -> some View {
+        let canAfford = playerStats.totalPoints >= cost
+
         Button(action: {
             initiatePullSequence(numberOfPulls: numPulls, totalCost: cost)
         }) {
-            VStack(spacing: 5) {
-                Text("Pull \(numPulls) Plant\(numPulls > 1 ? "s" : "")")
-                    .fontWeight(.semibold)
-                Text("Cost: \(Int(cost)) Points")
-                    .font(.caption)
-                if isGuaranteed {
-                    Text("Guaranteed Rare or Better!")
-                        .font(.caption2)
-                        .foregroundColor(dynamicSecondaryColor)
+            ZStack {
+                Image("Pull_button_bg")
+                    .resizable()
+                    .scaledToFill()
+                    .accessibilityHidden(true)
+
+                if !canAfford {
+                    Color.black.opacity(0.35)
+                }
+
+                VStack(spacing: 5) {
+                    Text("Pull \(numPulls) Plant\(numPulls > 1 ? "s" : "")")
+                        .font(.headline)
                         .fontWeight(.bold)
+                    HStack(spacing: 5) {
+                        Image("Points_icon_small")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 18, height: 18)
+                            .accessibilityHidden(true)
+                        Text("\(Int(cost)) Points")
+                            .font(.caption)
+                    }
+                    if isGuaranteed {
+                        HStack(spacing: 4) {
+                            Image("RarityStar_icon")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 14, height: 14)
+                                .accessibilityHidden(true)
+                            Text("Guaranteed Rare or Better!")
+                                .font(.caption2)
+                                .fontWeight(.bold)
+                        }
+                    }
                 }
             }
-            .padding().frame(maxWidth: .infinity)
-            .background(
-                LinearGradient(
-                    gradient: Gradient(colors: playerStats.totalPoints >= cost ? [themeAccentColor, themeAccentColor.opacity(0.7)] : [dynamicSecondaryTextColor.opacity(0.6), dynamicSecondaryTextColor.opacity(0.4)]),
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
-            .foregroundColor(.white).cornerRadius(10)
-            .shadow(color: playerStats.totalPoints >= cost ? themeAccentColor.opacity(0.5) : dynamicSecondaryTextColor.opacity(0.3), radius: 3, x: 0, y: 2)
+            .frame(maxWidth: .infinity)
+            .frame(height: isGuaranteed ? 92 : 76)
+            .foregroundStyle(.white)
+            .shadow(color: canAfford ? themeAccentColor.opacity(0.5) : dynamicSecondaryTextColor.opacity(0.3), radius: 3, x: 0, y: 2)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .contentShape(RoundedRectangle(cornerRadius: 12))
         }
-        .disabled(playerStats.totalPoints < cost || animationStep != .idle)
+        .buttonStyle(.plain)
+        .disabled(!canAfford || animationStep != .idle)
+        .accessibilityHint(canAfford ? "Draws plants from the \(theme.rawValue) theme" : "Not enough points")
     }
 
     private func initiatePullSequence(numberOfPulls: Int, totalCost: Double) {
@@ -566,17 +681,34 @@ struct ThemePullView: View {
     }
 }
 
+struct GardenScreenBackground: View {
+    let imageName: String
+
+    var body: some View {
+        GeometryReader { geo in
+            Image(imageName)
+                .resizable()
+                .scaledToFill()
+                .frame(width: geo.size.width, height: geo.size.height)
+                .clipped()
+        }
+        .ignoresSafeArea()
+    }
+}
+
 struct BackButton: View {
     @Environment(\.dismiss) var dismiss
-    var color: Color = .blue
+    var accessibilityLabel = "Back"
 
     var body: some View {
         Button(action: {
             dismiss()
         }) {
-            Image(systemName: "chevron.left")
-                .foregroundColor(color)
-                .imageScale(.large)
+            Image("Back_icon")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 30, height: 30)
         }
+        .accessibilityLabel(accessibilityLabel)
     }
 }
