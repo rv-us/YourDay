@@ -54,6 +54,25 @@ struct ScreenTimeSettingsView: View {
                         .foregroundColor(dynamicTextColor)
                         .font(.headline)
                 }
+
+                Section {
+                    Toggle(isOn: Binding(
+                        get: { manager.scheduledTasksOnly },
+                        set: { manager.setScheduledTasksOnly($0) }
+                    )) {
+                        Text("Only block during scheduled tasks")
+                            .foregroundColor(dynamicTextColor)
+                    }
+                    .tint(dynamicSecondaryColor)
+                    .listRowBackground(dynamicSecondaryBackgroundColor)
+                } header: {
+                    Text("Blocking Mode")
+                        .foregroundColor(dynamicTextColor)
+                        .font(.headline)
+                } footer: {
+                    Text("When on, apps are blocked only while a scheduled focus task is active. Between tasks — or when nothing is scheduled — apps stay unblocked. Turn this on if reminder timing is unreliable and you only want to be blocked during your planned focus sessions.")
+                        .foregroundColor(dynamicSecondaryTextColor)
+                }
             }
 
             if manager.isEnabled && manager.authorizationStatus != .approved {

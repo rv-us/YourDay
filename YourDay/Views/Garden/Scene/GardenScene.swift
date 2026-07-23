@@ -52,6 +52,8 @@ final class GardenScene: SKScene {
     private var pendingPlantingAnimationIDs = Set<UUID>()
     private var nextWindGustTime: TimeInterval?
     private var windGustIndex = 0
+    let wateringSystem = WateringSystem()
+    private var lastUpdateTime: TimeInterval = 0
 
     // Environment (day/night/season) the world was last built for.
     private var currentBackdropName = ""
@@ -145,6 +147,10 @@ final class GardenScene: SKScene {
         worldNode.addChild(plantLayer)
         worldNode.addChild(feedbackLayer)
 
+        wateringSystem.onPlantWatered = { [weak self] id in
+            self?.bridge?.emit(.wateredPlant(id: id))
+        }
+
         if let pending = currentSnapshot {
             applySnapshotToWorld(pending)
         }
@@ -228,18 +234,33 @@ final class GardenScene: SKScene {
         }
     }
 
+    /// One-finger input drives the watering can instead of the camera while
+    /// watering mode is active (pinch-zoom still works with two fingers).
+    private var isWateringInputActive: Bool {
+        currentSnapshot?.mode == .watering && wateringSystem.isActive
+    }
+
     @objc private func handlePan(_ recognizer: UIPanGestureRecognizer) {
         guard let view = recognizer.view else { return }
         switch recognizer.state {
         case .began:
-            userHasMovedCamera = true
             recognizer.setTranslation(.zero, in: view)
+            if isWateringInputActive {
+                wateringSystem.grabCan(at: convertPoint(fromView: recognizer.location(in: view)))
+                return
+            }
+            userHasMovedCamera = true
         case .changed:
             // While pinching or dragging a plant, other handlers own the input.
             // Translation is zeroed unconditionally so ignored movement never
             // accumulates into a jump once panning resumes.
             let translation = recognizer.translation(in: view)
             recognizer.setTranslation(.zero, in: view)
+            if isWateringInputActive {
+                guard !isPinching else { return }
+                wateringSystem.moveCan(to: convertPoint(fromView: recognizer.location(in: view)))
+                return
+            }
             guard !isPinching, !isPlantDragging,
                   CACurrentMediaTime() - lastPinchEndTime > pinchEndPanGrace else { return }
             gardenCamera.setPan(CGSize(
@@ -247,6 +268,8 @@ final class GardenScene: SKScene {
                 height: gardenCamera.panOffset.height + translation.y
             ))
             applyCamera()
+        case .ended, .cancelled, .failed:
+            if isWateringInputActive { wateringSystem.endPour() }
         default:
             break
         }
@@ -283,6 +306,11 @@ final class GardenScene: SKScene {
     @objc private func handleTap(_ recognizer: UITapGestureRecognizer) {
         guard recognizer.state == .ended, let view = recognizer.view else { return }
         let point = recognizer.location(in: view)
+        if isWateringInputActive {
+            // Tap = hop the can over and pour a short shower there.
+            wateringSystem.pourBurst(at: convertPoint(fromView: point))
+            return
+        }
         if let id = plantID(atViewPoint: point) {
             bridge?.emit(.tappedPlant(id: id))
         } else if let position = emptyTilePosition(atViewPoint: point) {
@@ -298,6 +326,11 @@ final class GardenScene: SKScene {
 
         switch recognizer.state {
         case .began:
+            if isWateringInputActive {
+                // Hold-to-pour: a stationary press showers the spot under it.
+                wateringSystem.grabCan(at: convertPoint(fromView: point))
+                return
+            }
             guard let id = plantID(atViewPoint: point), let node = plantNodes[id] else { return }
             dragState = DragState(
                 plantID: id,
@@ -306,6 +339,10 @@ final class GardenScene: SKScene {
                 startViewPoint: point
             )
         case .changed:
+            if isWateringInputActive {
+                wateringSystem.moveCan(to: convertPoint(fromView: point))
+                return
+            }
             guard var state = dragState else { return }
             if !state.isDragging {
                 let moved = hypot(point.x - state.startViewPoint.x, point.y - state.startViewPoint.y)
@@ -319,8 +356,16 @@ final class GardenScene: SKScene {
             state.node.position = convertPoint(fromView: point)
             updateSwapTarget(draggedID: state.plantID, viewPoint: point)
         case .ended:
+            if isWateringInputActive {
+                wateringSystem.endPour()
+                return
+            }
             finishLongPress(cancelled: false)
         case .cancelled, .failed:
+            if isWateringInputActive {
+                wateringSystem.endPour()
+                return
+            }
             finishLongPress(cancelled: true)
         default:
             break
@@ -370,6 +415,29 @@ final class GardenScene: SKScene {
         guard isWorldBuilt else { return }
         cloudLayer.updateEdgeFade(camera: gardenCamera, viewSize: size)
         updateWind(at: currentTime)
+
+        // Capped dt keeps droplet physics stable across pauses/frame drops.
+        let deltaTime = lastUpdateTime > 0 ? min(currentTime - lastUpdateTime, 1.0 / 20.0) : 0
+        lastUpdateTime = currentTime
+        updateWatering(deltaTime: deltaTime)
+    }
+
+    private func updateWatering(deltaTime: TimeInterval) {
+        guard wateringSystem.isActive, let snapshot = currentSnapshot else { return }
+        let targets = plantNodes.map { id, node in
+            WateringSystem.PlantTarget(
+                id: id,
+                sceneCenter: node.position,
+                needsWater: !node.model.wateredToday,
+                node: node
+            )
+        }
+        wateringSystem.update(
+            deltaTime: deltaTime,
+            plantTargets: targets,
+            reduceMotion: snapshot.reduceMotion,
+            zoomScale: gardenCamera.zoomScale
+        )
     }
 
     private func updateWind(at currentTime: TimeInterval) {
@@ -471,6 +539,8 @@ final class GardenScene: SKScene {
         guard geometry != nil else { return }
         let tileSize = IslandGridConfig.displayTileSize
 
+        syncWateringActivation(snapshot)
+
         // Diff plants by UUID: explicitly queued user planting gets a growth
         // reveal, removals fade, swaps move, and existing nodes refresh state.
         var seenIDs = Set<UUID>()
@@ -538,6 +608,24 @@ final class GardenScene: SKScene {
             node.position = scenePos
             tileLayer.addChild(node)
             tileNodes[position] = node
+        }
+    }
+
+    /// Brings the watering can in/out when GardenView toggles watering mode.
+    private func syncWateringActivation(_ snapshot: GardenSnapshot) {
+        let wantsWatering = snapshot.mode == .watering
+        guard wantsWatering != wateringSystem.isActive else { return }
+        if wantsWatering {
+            // Start where the player is looking: the camera's current center.
+            wateringSystem.activate(
+                on: worldNode,
+                at: cameraNode.position,
+                tileSize: IslandGridConfig.displayTileSize,
+                textures: textures,
+                zoomScale: gardenCamera.zoomScale
+            )
+        } else {
+            wateringSystem.deactivate()
         }
     }
 

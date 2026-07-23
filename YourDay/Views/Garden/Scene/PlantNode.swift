@@ -28,6 +28,7 @@ final class PlantNode: SKNode {
     private var transitionGeneration = 0
     private var reduceMotion: Bool
     private var isLifted = false
+    private var isDroopingAndPanting = false
 
     private enum ActionKey {
         static let wind = "windSway"
@@ -36,7 +37,16 @@ final class PlantNode: SKNode {
         static let planting = "plantingReveal"
         static let labelReveal = "labelReveal"
         static let lift = "lift"
+        static let waterHit = "waterDropletHit"
+        static let droop = "droopingMesh"
+        static let pant = "pantingBreath"
+        static let tint = "droopTint"
     }
+
+    /// Wilted look for a thirsty plant — a muted, dry brown blended over the
+    /// existing art rather than replacing it.
+    private static let droopTintColor = UIColor(red: 0.5, green: 0.38, blue: 0.22, alpha: 1.0)
+    private static let droopTintBlend: CGFloat = 0.4
 
     init(
         model: PlantRenderModel,
@@ -128,6 +138,7 @@ final class PlantNode: SKNode {
 
         applyLabels()
         applyMode(mode)
+        updateDroopAndPantState()
 
         if displayedStage != model.stage {
             if transitionTargetStage != model.stage || reduceMotionChanged {
@@ -150,6 +161,7 @@ final class PlantNode: SKNode {
     func playPlantingReveal(textures: GardenTextureProvider) {
         cancelWindAnimation(resetWarp: true)
         stopPassiveAnimation(resetTransform: true)
+        stopDroopAndPant()
         sprite.removeAction(forKey: ActionKey.transition)
         sprite.removeAction(forKey: ActionKey.planting)
         transitionTargetStage = nil
@@ -202,6 +214,7 @@ final class PlantNode: SKNode {
         sprite.removeAction(forKey: ActionKey.transition)
         cancelWindAnimation(resetWarp: true)
         stopPassiveAnimation(resetTransform: true)
+        stopDroopAndPant()
         sprite.alpha = 1
         sprite.xScale = 1
         sprite.yScale = 1
@@ -272,6 +285,7 @@ final class PlantNode: SKNode {
         sprite.xScale = 1
         sprite.yScale = 1
         cancelWindAnimation(resetWarp: true)
+        stopDroopAndPant()
         startPassiveAnimationIfNeeded()
     }
 
@@ -330,10 +344,8 @@ final class PlantNode: SKNode {
             : .white
 
         if model.isFullyGrown {
-            statusLabel.text = "Grown!"
-            statusLabel.fontColor = .white
-            statusPill.isHidden = false
-            statusPill.fillColor = UIColor(red: 0.4, green: 0.73, blue: 0.42, alpha: 0.9)
+            statusLabel.text = ""
+            statusPill.isHidden = true
         } else {
             statusLabel.text = "\(model.daysLeftTillFullyGrown)d left"
             statusPill.isHidden = true
@@ -347,6 +359,11 @@ final class PlantNode: SKNode {
 
     private func applyMode(_ mode: GardenSceneMode) {
         switch mode {
+        case .watering where !model.wateredToday:
+            // Blue guide ring: this plant still wants water today.
+            highlightRing.isHidden = false
+            highlightRing.strokeColor = UIColor(red: 0.3, green: 0.68, blue: 0.98, alpha: 0.65)
+            sellBadge.isHidden = true
         case .fertilizer where !model.isFullyGrown:
             highlightRing.isHidden = false
             highlightRing.strokeColor = UIColor(red: 1.0, green: 0.65, blue: 0.15, alpha: 0.7)
@@ -360,6 +377,105 @@ final class PlantNode: SKNode {
             highlightRing.isHidden = true
             sellBadge.isHidden = true
         }
+    }
+
+    // MARK: - Droop and pant state
+
+    private func updateDroopAndPantState() {
+        let shouldDroop = !model.wateredToday && !isLifted
+        if shouldDroop && !isDroopingAndPanting {
+            startDroopAndPant()
+        } else if !shouldDroop && isDroopingAndPanting {
+            stopDroopAndPant()
+        }
+    }
+
+    private func startDroopAndPant() {
+        guard !reduceMotion, transitionTargetStage == nil else { return }
+        isDroopingAndPanting = true
+
+        let stageStrength: CGFloat
+        switch displayedStage {
+        case .seed: return
+        case .seedling: stageStrength = 0.55
+        case .grown: stageStrength = 1
+        }
+
+        cancelWindAnimation(resetWarp: false)
+        stopPassiveAnimation(resetTransform: false)
+
+        // Slow sag that settles into a rest droop and eases slightly deeper
+        // and back — a gentle wilt instead of a single rigid bend.
+        let restDroop = -stageStrength * 0.1
+        let deepDroop = -stageStrength * 0.15
+        let sagCycle = 3.2
+        let sinkIn = warpAction(to: restDroop, duration: 1.1, timingMode: .easeIn)
+        let deepen = warpAction(to: deepDroop, duration: sagCycle * 0.5, timingMode: .easeInEaseOut)
+        let ease = warpAction(to: restDroop, duration: sagCycle * 0.5, timingMode: .easeInEaseOut)
+        guard let sinkIn, let deepen, let ease else { return }
+
+        sprite.run(.sequence([
+            sinkIn,
+            .repeatForever(.sequence([deepen, ease]))
+        ]), withKey: ActionKey.droop)
+
+        sprite.removeAction(forKey: ActionKey.tint)
+        sprite.run(
+            .colorize(with: Self.droopTintColor, colorBlendFactor: Self.droopTintBlend, duration: 0.7),
+            withKey: ActionKey.tint
+        )
+
+        // Slow, shallow breathing — a tired sag-and-lift, not rapid panting.
+        let breatheCycle = 2.4
+        let breatheDown = SKAction.scaleY(to: 1 - 0.025 * stageStrength, duration: breatheCycle * 0.55)
+        breatheDown.timingMode = .easeInEaseOut
+        let breatheUp = SKAction.scaleY(to: 1.0, duration: breatheCycle * 0.45)
+        breatheUp.timingMode = .easeInEaseOut
+
+        artContainer.run(.repeatForever(.sequence([breatheDown, breatheUp])), withKey: ActionKey.pant)
+    }
+
+    private func stopDroopAndPant() {
+        isDroopingAndPanting = false
+        sprite.removeAction(forKey: ActionKey.droop)
+        artContainer.removeAction(forKey: ActionKey.pant)
+        sprite.warpGeometry = PlantWarpFactory.neutralGrid()
+        artContainer.yScale = 1
+        sprite.removeAction(forKey: ActionKey.tint)
+        sprite.run(.colorize(withColorBlendFactor: 0, duration: 0.35), withKey: ActionKey.tint)
+        startPassiveAnimationIfNeeded()
+    }
+
+    // MARK: - Watering droplet response
+
+    /// Quick droplet-impact jiggle. Runs on the sprite's scale/rotation, so it
+    /// never fights the warp-based wind sway or the artContainer passive
+    /// motion. The key guard keeps rapid droplets from stacking shakes.
+    func playWaterDropletHit() {
+        guard !reduceMotion, !isLifted, transitionTargetStage == nil,
+              sprite.action(forKey: ActionKey.planting) == nil,
+              sprite.action(forKey: ActionKey.waterHit) == nil else { return }
+
+        let direction: CGFloat = Bool.random() ? 1 : -1
+        let squash = SKAction.group([
+            .scaleX(to: 1.05, duration: 0.05),
+            .scaleY(to: 0.94, duration: 0.05),
+            .rotate(toAngle: direction * 0.03, duration: 0.05)
+        ])
+        squash.timingMode = .easeOut
+        let rebound = SKAction.group([
+            .scaleX(to: 0.98, duration: 0.07),
+            .scaleY(to: 1.03, duration: 0.07),
+            .rotate(toAngle: -direction * 0.018, duration: 0.07)
+        ])
+        rebound.timingMode = .easeInEaseOut
+        let settle = SKAction.group([
+            .scaleX(to: 1, duration: 0.08),
+            .scaleY(to: 1, duration: 0.08),
+            .rotate(toAngle: 0, duration: 0.08)
+        ])
+        settle.timingMode = .easeOut
+        sprite.run(.sequence([squash, rebound, settle]), withKey: ActionKey.waterHit)
     }
 
     // MARK: - Traveling wind response
@@ -496,7 +612,9 @@ final class PlantNode: SKNode {
         if lifted {
             cancelWindAnimation(resetWarp: true)
             stopPassiveAnimation(resetTransform: true)
+            stopDroopAndPant()
         } else {
+            updateDroopAndPantState()
             startPassiveAnimationIfNeeded()
         }
 

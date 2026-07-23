@@ -120,18 +120,30 @@ struct SmartSchedulingView: View {
                 .padding()
             }
             .background(dynamicBackgroundColor.edgesIgnoringSafeArea(.all))
+            .safeAreaInset(edge: .bottom) {
+                // Presented from the daily dashboard (onSkip set): a bottom "Done"
+                // returns to the dashboard. As a tab (onSkip nil) no bar is shown.
+                if onSkip != nil {
+                    Button {
+                        onSkip?()
+                    } label: {
+                        Text("Done")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(dynamicPrimaryColor)
+                            .foregroundColor(.white)
+                            .cornerRadius(12)
+                    }
+                    .padding(.horizontal)
+                    .padding(.vertical, 8)
+                    .background(dynamicSecondaryBackgroundColor)
+                }
+            }
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(dynamicSecondaryBackgroundColor, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
-                if onSkip != nil {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Skip") {
-                            onSkip?()
-                        }
-                        .foregroundColor(dynamicPrimaryColor)
-                    }
-                }
                 ToolbarItem(placement: .principal) {
                     Text("Smart Scheduling")
                         .fontWeight(.bold)

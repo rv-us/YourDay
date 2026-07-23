@@ -21,6 +21,11 @@ enum AppGroupDefaults {
         static let graceWindowEndsAt = "breakFocusGraceWindowEndsAt"
         /// `yyyy-MM-dd` for the last day the user cleared Today (no open tasks left after planning).
         static let planningFulfilledDayKey = "shieldPlanningFulfilledDayKey"
+        /// When `true`, apps are only shielded while a scheduled focus task is
+        /// active right now. Between tasks — or when nothing is scheduled — apps
+        /// stay unblocked (no "plan your day" or "between tasks" soft block).
+        /// Default (unset → `false`) preserves the full soft-block behavior.
+        static let scheduledTasksOnly = "screenTimeScheduledTasksOnly"
     }
 
     // Cache the app-group UserDefaults as a single shared instance. Creating
@@ -100,11 +105,25 @@ enum AppGroupDefaults {
         defaults.string(forKey: Key.planningFulfilledDayKey) == dayKey
     }
 
+    // MARK: - Scheduled-tasks-only mode
+
+    /// When `true`, the shield is limited to active scheduled focus windows.
+    static var scheduledTasksOnlyMode: Bool {
+        defaults.bool(forKey: Key.scheduledTasksOnly)
+    }
+
     /// Whether ManagedSettings shields should be active right now.
     static func shouldApplyShieldBlocks() -> Bool {
         guard defaults.bool(forKey: Key.shieldEnabled) else { return false }
         guard let snapshot = loadSnapshot(), snapshot.dayKey == ShieldSnapshot.dayKey() else {
-            return true
+            // No fresh snapshot for today. In scheduled-tasks-only mode we can't
+            // confirm an active task, so leave apps unblocked; otherwise fall
+            // back to blocking (the full soft-block default).
+            return !scheduledTasksOnlyMode
+        }
+        if scheduledTasksOnlyMode {
+            // Only block while a scheduled focus task is active right now.
+            return snapshot.isInTaskSlot()
         }
         return snapshot.shouldBlockApps
     }

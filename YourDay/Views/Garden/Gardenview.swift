@@ -212,7 +212,7 @@ enum TutorialStep: Int, Identifiable {
         case .explainPlotsValue:
             return "As you level up, you can buy more plots to expand your garden. Your garden's 'Value' (top left) increases as your plants grow, especially with seasonal theme bonuses!"
         case .explainWatering:
-            return "Don't forget to water your plants using the 'Water All Plants' button or by long-pressing individual plants. They need water daily (in-game) to grow. Neglected plants might wither!"
+            return "Tap 'Water Plants' to grab your watering can, then drag it over each plant to shower it. Plants need water daily (in-game) to grow. Neglected plants might wither!"
         case .finished:
             return "You're all set to cultivate a beautiful and valuable garden. Happy planting!"
         }
@@ -262,6 +262,10 @@ struct GardenView: View {
     
     @State private var isFertilizerModeActive = false
     @State private var isSellModeActive = false
+    @State private var isWateringModeActive = false
+    /// Plants watered through the scene's watering can this session; used to
+    /// batch the Firebase sync into a single write on mode exit.
+    @State private var wateredDuringSceneSession = 0
     
     @State private var plantFeedbackItems: [UUID: PlantActionFeedback] = [:]
     
@@ -308,8 +312,10 @@ struct GardenView: View {
         GardenSnapshot(
             plants: playerStats.placedPlants.map(PlantRenderModel.init(from:)),
             unlockedPlotCount: playerStats.numberOfOwnedPlots,
-            mode: isSellModeActive ? .sell : (isFertilizerModeActive ? .fertilizer : .normal),
-            dragEnabled: !isTutorialActive && !isSellModeActive && !isFertilizerModeActive,
+            mode: isSellModeActive ? .sell
+                : (isFertilizerModeActive ? .fertilizer
+                : (isWateringModeActive ? .watering : .normal)),
+            dragEnabled: !isTutorialActive && !isSellModeActive && !isFertilizerModeActive && !isWateringModeActive,
             reduceMotion: accessibilityReduceMotion
         )
     }
@@ -333,11 +339,11 @@ struct GardenView: View {
         }
     }
     
-    private var allPlantsWateredOrGrownToday: Bool {
+    private var allPlantsWateredToday: Bool {
         guard !playerStats.placedPlants.isEmpty else { return true }
         let today = Calendar.current.startOfDay(for: Date())
         for plant in playerStats.placedPlants {
-            if !plant.isFullyGrown && (plant.lastWateredOnDay == nil || !Calendar.current.isDate(plant.lastWateredOnDay!, inSameDayAs: today)) {
+            if plant.lastWateredOnDay == nil || !Calendar.current.isDate(plant.lastWateredOnDay!, inSameDayAs: today) {
                 return false
             }
         }
@@ -545,13 +551,6 @@ struct GardenView: View {
                     
                     if let notification = generalNotification {
                         GeneralNotificationView(notification: notification)
-                            .onAppear {
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                                    withAnimation(.easeOut(duration: 0.5)) {
-                                        self.generalNotification = nil
-                                    }
-                                }
-                            }
                             .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                     
@@ -607,7 +606,7 @@ struct GardenView: View {
                     titleVisibility: .visible
                 ) {
                     if let plant = sceneDialogPlant {
-                        if !plant.isFullyGrown && !isPlantWateredToday(plant) {
+                        if !isPlantWateredToday(plant) {
                             Button("Water Plant") {
                                 if let index = playerStats.placedPlants.firstIndex(where: { $0.id == plant.id }) {
                                     waterSinglePlant(at: index)
@@ -739,7 +738,7 @@ struct GardenView: View {
                         )
                     }
                     .buttonStyle(GardenPressableButtonStyle())
-                    .disabled((playerStats.totalPoints < playerStats.costToBuyNextPlot()) || isSellModeActive || isFertilizerModeActive || (isTutorialActive && currentTutorialStep != .explainPlotsValue))
+                    .disabled((playerStats.totalPoints < playerStats.costToBuyNextPlot()) || isSellModeActive || isFertilizerModeActive || isWateringModeActive || (isTutorialActive && currentTutorialStep != .explainPlotsValue))
                 } else {
                     Text("Max plots for this level reached")
                         .font(.system(.caption, design: .rounded).weight(.medium))
@@ -767,17 +766,35 @@ struct GardenView: View {
             .padding(.bottom, 8)
         }
         
+        @ViewBuilder
         private var waterAllButton: some View {
-            Button(action: waterAllPlants) {
-                GardenGlossyButtonLabel(
-                    iconAsset: "Water_icon_small",
-                    text: "Water All Plants",
-                    fill: allPlantsWateredOrGrownToday ? dynamicSecondaryTextColor.opacity(0.55) : vibrantWaterButtonColor,
-                    font: .system(.headline, design: .rounded).weight(.bold)
-                )
+            if useSpriteKitScene {
+                // Watering-can mode: the scene shows a draggable can and
+                // reports .wateredPlant events as droplets soak each plant.
+                Button(action: toggleWateringMode) {
+                    GardenGlossyButtonLabel(
+                        iconAsset: "Water_icon_small",
+                        text: isWateringModeActive ? "Put Away Watering Can" : "Water Plants",
+                        fill: isWateringModeActive
+                            ? dynamicDestructiveColor.opacity(0.85)
+                            : (allPlantsWateredToday ? dynamicSecondaryTextColor.opacity(0.55) : vibrantWaterButtonColor),
+                        font: .system(.headline, design: .rounded).weight(.bold)
+                    )
+                }
+                .buttonStyle(GardenPressableButtonStyle())
+                .disabled((allPlantsWateredToday && !isWateringModeActive) || isSellModeActive || isFertilizerModeActive || (isTutorialActive && currentTutorialStep != .explainWatering))
+            } else {
+                Button(action: waterAllPlants) {
+                    GardenGlossyButtonLabel(
+                        iconAsset: "Water_icon_small",
+                        text: "Water All Plants",
+                        fill: allPlantsWateredToday ? dynamicSecondaryTextColor.opacity(0.55) : vibrantWaterButtonColor,
+                        font: .system(.headline, design: .rounded).weight(.bold)
+                    )
+                }
+                .buttonStyle(GardenPressableButtonStyle())
+                .disabled(allPlantsWateredToday || isSellModeActive || isFertilizerModeActive || (isTutorialActive && currentTutorialStep != .explainWatering))
             }
-            .buttonStyle(GardenPressableButtonStyle())
-            .disabled(allPlantsWateredOrGrownToday || isSellModeActive || isFertilizerModeActive || (isTutorialActive && currentTutorialStep != .explainWatering))
         }
 
         private var sellModeButton: some View {
@@ -789,7 +806,7 @@ struct GardenView: View {
                 )
             }
             .buttonStyle(GardenPressableButtonStyle())
-            .disabled((!hasGrownPlantsToSell && !isSellModeActive) || isFertilizerModeActive || (isTutorialActive && currentTutorialStep != .explainSell))
+            .disabled((!hasGrownPlantsToSell && !isSellModeActive) || isFertilizerModeActive || isWateringModeActive || (isTutorialActive && currentTutorialStep != .explainSell))
         }
 
         private var useFertilizerButton: some View {
@@ -801,7 +818,7 @@ struct GardenView: View {
                 )
             }
             .buttonStyle(GardenPressableButtonStyle())
-            .disabled((playerStats.fertilizerCount == 0 && !isFertilizerModeActive) || isSellModeActive || (isTutorialActive && currentTutorialStep != .explainFertilizer))
+            .disabled((playerStats.fertilizerCount == 0 && !isFertilizerModeActive) || isSellModeActive || isWateringModeActive || (isTutorialActive && currentTutorialStep != .explainFertilizer))
         }
         
         /// Glass circle behind the toolbar icon buttons so they read as HUD
@@ -961,6 +978,9 @@ struct GardenView: View {
 
             case .swapRequested(let draggedID, let targetID):
                 swapPlants(draggedID: draggedID, targetID: targetID)
+
+            case .wateredPlant(let id):
+                waterPlantFromScene(id: id)
             }
         }
 
@@ -1007,8 +1027,19 @@ struct GardenView: View {
         }
         
         func triggerGeneralNotification(text: String, icon: String? = nil, color: Color = dynamicSecondaryTextColor) {
+            let newNotification = GeneralNotificationFeedback(text: text, icon: icon, color: color)
             withAnimation(.spring()) {
-                generalNotification = GeneralNotificationFeedback(text: text, icon: icon, color: color)
+                generalNotification = newNotification
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                // Only clear if this is still the notification we scheduled the dismissal for —
+                // otherwise a stale timer from an earlier burst could wipe out a newer one
+                // (or, since rapid re-triggers don't retrigger onAppear-based dismissal,
+                // leave nothing scheduled to ever clear it).
+                guard generalNotification?.id == newNotification.id else { return }
+                withAnimation(.easeOut(duration: 0.5)) {
+                    generalNotification = nil
+                }
             }
         }
         
@@ -1054,7 +1085,7 @@ struct GardenView: View {
         }
         
         func attemptToBuyPlot() {
-            guard !isFertilizerModeActive && !isSellModeActive && !isTutorialActive else {
+            guard !isFertilizerModeActive && !isSellModeActive && !isWateringModeActive && !isTutorialActive else {
                 if isTutorialActive { showStandardAlert(title: "Tutorial Active", message: "Please complete or skip the tutorial first.") }
                 else { showStandardAlert(title: "Mode Active", message: "Please exit the current mode (Fertilizer/Sell) before buying plots.") }
                 return
@@ -1121,6 +1152,86 @@ struct GardenView: View {
             }
         }
         
+        // MARK: - Watering-can mode (SpriteKit scene)
+
+        func toggleWateringMode() {
+            guard !isTutorialActive || currentTutorialStep == .explainWatering else {
+                if isTutorialActive { showStandardAlert(title: "Tutorial Active", message: "Follow the current tutorial step.") }
+                return
+            }
+            if isWateringModeActive {
+                exitWateringMode()
+            } else {
+                guard !allPlantsWateredToday else {
+                    showStandardAlert(title: "All Set!", message: "Your plants are all watered for today.")
+                    return
+                }
+                wateredDuringSceneSession = 0
+                isWateringModeActive = true
+                triggerGeneralNotification(text: "Drag the watering can over your plants!", icon: "drop.fill", color: vibrantWaterButtonColor)
+            }
+        }
+
+        func exitWateringMode() {
+            guard isWateringModeActive else { return }
+            isWateringModeActive = false
+            // One batched sync per session instead of a write per droplet-soak.
+            if wateredDuringSceneSession > 0, let mutablePlayerStats = playerStatsList.first {
+                mutablePlayerStats.updateGardenValue()
+                loginViewModel.syncLocalPlayerStatsToFirestore(playerStatsModel: mutablePlayerStats)
+            }
+            wateredDuringSceneSession = 0
+        }
+
+        /// A plant caught enough droplets from the watering can in the scene.
+        func waterPlantFromScene(id: UUID) {
+            guard isWateringModeActive,
+                  let mutablePlayerStats = playerStatsList.first,
+                  let index = mutablePlayerStats.placedPlants.firstIndex(where: { $0.id == id }) else { return }
+
+            var plantToWater = mutablePlayerStats.placedPlants[index]
+            let today = Calendar.current.startOfDay(for: Date())
+            guard plantToWater.lastWateredOnDay == nil || !Calendar.current.isDate(plantToWater.lastWateredOnDay!, inSameDayAs: today) else { return }
+
+            let wasFullyGrown = plantToWater.isFullyGrown
+            plantToWater.waterPlant()
+            mutablePlayerStats.placedPlants[index] = plantToWater
+            wateredDuringSceneSession += 1
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+
+            if !wasFullyGrown && plantToWater.isFullyGrown {
+                mutablePlayerStats.updateGardenValue()
+                triggerPlantFeedback(plantID: plantToWater.id, text: "Grown!", color: dynamicSecondaryColor)
+            } else {
+                triggerPlantFeedback(plantID: plantToWater.id, text: "Watered!", color: vibrantWaterButtonColor)
+            }
+
+            if allPlantsWateredToday {
+                // Let the last splash land before the can flies away.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                    self.exitWateringMode()
+                    self.triggerGeneralNotification(text: "All plants watered for today!", icon: "checkmark.seal.fill", color: vibrantWaterButtonColor)
+                }
+            }
+
+            if !self.hasCompletedGardenTutorial && self.currentTutorialStep == .explainWatering {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    // Later tutorial steps disable the watering button, so the
+                    // can must fly away before the overlay takes over.
+                    self.exitWateringMode()
+                    self.currentTutorialStep = .explainFertilizer
+                    if self.currentTutorialStep != .finished {
+                        withAnimation {
+                            self.isTutorialActive = true
+                        }
+                    } else {
+                        self.hasCompletedGardenTutorial = true
+                        self.isTutorialActive = false
+                    }
+                }
+            }
+        }
+
         func waterSinglePlant(at plantIndexInStatsArray: Int) {
             guard !isTutorialActive || currentTutorialStep == .explainWatering else {
                 if isTutorialActive && currentTutorialStep != .explainWatering {
@@ -1133,14 +1244,18 @@ struct GardenView: View {
             var plantToWater = mutablePlayerStats.placedPlants[plantIndexInStatsArray]
             let today = Calendar.current.startOfDay(for: Date())
             
-            if !plantToWater.isFullyGrown && (plantToWater.lastWateredOnDay == nil || !Calendar.current.isDate(plantToWater.lastWateredOnDay!, inSameDayAs: today)) {
+            if plantToWater.lastWateredOnDay == nil || !Calendar.current.isDate(plantToWater.lastWateredOnDay!, inSameDayAs: today) {
                 let wasGrownBeforeWatering = plantToWater.isFullyGrown
                 plantToWater.waterPlant()
                 mutablePlayerStats.placedPlants[plantIndexInStatsArray] = plantToWater
-                if !wasGrownBeforeWatering && plantToWater.isFullyGrown { mutablePlayerStats.updateGardenValue(); triggerPlantFeedback(plantID: plantToWater.id, text: "Grown!", color: dynamicSecondaryColor)
-                    loginViewModel.syncLocalPlayerStatsToFirestore(playerStatsModel: mutablePlayerStats)
+                if !wasGrownBeforeWatering && plantToWater.isFullyGrown {
+                    mutablePlayerStats.updateGardenValue()
+                    triggerPlantFeedback(plantID: plantToWater.id, text: "Grown!", color: dynamicSecondaryColor)
+                } else {
+                    triggerPlantFeedback(plantID: plantToWater.id, text: "Watered!", color: vibrantWaterButtonColor)
                 }
-                
+                loginViewModel.syncLocalPlayerStatsToFirestore(playerStatsModel: mutablePlayerStats)
+
                 if !self.hasCompletedGardenTutorial && self.currentTutorialStep == .explainWatering {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                         self.currentTutorialStep = .explainFertilizer
@@ -1154,8 +1269,6 @@ struct GardenView: View {
                         }
                     }
                 }
-            } else if plantToWater.isFullyGrown {
-                showStandardAlert(title: "Fully Grown", message: "\(plantToWater.name) is already fully grown.")
             } else {
                 showStandardAlert(title: "Already Watered", message: "\(plantToWater.name) has been watered today.")
             }

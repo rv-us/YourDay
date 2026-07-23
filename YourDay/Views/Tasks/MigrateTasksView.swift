@@ -7,6 +7,10 @@ struct MigrateTasksView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var firebaseManager: FirebaseManager
 
+    /// Called after the user confirms the review, with the number of tasks placed on today.
+    /// Lets the daily dashboard check off the Migrate step only when a real migration happened.
+    var onMigrationConfirmed: ((Int) -> Void)? = nil
+
     @Query private var allTodoItems: [TodoItem]
     @State private var selectedTasksToMigrate: Set<PersistentIdentifier> = []
     @State private var isProcessingSelections = false
@@ -170,6 +174,23 @@ struct MigrateTasksView: View {
                             .cornerRadius(10)
                     }
                 }
+
+                Button {
+                    dismiss()
+                } label: {
+                    Text("Done")
+                        .font(.headline)
+                        .padding()
+                        .frame(maxWidth: .infinity)
+                        .foregroundColor(dynamicPrimaryColor)
+                        .background(dynamicSecondaryBackgroundColor)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(dynamicPrimaryColor.opacity(0.5), lineWidth: 1.5)
+                        )
+                        .cornerRadius(10)
+                }
+                .disabled(isProcessingSelections)
             }
             .padding()
         }
@@ -193,12 +214,6 @@ struct MigrateTasksView: View {
                 Text("Review Old Tasks")
                     .fontWeight(.bold)
                     .foregroundColor(dynamicTextColor)
-            }
-            ToolbarItem(placement: .cancellationAction) {
-                Button("Later") {
-                    dismiss()
-                }
-                .foregroundColor(dynamicPrimaryColor)
             }
         }
     }
@@ -246,12 +261,14 @@ struct MigrateTasksView: View {
         isProcessingSelections = true
 
         func applyTodaySelections() {
+            var migratedToTodayCount = 0
             for taskInReview in tasksToReview {
                 if selectedTasksToMigrate.contains(taskInReview.id) {
                     taskInReview.dueDate = today
                     taskInReview.origin = .today
                     taskInReview.isDone = false
                     taskInReview.completedAt = nil
+                    migratedToTodayCount += 1
                     print("Migrating task: \(taskInReview.title) to today. Subtask statuses preserved.")
 
                     if taskInReview.sharedTaskId != nil {
@@ -272,6 +289,7 @@ struct MigrateTasksView: View {
                 print("Error saving context after processing task selections: \(error.localizedDescription)")
             }
             isProcessingSelections = false
+            onMigrationConfirmed?(migratedToTodayCount)
             onComplete()
         }
 

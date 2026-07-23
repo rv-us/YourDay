@@ -50,6 +50,15 @@ final class ShieldConfigurationExtension: ShieldConfigurationDataSource {
             return dayCompleteConfiguration(appName: displayApp)
         }
 
+        // Scheduled-tasks-only mode: outside an active scheduled focus window the
+        // app should be unblocked. Tokens are normally cleared by the main app /
+        // monitor, but if a shield is briefly still visible (e.g. a task just
+        // ended before anything recomputed), show a no-penalty pass-through.
+        if AppGroupDefaults.scheduledTasksOnlyMode, snapshot.activeTasks().isEmpty {
+            logger.notice("scheduledTasksOnly & no active task -> notBlockingNowConfiguration")
+            return notBlockingNowConfiguration(appName: displayApp)
+        }
+
         if !snapshot.hasPlannedDay {
             logger.notice("no planned day -> unplannedConfiguration")
             return unplannedConfiguration(penaltyAmount: penaltyAmount, appName: displayApp)
@@ -125,6 +134,18 @@ final class ShieldConfigurationExtension: ShieldConfigurationDataSource {
             title: "You're done for today",
             subtitle: "YourDay isn't blocking \(appName) anymore. Enjoy your break.",
             primaryLabel: "Close",
+            incursPenalty: false
+        )
+    }
+
+    /// Scheduled-tasks-only mode, outside any active focus window. No penalty —
+    /// the block simply shouldn't apply here, so let the user straight through.
+    private func notBlockingNowConfiguration(appName: String) -> ShieldConfiguration {
+        baseShield(
+            icon: UIImage(systemName: "checkmark.circle.fill"),
+            title: "No focus task right now",
+            subtitle: "YourDay only blocks \(appName) during a scheduled focus task. You're free to continue.",
+            primaryLabel: "Continue",
             incursPenalty: false
         )
     }

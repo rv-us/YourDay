@@ -211,11 +211,14 @@ struct LastDayView: View {
                     VStack(alignment: .leading, spacing: 16) {
                         // Points card
                         lastDayCard {
-                            VStack(spacing: 8) {
-                                Text("+\(Int(animatedPointsTotal)) Points!")
-                                    .font(.system(size: 36, weight: .heavy, design: .rounded))
+                            VStack(spacing: 4) {
+                                Text("+\(Int(animatedPointsTotal))")
+                                    .font(.system(size: 42, weight: .heavy, design: .rounded))
                                     .foregroundColor(dynamicSecondaryColor)
                                     .id("animatedPointsText-\(dateOffset)")
+                                Text("points earned")
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundColor(dynamicSecondaryTextColor)
                             }
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 8)
@@ -419,11 +422,11 @@ struct TaskSummaryRow: View {
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
                         .background(
-                            taskResult.origin == .today ? 
-                                dynamicPrimaryColor.opacity(0.15) : 
+                            taskResult.origin == .today ?
+                                dynamicPrimaryColor.opacity(0.15) :
                                 dynamicAccentColor.opacity(0.15)
                         )
-                        .cornerRadius(4)
+                        .cornerRadius(6)
                 }
                 Spacer()
                 Text("+\(Int(taskResult.totalPoints)) / \(Int(taskResult.basePoints))")
@@ -479,8 +482,8 @@ struct TaskSummaryRow: View {
         }
         .padding()
         .background(dynamicSecondaryBackgroundColor)
-        .cornerRadius(10)
-        .shadow(color: Color.black.opacity(0.05), radius: 3, x: 0, y: 2)
+        .cornerRadius(14)
+        .shadow(color: Color.black.opacity(0.06), radius: 4, x: 0, y: 2)
     }
 }
 

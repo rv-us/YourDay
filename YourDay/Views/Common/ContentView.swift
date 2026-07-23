@@ -35,7 +35,7 @@ struct ContentView: View {
     @AppStorage("lastDailyEvaluationDate") private var lastDailyEvaluationDateString: String = ""
     @AppStorage("lastAppOpenDateForWitheringCheck") private var lastAppOpenDateForWitheringCheckString: String = ""
 
-    @State private var showMigrateTasksView = false
+    @State private var showDailyDashboard = false
     @State private var newDayEvaluationTriggeredLastDayView = false
     /// Re-entry guard: new-day logic is triggered from both .task and didBecomeActive,
     /// which can interleave across its awaits on a cold launch.
@@ -43,13 +43,6 @@ struct ContentView: View {
     
     @State private var showWitheringAlert = false
     @State private var witheringAlertMessage = ""
-    
-    // Daily flow state
-    @State private var showDailyPlanningNote = false
-    @State private var showSchedulingView = false
-    @State private var schedulingAutoStart = false
-    @State private var schedulingDate = Date()
-    @State private var isInDailyFlow = false
 
     @Query private var allTodoItems: [TodoItem]
     @StateObject private var todoViewModel = TodoViewModel()
@@ -183,6 +176,7 @@ struct ContentView: View {
             .tint(dynamicSecondaryColor)
             .task {
                 await processNewDayLogicIfNeeded()
+                presentDailyDashboardIfNeeded()
                 await TaskEndMonitor.shared.checkForEndedTasks()
                 journalViewModel.reconcileJournalPromptsFromMonitor()
             }
@@ -194,9 +188,8 @@ struct ContentView: View {
 
                 if newDayEvaluationTriggeredLastDayView {
                     newDayEvaluationTriggeredLastDayView = false
-                    isInDailyFlow = true
-                    self.showMigrateTasksView = true
                     GeofenceManager.shared.classifyAndSetupGeofences(context: modelContext)
+                    showDailyDashboard = true
                 }
             }) {
                 NavigationView {
@@ -209,36 +202,15 @@ struct ContentView: View {
                 }
                 .environment(\.modelContext, modelContext)
             }
-            .sheet(isPresented: $showMigrateTasksView, onDismiss: {
-                if isInDailyFlow {
-                    showDailyPlanningNote = true
-                }
-            }) {
-                NavigationView {
-                    MigrateTasksView()
-                        .environment(\.modelContext, modelContext)
-                        .environmentObject(firebaseManager)
-                }
-            }
-            .sheet(isPresented: $showDailyPlanningNote, onDismiss: {
-                if isInDailyFlow {
-                    schedulingDate = Calendar.current.startOfDay(for: Date())
-                    schedulingAutoStart = true
-                    showSchedulingView = true
-                }
-            }) {
-                DailyPlanningNoteView(isPresented: $showDailyPlanningNote) { }
-                    .environment(\.modelContext, modelContext)
-            }
-            .sheet(isPresented: $showSchedulingView, onDismiss: {
-                isInDailyFlow = false
-                schedulingAutoStart = false
-            }) {
-                SmartSchedulingView(
-                    initialDate: schedulingDate,
-                    autoStart: schedulingAutoStart,
-                    onSkip: { showSchedulingView = false }
+            .sheet(isPresented: $showDailyDashboard) {
+                DailyDashboardView(
+                    onDismissForLater: { showDailyDashboard = false },
+                    onSkip: {
+                        DailyChecklistStore.markSkipped(today: DailyChecklistStore.todayString())
+                        showDailyDashboard = false
+                    }
                 )
+                .environment(\.modelContext, modelContext)
                 .environmentObject(firebaseManager)
             }
             .alert("Plant Care Notice", isPresented: $showWitheringAlert) {
@@ -275,6 +247,7 @@ struct ContentView: View {
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
                 Task {
                     await processNewDayLogicIfNeeded()
+                    await MainActor.run { presentDailyDashboardIfNeeded() }
                     await TrelloTaskSyncService.refreshTrelloMirroredTasks(modelContext: modelContext)
                     await TaskEndMonitor.shared.checkForEndedTasks()
                     await MainActor.run {
@@ -649,41 +622,40 @@ struct ContentView: View {
         print("🕒 [DEBUG] todayString: \(todayString), lastSummaryDate: \(lastSummaryDateString), lastDailyEval: \(lastDailyEvaluationDateString)")
 
         if todayString != lastAppOpenDateForWitheringCheckString {
-            if let lastLoginActual = stats.lastLoginDate {
-                let daysSinceLastLogin = calendar.dateComponents([.day], from: lastLoginActual, to: today).day ?? 0
-                
-                if daysSinceLastLogin > 5 {
-                    var witheredCount = 0
-                    let fullyGrownPlantIndices = stats.placedPlants.indices.filter { index in
-                        let plant = stats.placedPlants[index]
-                        return plant.isFullyGrown && plant.name != PlantLibrary.blueprint(withId: "withered_1")?.name
-                    }
-                    
-                    if !fullyGrownPlantIndices.isEmpty {
-                        let numberToWither = Int(ceil(Double(fullyGrownPlantIndices.count) / 3.0))
-                        let indicesToWither = fullyGrownPlantIndices.shuffled().prefix(numberToWither)
-                        
-                        if let witheredBlueprint = PlantLibrary.blueprint(withId: "withered_1") {
-                            for index in indicesToWither {
-                                if index < stats.placedPlants.count {
-                                    stats.placedPlants[index].name = witheredBlueprint.name
-                                    stats.placedPlants[index].assetName = witheredBlueprint.assetName
-                                    stats.placedPlants[index].iconName = witheredBlueprint.iconName
-                                    stats.placedPlants[index].rarity = witheredBlueprint.rarity
-                                    stats.placedPlants[index].theme = witheredBlueprint.theme
-                                    stats.placedPlants[index].baseValue = witheredBlueprint.baseValue
-                                    stats.placedPlants[index].daysLeftTillFullyGrown = witheredBlueprint.initialDaysToGrow
-                                    stats.placedPlants[index].initialDaysToGrow = witheredBlueprint.initialDaysToGrow
-                                    witheredCount += 1
-                                }
-                            }
-                        }
-                        if witheredCount > 0 {
-                            self.witheringAlertMessage = "Welcome back! It's been \(daysSinceLastLogin) days. Unfortunately, \(witheredCount) of your plants withered."
-                            self.showWitheringAlert = true
-                            stats.updateGardenValue()
+            let witherThresholdDays = 5
+            var witheredCount = 0
+
+            let overdueIndices = stats.placedPlants.indices.filter { index in
+                let plant = stats.placedPlants[index]
+                guard plant.isFullyGrown, plant.name != PlantLibrary.blueprint(withId: "withered_1")?.name else { return false }
+                let lastCare = plant.lastWateredOnDay ?? plant.plantedDate
+                let daysSinceWatered = calendar.dateComponents([.day], from: calendar.startOfDay(for: lastCare), to: today).day ?? 0
+                return daysSinceWatered > witherThresholdDays
+            }
+
+            if !overdueIndices.isEmpty {
+                let numberToWither = Int(ceil(Double(overdueIndices.count) / 3.0))
+                let indicesToWither = overdueIndices.shuffled().prefix(numberToWither)
+
+                if let witheredBlueprint = PlantLibrary.blueprint(withId: "withered_1") {
+                    for index in indicesToWither {
+                        if index < stats.placedPlants.count {
+                            stats.placedPlants[index].name = witheredBlueprint.name
+                            stats.placedPlants[index].assetName = witheredBlueprint.assetName
+                            stats.placedPlants[index].iconName = witheredBlueprint.iconName
+                            stats.placedPlants[index].rarity = witheredBlueprint.rarity
+                            stats.placedPlants[index].theme = witheredBlueprint.theme
+                            stats.placedPlants[index].baseValue = witheredBlueprint.baseValue
+                            stats.placedPlants[index].daysLeftTillFullyGrown = witheredBlueprint.initialDaysToGrow
+                            stats.placedPlants[index].initialDaysToGrow = witheredBlueprint.initialDaysToGrow
+                            witheredCount += 1
                         }
                     }
+                }
+                if witheredCount > 0 {
+                    self.witheringAlertMessage = "Uh oh! \(witheredCount) of your plants withered from going unwatered for over \(witherThresholdDays) days."
+                    self.showWitheringAlert = true
+                    stats.updateGardenValue()
                 }
             }
             lastAppOpenDateForWitheringCheckString = todayString
@@ -774,6 +746,20 @@ struct ContentView: View {
         } catch {
             // Error saving PlayerStats
         }
+    }
+
+    /// Re-presents the daily "Start your day" dashboard on every app open until the user
+    /// completes the checklist (Migrate + Schedule + New tasks) or taps Skip for the day.
+    /// Gated to days the daily evaluation ran, and only after the last-day summary has been
+    /// shown/dismissed (its own dismiss opens the dashboard the first time).
+    private func presentDailyDashboardIfNeeded() {
+        let todayString = DailyChecklistStore.todayString()
+        guard lastDailyEvaluationDateString == todayString else { return }
+        guard lastSummaryDateString == todayString else { return }
+        guard !DailyChecklistStore.isSkipped(today: todayString) else { return }
+        guard !DailyChecklistStore.isGateComplete(today: todayString) else { return }
+        guard !showDailyDashboard, !showLastDayView else { return }
+        showDailyDashboard = true
     }
 
     private func deleteOldDoneTasks() async {

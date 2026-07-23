@@ -90,19 +90,29 @@ struct DailyPlanningNoteView: View {
                 }
             }
             .background(dynamicBackgroundColor.edgesIgnoringSafeArea(.all))
+            .safeAreaInset(edge: .bottom) {
+                Button {
+                    stopSuggestionCycle()
+                    onComplete?()
+                    isPresented = false
+                } label: {
+                    Text("Done")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(dynamicPrimaryColor)
+                        .foregroundColor(.white)
+                        .cornerRadius(12)
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 8)
+                .background(dynamicSecondaryBackgroundColor)
+            }
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(dynamicSecondaryBackgroundColor, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Skip") {
-                        stopSuggestionCycle()
-                        onComplete?()
-                        isPresented = false
-                    }
-                    .foregroundColor(dynamicPrimaryColor)
-                }
                 ToolbarItem(placement: .principal) {
                     Text("Today's plans")
                         .font(.headline)

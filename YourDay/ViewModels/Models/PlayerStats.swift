@@ -99,12 +99,11 @@ struct PlacedPlant: Codable, Identifiable, Hashable {
 
     mutating func waterPlant() {
         let today = Calendar.current.startOfDay(for: Date())
-        if !isFullyGrown && (lastWateredOnDay == nil || !Calendar.current.isDate(lastWateredOnDay!, inSameDayAs: today)) {
-            if daysLeftTillFullyGrown > 0 {
-                daysLeftTillFullyGrown -= 1
-            }
-            lastWateredOnDay = today
+        guard lastWateredOnDay == nil || !Calendar.current.isDate(lastWateredOnDay!, inSameDayAs: today) else { return }
+        if !isFullyGrown, daysLeftTillFullyGrown > 0 {
+            daysLeftTillFullyGrown -= 1
         }
+        lastWateredOnDay = today
     }
 
     // Made public static so it can be accessed from elsewhere if needed, or keep private if only used internally

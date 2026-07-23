@@ -28,12 +28,15 @@ final class ScreenTimeManager: ObservableObject {
     @Published var authorizationStatus: AuthorizationStatus
     @Published var isEnabled: Bool
     @Published var selection: FamilyActivitySelection
+    /// When `true`, apps are only shielded during an active scheduled focus task.
+    @Published var scheduledTasksOnly: Bool
 
     private var snapshotDebounceTask: Task<Void, Never>?
 
     private init() {
         self.authorizationStatus = AuthorizationCenter.shared.authorizationStatus
         self.isEnabled = AppGroupDefaults.defaults.bool(forKey: AppGroupDefaults.Key.shieldEnabled)
+        self.scheduledTasksOnly = AppGroupDefaults.defaults.bool(forKey: AppGroupDefaults.Key.scheduledTasksOnly)
         if let data = AppGroupDefaults.defaults.data(forKey: AppGroupDefaults.Key.familySelection),
            let decoded = try? JSONDecoder().decode(FamilyActivitySelection.self, from: data) {
             self.selection = decoded
@@ -47,6 +50,7 @@ final class ScreenTimeManager: ObservableObject {
     func loadPersistedState() {
         self.authorizationStatus = authCenter.authorizationStatus
         self.isEnabled = AppGroupDefaults.defaults.bool(forKey: AppGroupDefaults.Key.shieldEnabled)
+        self.scheduledTasksOnly = AppGroupDefaults.defaults.bool(forKey: AppGroupDefaults.Key.scheduledTasksOnly)
         if let data = AppGroupDefaults.defaults.data(forKey: AppGroupDefaults.Key.familySelection),
            let decoded = try? JSONDecoder().decode(FamilyActivitySelection.self, from: data) {
             self.selection = decoded
@@ -140,6 +144,16 @@ final class ScreenTimeManager: ObservableObject {
             clearShield()
             stopMonitoring()
         }
+    }
+
+    /// Toggles whether the shield is limited to active scheduled focus windows.
+    /// Persists immediately and re-evaluates the shield under the new rule so
+    /// tokens are cleared (or re-applied) without waiting for the next snapshot.
+    func setScheduledTasksOnly(_ on: Bool) {
+        self.scheduledTasksOnly = on
+        AppGroupDefaults.defaults.set(on, forKey: AppGroupDefaults.Key.scheduledTasksOnly)
+        AppGroupDefaults.flush()
+        applyShieldIfNeeded(ignoringBreakFocusGrace: true)
     }
 
     // MARK: - Selection
@@ -307,10 +321,12 @@ final class ScreenTimeManager: ObservableObject {
         AppGroupDefaults.flush()
 
         if isEnabled, authorizationStatus == .approved {
-            if shouldBlockApps {
+            // Read-time gate: honors scheduled-tasks-only mode by checking for an
+            // active scheduled task against the snapshot we just persisted.
+            if AppGroupDefaults.shouldApplyShieldBlocks() {
                 applyShieldIfNeeded()
             } else {
-                logger.notice("ScreenTimeManager: today planning fulfilled — clearing shield")
+                logger.notice("ScreenTimeManager: shield not needed (day fulfilled or outside a scheduled task) — clearing shield")
                 clearShield()
                 endBreakFocusUnblockTracking()
             }

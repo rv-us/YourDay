@@ -197,6 +197,24 @@ final class ShieldActionExtension: ShieldActionDelegate {
         let snapshot = AppGroupDefaults.loadSnapshot()
         let penaltyAmount = snapshot?.penaltyAmount ?? 100
 
+        // Scheduled-tasks-only mode: the shield exists solely to guard active
+        // focus windows, so only breaking an active scheduled task costs points.
+        // Any pass-through outside a task (or with a stale snapshot) is free.
+        if AppGroupDefaults.scheduledTasksOnlyMode {
+            if let snapshot,
+               snapshot.dayKey == ShieldSnapshot.dayKey(),
+               let active = snapshot.activeTask() {
+                AppGroupDefaults.appendPendingPenalty(
+                    PendingPenalty(
+                        amount: penaltyAmount,
+                        reason: .clickedThroughDuringTask,
+                        context: active.title
+                    )
+                )
+            }
+            return
+        }
+
         guard let snapshot, snapshot.dayKey == ShieldSnapshot.dayKey() else {
             AppGroupDefaults.appendPendingPenalty(
                 PendingPenalty(amount: penaltyAmount, reason: .skippedPlanning)

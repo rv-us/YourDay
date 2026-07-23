@@ -55,6 +55,7 @@ enum GardenSceneMode: Equatable {
     case normal
     case sell
     case fertilizer
+    case watering
 }
 
 /// Semantic world events emitted by the scene. All mode/tutorial routing
@@ -65,6 +66,8 @@ enum GardenSceneEvent {
     case tappedEmptyTile(GridPosition)
     case longPressedPlant(id: UUID)
     case swapRequested(draggedID: UUID, targetID: UUID)
+    /// A plant caught enough watering-can droplets to count as watered.
+    case wateredPlant(id: UUID)
 }
 
 struct GardenSnapshot: Equatable {
