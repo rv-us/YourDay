@@ -61,8 +61,14 @@ struct EventBlockView: View {
         CalendarEventFilter.calculateTimeOffset(start: eventStart, date: selectedDate, hourHeight: hourHeight, headerOffset: 20)
     }
     
-    private var height: CGFloat {
+    private static let verticalInset: CGFloat = 3
+
+    private var rawHeight: CGFloat {
         CalendarEventFilter.calculateEventHeight(start: eventStart, end: eventEnd, hourHeight: hourHeight)
+    }
+    
+    private var height: CGFloat {
+        max(18, rawHeight - Self.verticalInset)
     }
     
     // Width and x position so overlapping events sit side by side with gaps
@@ -132,7 +138,7 @@ struct EventBlockView: View {
         }
         .buttonStyle(.plain)
         .contentShape(Rectangle())
-        .position(x: xOffset + eventWidth / 2, y: topOffset + height / 2)
+        .position(x: xOffset + eventWidth / 2, y: topOffset + Self.verticalInset / 2 + height / 2)
     }
 }
 

@@ -76,6 +76,44 @@ struct TimelineView: View {
         return groups
     }
     
+    // MARK: - Smart Column Packing
+    
+    private struct EventColumnAssignment: Identifiable {
+        let event: GoogleCalendarEvent
+        let columnIndex: Int
+        let totalColumns: Int
+        var id: String { event.id }
+    }
+    
+    /// Greedy column assignment: for each event in a transitive overlap group,
+    /// place it in the leftmost column whose previous event has already ended.
+    /// Events that don't directly overlap can share a column, reducing total width.
+    private func assignColumns(for group: [GoogleCalendarEvent]) -> [EventColumnAssignment] {
+        let sorted = group.sorted { ($0.start.startDate ?? Date()) < ($1.start.startDate ?? Date()) }
+        var columnEndTimes: [Date] = []
+        var assignments: [(event: GoogleCalendarEvent, column: Int)] = []
+        
+        for event in sorted {
+            let eventStart = event.start.startDate ?? Date()
+            let eventEnd = event.end?.startDate ?? calendar.date(byAdding: .hour, value: 1, to: eventStart) ?? eventStart
+            
+            if let col = columnEndTimes.firstIndex(where: { $0 <= eventStart }) {
+                columnEndTimes[col] = eventEnd
+                assignments.append((event, col))
+            } else {
+                columnEndTimes.append(eventEnd)
+                assignments.append((event, columnEndTimes.count - 1))
+            }
+        }
+        
+        let totalColumns = columnEndTimes.count
+        return assignments.map { EventColumnAssignment(event: $0.event, columnIndex: $0.column, totalColumns: totalColumns) }
+    }
+    
+    private var allColumnAssignments: [EventColumnAssignment] {
+        eventGroups.flatMap { assignColumns(for: $0) }
+    }
+    
     private var gridScale: CGFloat {
         min(1.2, max(0.6, hourHeight / 50))
     }
@@ -104,24 +142,22 @@ struct TimelineView: View {
             }
             .allowsHitTesting(false)
             
-            // Events overlay - handle overlapping events
-            ForEach(Array(eventGroups.enumerated()), id: \.offset) { groupIndex, group in
-                ForEach(Array(group.enumerated()), id: \.element.id) { eventIndex, event in
-                    if let eventStart = event.start.startDate,
-                       let eventEnd = event.end?.startDate ?? calendar.date(byAdding: .hour, value: 1, to: eventStart) {
-                        EventBlockView(
-                            event: event,
-                            eventStart: eventStart,
-                            eventEnd: eventEnd,
-                            selectedDate: selectedDate,
-                            hourHeight: hourHeight,
-                            availableWidth: UIScreen.main.bounds.width - 96,
-                            groupSize: group.count,
-                            groupIndex: eventIndex,
-                            eventGap: Self.eventGap,
-                            onScheduledTaskTap: onScheduledTaskTap
-                        )
-                    }
+            // Events overlay - smart column packing
+            ForEach(allColumnAssignments) { layout in
+                if let eventStart = layout.event.start.startDate,
+                   let eventEnd = layout.event.end?.startDate ?? calendar.date(byAdding: .hour, value: 1, to: eventStart) {
+                    EventBlockView(
+                        event: layout.event,
+                        eventStart: eventStart,
+                        eventEnd: eventEnd,
+                        selectedDate: selectedDate,
+                        hourHeight: hourHeight,
+                        availableWidth: UIScreen.main.bounds.width - 96,
+                        groupSize: layout.totalColumns,
+                        groupIndex: layout.columnIndex,
+                        eventGap: Self.eventGap,
+                        onScheduledTaskTap: onScheduledTaskTap
+                    )
                 }
             }
             
