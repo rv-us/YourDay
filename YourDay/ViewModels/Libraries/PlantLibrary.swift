@@ -95,6 +95,7 @@ struct PlantLibrary {
         PlantBlueprint(id: "cactus_c_su", name: "Desert Bloom", description: "A hardy cactus that flowers in summer.", rarity: .common, theme: .summer, initialDaysToGrow: 2, baseValue: 25, assetName: "summer-common1", iconName: "summer-common1"),
         PlantBlueprint(id: "pumpkin_c_fa", name: "Mini Pumpkin", description: "A small, decorative pumpkin, perfect for fall.", rarity: .common, theme: .fall, initialDaysToGrow: 2, baseValue: 25, assetName: "fall-common1", iconName: "fall-common1"),
         PlantBlueprint(id: "holly_c_wi", name: "Winter Holly", description: "Festive holly with bright red berries.", rarity: .common, theme: .winter, initialDaysToGrow:2, baseValue: 25, assetName: "winter-common1", iconName: "winter-common1"),
+        PlantBlueprint(id: "falldaisy_c_fa", name: "Fall Daisy", description: "A cheerful daisy that blooms through the autumn chill.", rarity: .common, theme: .fall, initialDaysToGrow: 2, baseValue: 25, assetName: "fall-common2", iconName: "fall-common2"),
 
 
         // Uncommon Plants
@@ -102,18 +103,21 @@ struct PlantLibrary {
         PlantBlueprint(id: "daffodil_uc_sp", name: "Daffodil", description: "Joyful herald of spring.", rarity: .uncommon, theme: .spring, initialDaysToGrow: 2, baseValue: 50, assetName: "summer-uncommon", iconName: "summer-uncommon"),
         PlantBlueprint(id: "aster_uc_fa", name: "Autumn Aster", description: "Late blooming, star-shaped flowers.", rarity: .uncommon, theme: .fall, initialDaysToGrow: 2, baseValue: 50, assetName: "fall-uncommon", iconName: "fall-uncommon"),
         PlantBlueprint(id: "snowdrop_uc_wi", name: "Snowdrop", description: "One of the first signs of life in late winter.", rarity: .uncommon, theme: .winter, initialDaysToGrow: 2, baseValue: 50, assetName: "winter-uncommon", iconName: "winter-uncommon"),
+        PlantBlueprint(id: "crimsonmum_uc_fa", name: "Crimson Mum", description: "A fiery chrysanthemum that burns bright through fall.", rarity: .uncommon, theme: .fall, initialDaysToGrow: 2, baseValue: 50, assetName: "fall-uncommon1", iconName: "fall-uncommon1"),
 
         // Rare Plants
         PlantBlueprint(id: "rose_r_sp", name: "Mystic Rose", description: "Enchanting spring rose.", rarity: .rare, theme: .spring, initialDaysToGrow: 3, baseValue: 75, assetName: "spring-rare", iconName: "spring-rare"),
         PlantBlueprint(id: "orchid_r_su", name: "Sun Orchid", description: "Exotic summer orchid.", rarity: .rare, theme: .summer, initialDaysToGrow: 3, baseValue: 75, assetName: "summer-rare", iconName: "summer-rare"),
         PlantBlueprint(id: "nightshade_r_fa", name: "Shadow Bloom", description: "A mysterious flower that prefers the autumn twilight.", rarity: .rare, theme: .fall, initialDaysToGrow: 3, baseValue: 75, assetName: "fall-rare", iconName: "fall-rare"),
         PlantBlueprint(id: "iceflower_r_wi", name: "Ice Flower", description: "A delicate flower that seems to be made of frost.", rarity: .rare, theme: .winter, initialDaysToGrow: 3, baseValue: 75, assetName: "winter-rare", iconName: "winter-rare"),
+        PlantBlueprint(id: "bloodleafrose_r_fa", name: "Bloodleaf Rose", description: "Deep crimson leaves that darken as autumn deepens.", rarity: .rare, theme: .fall, initialDaysToGrow: 3, baseValue: 75, assetName: "fall-rare1", iconName: "fall-rare1"),
 
         // Epic Plants
         PlantBlueprint(id: "moonflower_e_fa", name: "Moonflower", description: "Blooms under autumn moonlight.", rarity: .epic, theme: .fall, initialDaysToGrow: 3, baseValue: 150, assetName: "fall-epic", iconName: "fall-epic"),
         PlantBlueprint(id: "crystalbloom_e_wi", name: "Crystal Bloom", description: "Shimmers like ice in winter.", rarity: .epic, theme: .winter, initialDaysToGrow: 3, baseValue: 150, assetName: "winter-epic", iconName: "winter-epic"),
         PlantBlueprint(id: "dreamlily_e_sp", name: "Dream Lily", description: "A vibrant lily that inspires vivid dreams, blooming in spring.", rarity: .epic, theme: .spring, initialDaysToGrow: 4, baseValue: 150, assetName: "spring-epic", iconName: "spring-epic"),
         PlantBlueprint(id: "solarflare_e_su", name: "Solar Flare", description: "Radiates warmth and light, a true summer spectacle.", rarity: .epic, theme: .summer, initialDaysToGrow: 4, baseValue: 150, assetName: "summer-epic", iconName: "summer-epic"),
+        PlantBlueprint(id: "infernodahlia_e_fa", name: "Inferno Dahlia", description: "A blazing dahlia that glows like autumn embers.", rarity: .epic, theme: .fall, initialDaysToGrow: 3, baseValue: 150, assetName: "fall-epic1", iconName: "fall-epic1"),
         
         // Legendary Plants
         PlantBlueprint(id: "starpetal_l_sp", name: "Starpetal", description: "Captures starlight. A spring marvel.", rarity: .legendary, theme: .spring, initialDaysToGrow: 5, baseValue: 300, assetName: "spring-legendary", iconName: "spring-legendary"),
