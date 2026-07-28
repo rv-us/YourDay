@@ -504,8 +504,9 @@ class FirebaseManager: ObservableObject {
                             }
 
                             let friends = docs.compactMap { doc -> FriendEntry? in
-                                guard let displayName = doc.data()["displayName"] as? String else { return nil }
-                                return FriendEntry(userId: doc.documentID, displayName: displayName)
+                                let data = doc.data()
+                                guard let displayName = data["displayName"] as? String else { return nil }
+                                return FriendEntry(userId: doc.documentID, displayName: displayName, profilePhotoURL: data["profilePhotoURL"] as? String)
                             }
 
                             onUpdate(friends)
@@ -600,7 +601,7 @@ class FirebaseManager: ObservableObject {
                         guard let displayName = data["displayName"] as? String else {
                             return nil
                         }
-                        return FriendEntry(userId: doc.documentID, displayName: displayName)
+                        return FriendEntry(userId: doc.documentID, displayName: displayName, profilePhotoURL: data["profilePhotoURL"] as? String)
                     }
 
                     completion(friends)
@@ -1045,6 +1046,71 @@ class FirebaseManager: ObservableObject {
     }
 
     // MARK: - Task Proof Feed
+
+    // MARK: - Profile Photo
+
+    func uploadProfilePhoto(imageData: Data, completion: @escaping (Result<String, Error>) -> Void) {
+        guard let uid = Auth.auth().currentUser?.uid else {
+            completion(.failure(NSError(domain: "", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"])))
+            return
+        }
+
+        let storagePath = "profilePhotos/\(uid)/profile.jpg"
+        let storageRef = Storage.storage().reference(withPath: storagePath)
+        let metadata = StorageMetadata()
+        metadata.contentType = "image/jpeg"
+
+        storageRef.putData(imageData, metadata: metadata) { _, uploadError in
+            if let uploadError = uploadError {
+                completion(.failure(uploadError))
+                return
+            }
+
+            storageRef.downloadURL { url, urlError in
+                if let urlError = urlError {
+                    completion(.failure(urlError))
+                    return
+                }
+                guard let downloadURL = url?.absoluteString else {
+                    completion(.failure(NSError(domain: "", code: 500, userInfo: [NSLocalizedDescriptionKey: "Could not generate photo URL"])))
+                    return
+                }
+
+                self.db.collection("leaderboard_entries").document(uid).updateData([
+                    "profilePhotoURL": downloadURL
+                ]) { error in
+                    if let error = error {
+                        completion(.failure(error))
+                    } else {
+                        completion(.success(downloadURL))
+                    }
+                }
+            }
+        }
+    }
+
+    func deleteProfilePhoto(completion: @escaping (Error?) -> Void) {
+        guard let uid = Auth.auth().currentUser?.uid else {
+            completion(NSError(domain: "", code: 401, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"]))
+            return
+        }
+
+        let storagePath = "profilePhotos/\(uid)/profile.jpg"
+        Storage.storage().reference(withPath: storagePath).delete { _ in }
+
+        db.collection("leaderboard_entries").document(uid).updateData([
+            "profilePhotoURL": FieldValue.delete()
+        ]) { error in
+            completion(error)
+        }
+    }
+
+    func fetchProfilePhotoURL(for userId: String, completion: @escaping (String?) -> Void) {
+        db.collection("leaderboard_entries").document(userId).getDocument { snapshot, _ in
+            let url = snapshot?.data()?["profilePhotoURL"] as? String
+            completion(url)
+        }
+    }
 
     func createTaskProofPost(
         taskTitle: String,

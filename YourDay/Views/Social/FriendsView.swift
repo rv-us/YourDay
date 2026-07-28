@@ -306,4 +306,5 @@ struct FriendEntry: Identifiable, Hashable {
     var id: String { userId }
     let userId: String
     let displayName: String
+    var profilePhotoURL: String? = nil
 }

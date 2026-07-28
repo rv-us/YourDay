@@ -118,11 +118,7 @@ struct ChatListView: View {
             .environmentObject(firebaseManager)
             .environmentObject(loginViewModel)) {
             HStack(alignment: .center, spacing: 12) {
-                Image(systemName: "person.crop.circle.fill")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 50, height: 50)
-                    .foregroundColor(dynamicPrimaryColor)
+                ProfilePhotoView(photoURL: friend.profilePhotoURL, size: 50)
 
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {

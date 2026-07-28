@@ -34,6 +34,8 @@ struct GroupChatDetailView: View {
     @State private var groupTasks: [String: GroupTask] = [:]
     @State private var groupTasksListener: ListenerRegistration?
 
+    @State private var memberPhotoURLs: [String: String] = [:]
+
     private var currentUserId: String? { Auth.auth().currentUser?.uid }
     private var myDisplayName: String {
         loginViewModel.userDisplayName ?? Auth.auth().currentUser?.displayName ?? "Me"
@@ -64,7 +66,7 @@ struct GroupChatDetailView: View {
                                     GroupProofMessageCard(postId: refId)
                                         .environmentObject(firebaseManager)
                                 } else {
-                                    HStack(alignment: .bottom, spacing: 0) {
+                                    HStack(alignment: .bottom, spacing: 6) {
                                         if msg.senderId == currentUserId {
                                             Spacer(minLength: 60)
                                             Text(msg.content)
@@ -74,6 +76,7 @@ struct GroupChatDetailView: View {
                                                 .cornerRadius(18)
                                                 .foregroundColor(.white)
                                         } else {
+                                            ProfilePhotoView(photoURL: memberPhotoURLs[msg.senderId], size: 28)
                                             Text(msg.content)
                                                 .padding(.horizontal, 14)
                                                 .padding(.vertical, 10)
@@ -174,6 +177,14 @@ struct GroupChatDetailView: View {
             }
             firebaseManager.fetchGroupMembers(groupId: group.id ?? "") { fetched in
                 members = fetched
+                let memberIds = fetched.compactMap { $0.id }
+                for memberId in memberIds {
+                    firebaseManager.fetchProfilePhotoURL(for: memberId) { url in
+                        if let url = url {
+                            DispatchQueue.main.async { memberPhotoURLs[memberId] = url }
+                        }
+                    }
+                }
             }
             groupTasksListener = firebaseManager.listenToGroupTasks(groupId: group.id ?? "") { tasks in
                 groupTasks = Dictionary(uniqueKeysWithValues: tasks.compactMap { task in

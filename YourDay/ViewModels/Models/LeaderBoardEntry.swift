@@ -12,12 +12,14 @@ struct LeaderboardEntry: Identifiable, Codable {
     var displayName: String
     var playerLevel: Int
     var gardenValue: Double
+    var profilePhotoURL: String?
 
     enum CodingKeys: String, CodingKey {
         case id = "userID"
         case displayName
         case playerLevel
         case gardenValue
+        case profilePhotoURL
     }
 }
 

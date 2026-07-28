@@ -61,7 +61,7 @@ struct ChatDetailView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 8) {
                         ForEach(messages) { msg in
-                            HStack(alignment: .bottom, spacing: 0) {
+                            HStack(alignment: .bottom, spacing: 6) {
                                 if msg.senderId == Auth.auth().currentUser?.uid {
                                     Spacer(minLength: 60)
                                     Text(msg.content)
@@ -71,6 +71,7 @@ struct ChatDetailView: View {
                                         .cornerRadius(18)
                                         .foregroundColor(.white)
                                 } else {
+                                    ProfilePhotoView(photoURL: friend.profilePhotoURL, size: 28)
                                     Text(msg.content)
                                         .padding(.horizontal, 14)
                                         .padding(.vertical, 10)

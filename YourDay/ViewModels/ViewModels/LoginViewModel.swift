@@ -22,6 +22,7 @@ class LoginViewModel: ObservableObject {
     @Published var userDisplayName: String? = nil
     @Published var userEmail: String? = nil
     @Published var guestDisplayName: String = ""
+    @Published var userProfilePhotoURL: String? = nil
 
     // MARK: - Properties for Email/Password Auth
     @Published var email = ""
@@ -104,6 +105,7 @@ class LoginViewModel: ObservableObject {
                 if !self.isAuthenticated { self.isAuthenticated = true }
                 self.userDisplayName = user.displayName
                 self.userEmail = user.email
+                self.loadProfilePhotoURL()
                 print("LoginViewModel: checkAuthenticationState - User \(user.uid) is authenticated.")
             } else {
                 if self.isAuthenticated { self.isAuthenticated = false }
@@ -544,6 +546,44 @@ class LoginViewModel: ObservableObject {
                         print("LoginViewModel: Display name updated in Auth, but no PlayerStats provided to update leaderboard.")
                         completion(true, "Name updated, but leaderboard could not be synced without player stats.")
                     }
+                }
+            }
+        }
+    }
+
+    // MARK: - Profile Photo
+
+    func loadProfilePhotoURL() {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        firebaseManager.fetchProfilePhotoURL(for: uid) { [weak self] url in
+            DispatchQueue.main.async {
+                self?.userProfilePhotoURL = url
+            }
+        }
+    }
+
+    func uploadProfilePhoto(imageData: Data, completion: @escaping (Bool, String?) -> Void) {
+        firebaseManager.uploadProfilePhoto(imageData: imageData) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let url):
+                    self?.userProfilePhotoURL = url
+                    completion(true, nil)
+                case .failure(let error):
+                    completion(false, error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    func deleteProfilePhoto(completion: @escaping (Bool, String?) -> Void) {
+        firebaseManager.deleteProfilePhoto { [weak self] error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    completion(false, error.localizedDescription)
+                } else {
+                    self?.userProfilePhotoURL = nil
+                    completion(true, nil)
                 }
             }
         }
@@ -1372,6 +1412,7 @@ class LoginViewModel: ObservableObject {
             self.guestDisplayName = ""
             self.userDisplayName = nil
             self.userEmail = nil
+            self.userProfilePhotoURL = nil
             self.email = ""
             self.password = ""
             self.displayNameForRegistration = ""

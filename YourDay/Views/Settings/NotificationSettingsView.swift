@@ -2,6 +2,17 @@ import SwiftUI
 import SwiftData
 import UserNotifications
 import CoreLocation
+import PhotosUI
+import UniformTypeIdentifiers
+
+private struct PickedImageData: Transferable {
+    let data: Data
+    static var transferRepresentation: some TransferRepresentation {
+        DataRepresentation(importedContentType: .image) { data in
+            PickedImageData(data: data)
+        }
+    }
+}
 
 struct NotificationSettingsView: View {
     @AppStorage("hasCompletedNotificationsTutorial") private var hasCompletedNotificationsTutorial = false
@@ -24,6 +35,10 @@ struct NotificationSettingsView: View {
 
     @Environment(\.dismiss) var dismiss
     private let firebaseManager = FirebaseManager()
+
+    @State private var selectedPhotoItem: PhotosPickerItem? = nil
+    @State private var isUploadingPhoto = false
+    @State private var showRemovePhotoConfirm = false
 
     @State private var morningTime = Date()
     @State private var nightTime = Date()
@@ -75,6 +90,91 @@ struct NotificationSettingsView: View {
                                 .foregroundColor(dynamicSecondaryTextColor)
                                 .listRowBackground(dynamicSecondaryBackgroundColor)
                         } else {
+                            // Profile Photo
+                            VStack(spacing: 12) {
+                                if let photoURL = loginViewModel.userProfilePhotoURL, let url = URL(string: photoURL) {
+                                    AsyncImage(url: url) { phase in
+                                        switch phase {
+                                        case .success(let image):
+                                            image.resizable().scaledToFill()
+                                        default:
+                                            Image(systemName: "person.crop.circle.fill")
+                                                .resizable().scaledToFit()
+                                                .foregroundColor(dynamicPrimaryColor)
+                                        }
+                                    }
+                                    .frame(width: 90, height: 90)
+                                    .clipShape(Circle())
+                                    .overlay(Circle().stroke(dynamicPrimaryColor, lineWidth: 2))
+                                } else {
+                                    Image(systemName: "person.crop.circle.fill")
+                                        .resizable().scaledToFit()
+                                        .frame(width: 90, height: 90)
+                                        .foregroundColor(dynamicPrimaryColor.opacity(0.5))
+                                }
+
+                                HStack(spacing: 16) {
+                                    PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
+                                        Label(loginViewModel.userProfilePhotoURL != nil ? "Change Photo" : "Add Photo",
+                                              systemImage: "photo.on.rectangle.angled")
+                                            .font(.subheadline.weight(.medium))
+                                            .foregroundColor(dynamicPrimaryColor)
+                                    }
+                                    .disabled(isUploadingPhoto)
+
+                                    if loginViewModel.userProfilePhotoURL != nil {
+                                        Button(role: .destructive) {
+                                            showRemovePhotoConfirm = true
+                                        } label: {
+                                            Label("Remove", systemImage: "trash")
+                                                .font(.subheadline.weight(.medium))
+                                        }
+                                        .disabled(isUploadingPhoto)
+                                    }
+                                }
+
+                                if isUploadingPhoto {
+                                    ProgressView("Uploading…").scaleEffect(0.8)
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .listRowBackground(dynamicSecondaryBackgroundColor)
+                            .onChange(of: selectedPhotoItem) { _, newItem in
+                                guard let newItem = newItem else {
+                                    print("ProfilePhoto: selectedPhotoItem was nil")
+                                    return
+                                }
+                                print("ProfilePhoto: photo selected, starting load...")
+                                isUploadingPhoto = true
+                                Task {
+                                    do {
+                                        if let picked = try await newItem.loadTransferable(type: PickedImageData.self) {
+                                            print("ProfilePhoto: loaded \(picked.data.count) bytes, compressing...")
+                                            let compressed = compressProfileImage(picked.data)
+                                            print("ProfilePhoto: compressed to \(compressed.count) bytes, uploading...")
+                                            loginViewModel.uploadProfilePhoto(imageData: compressed) { success, errorMsg in
+                                                print("ProfilePhoto: upload result — success=\(success), error=\(errorMsg ?? "none")")
+                                                isUploadingPhoto = false
+                                            }
+                                        } else {
+                                            print("ProfilePhoto: loadTransferable returned nil (PickedImageData)")
+                                            isUploadingPhoto = false
+                                        }
+                                    } catch {
+                                        print("ProfilePhoto: loadTransferable threw error: \(error)")
+                                        isUploadingPhoto = false
+                                    }
+                                    selectedPhotoItem = nil
+                                }
+                            }
+                            .alert("Remove Profile Photo?", isPresented: $showRemovePhotoConfirm) {
+                                Button("Cancel", role: .cancel) { }
+                                Button("Remove", role: .destructive) {
+                                    loginViewModel.deleteProfilePhoto { _, _ in }
+                                }
+                            }
+
                             HStack {
                                 Text("Email:").fontWeight(.semibold)
                                     .foregroundColor(dynamicTextColor)
@@ -516,4 +616,16 @@ enum NotificationsTutorialStep: Int, CaseIterable {
             return false
         }
     }
+}
+
+// MARK: - Profile Image Compression
+
+private func compressProfileImage(_ data: Data, maxDimension: CGFloat = 400, quality: CGFloat = 0.8) -> Data {
+    guard let uiImage = UIImage(data: data) else { return data }
+    let size = uiImage.size
+    let scale = min(maxDimension / max(size.width, size.height), 1.0)
+    let newSize = CGSize(width: size.width * scale, height: size.height * scale)
+    let renderer = UIGraphicsImageRenderer(size: newSize)
+    let resized = renderer.image { _ in uiImage.draw(in: CGRect(origin: .zero, size: newSize)) }
+    return resized.jpegData(compressionQuality: quality) ?? data
 }
